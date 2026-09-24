@@ -1,12 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {compileSvg} from './pikchr-wasm.mjs';
 import {readFileSync} from 'node:fs';
-import {spawnSync} from 'node:child_process';
-import {fileURLToPath} from 'node:url';
 
 test('Gitflow teaching example compiles as real Pikchr with readable workflow labels',()=>{
   const source=readFileSync(new URL('../public/examples/gitflow.pikchr',import.meta.url),'utf8');
-  const result=spawnSync(fileURLToPath(new URL('../vendor/pikchr',import.meta.url)),['--svg-only','-'],{input:source,encoding:'utf8'});
+  const result=compileSvg(source);
   assert.equal(result.status,0,result.stdout);
   assert.match(result.stdout,/<svg\b/);
   for(const lane of ['feature','develop','release','hotfix','main'])assert.match(result.stdout,new RegExp(lane,'i'));

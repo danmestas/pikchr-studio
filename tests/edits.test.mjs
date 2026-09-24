@@ -1,8 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {compileSvg} from './pikchr-wasm.mjs';
 import { candidates, endpointCandidates, routeCandidates, moveVertexCandidates, bendCandidates, applyPatch, byteOffsetToIndex } from '../public/edits.js';
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 const bytes = text => new TextEncoder().encode(text).length;
 function fixture(statement = 'Database: cylinder "DB" fill blue at (1, -1)') {
   const prefix = '# café 😀\r\nAPI: box "API" at (0,0)\r\n';
@@ -147,7 +146,7 @@ test('route edits preserve surrounding source and compile with Pikchr', () => {
     assert.ok(candidate, mode);
     assert.ok(candidate.source.includes('"café 😀 from X to Y"'));
     assert.ok(candidate.source.endsWith('color blue\r\n# keep this comment\r\n'));
-    const compiled = spawnSync(fileURLToPath(new URL('../vendor/pikchr',import.meta.url)),['--svg-only','-'],{input:candidate.source,encoding:'utf8'});
+    const compiled = compileSvg(candidate.source);
     assert.equal(compiled.status,0,`${mode}: ${compiled.stdout} ${compiled.stderr}`);
     assert.match(compiled.stdout,/<svg/);
     assert.equal(applyPatch(f.source,candidate.patch),candidate.source);
@@ -168,7 +167,7 @@ test('generated routes can change mode, move again, and reconnect without losing
     assert.ok(reconnected,mode);
     assert.ok(!reconnected.source.includes('API.e'));
     assert.ok(reconnected.source.includes('Database.w'));
-    const compiled = spawnSync(fileURLToPath(new URL('../vendor/pikchr',import.meta.url)),['--svg-only','-'],{input:reconnected.source,encoding:'utf8'});
+    const compiled = compileSvg(reconnected.source);
     assert.equal(compiled.status,0,`${mode}: ${compiled.stdout}`);
   }
 });
@@ -206,7 +205,7 @@ test('literal vertex edits change only the selected tuple and compile', () => {
       assert.equal(candidate.patch.expected,tuples[index-1]);
       assert.equal(applyPatch(f.source,candidate.patch),candidate.source);
       assert.throws(()=>applyPatch(f.source+' ',candidate.patch),/Source changed/);
-      const compiled = spawnSync(fileURLToPath(new URL('../vendor/pikchr',import.meta.url)),['--svg-only','-'],{input:candidate.source,encoding:'utf8'});
+      const compiled = compileSvg(candidate.source);
       assert.equal(compiled.status,0,compiled.stdout);
       assert.match(compiled.stdout,/<svg/);
     }
@@ -243,7 +242,7 @@ test('all native shape placements remain source-preserving and compile', () => {
     const [candidate]=candidates(f.source,f.object,f.scene,{x:2,y:-2});
     assert.ok(candidate,kind);
     assert.equal(candidate.source,f.source.replace('at (1, -1)','at (2, -2)'));
-    const compiled = spawnSync(fileURLToPath(new URL('../vendor/pikchr',import.meta.url)),['--svg-only','-'],{input:candidate.source,encoding:'utf8'});
+    const compiled = compileSvg(candidate.source);
     assert.equal(compiled.status,0,`${kind}: ${compiled.stdout}`);
   }
 });
@@ -258,7 +257,7 @@ test('insert, move, delete and reset bends preserve labels, styles and endpoint 
     const statement=candidate.source.slice(candidate.source.indexOf('Link:'),candidate.source.indexOf('\r\n# keep'));
     const fixture=connectorFixture(statement);
     fixture.object.path=Array.from({length:(statement.match(/\bto\b/g)||[]).length+1},()=>({x:0,y:0}));
-    const compiled=spawnSync(fileURLToPath(new URL('../vendor/pikchr',import.meta.url)),['--svg-only','-'],{input:candidate.source,encoding:'utf8'});
+    const compiled=compileSvg(candidate.source);
     assert.equal(compiled.status,0,compiled.stdout);
     return fixture;
   };
@@ -286,7 +285,7 @@ test('inserting into a reference-based elbow preserves expressions and makes the
   assert.ok(moved);assert.match(moved.source,/\(Database.w, API.e\) then to \(3, -1\)/);
   assert.deepEqual(moveVertexCandidates(next.source,next.object,next.scene,1,{x:3,y:-1}),[]);
   assert.equal(bendCandidates(next.source,next.object,next.scene,'delete',2)[0].source,f.source);
-  const compiled=spawnSync(fileURLToPath(new URL('../vendor/pikchr',import.meta.url)),['--svg-only','-'],{input:moved.source,encoding:'utf8'});
+  const compiled=compileSvg(moved.source);
   assert.equal(compiled.status,0,compiled.stdout);
 });
 
