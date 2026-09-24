@@ -19,3 +19,4 @@ node_modules/
 .DS_Store
 # Kept on purpose: public/pikchr.js, public/pikchr.wasm (the prebuilt bundle),
 # vendor/studio.patch, vendor/studio.h, vendor/MANIFEST.json
+dist-dry-run/
