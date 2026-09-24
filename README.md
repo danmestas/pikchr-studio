@@ -111,3 +111,9 @@ npm run dev:worker   # the same Worker locally, with its headers and 404 handlin
   Pikchr's own vocabulary visible and editable, not to replace it.
 
 The native API contract is documented in `public/api.html`.
+
+## License
+
+Pikchr Studio is released under the [Zero-Clause BSD license](LICENSE), the same
+license as [Pikchr](https://pikchr.org). The bundled `public/pikchr.wasm` is built
+from Pikchr and carries its own 0BSD notice; see `public/licenses.html`.
