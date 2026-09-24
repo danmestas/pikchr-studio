@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /embed.html
 
-Sitemap: https://pikchr-studio.example/sitemap.xml
+Sitemap: https://pikchr-studio.daniel-mestas.workers.dev/sitemap.xml

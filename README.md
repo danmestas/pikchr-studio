@@ -94,8 +94,8 @@ npm run dev:worker   # the same Worker locally, with its headers and 404 handlin
 - `public/.assetsignore` keeps internal pages (`ux-audit/*.html`) out of the deploy.
 - Unknown paths get `public/404.html` with status 404.
 - Absolute URLs (canonical links, Open Graph, `robots.txt`, `sitemap.xml`) use the
-  placeholder origin `https://pikchr-studio.example`; replace it with the live
-  origin before or after the first deploy.
+  live origin `https://pikchr-studio.daniel-mestas.workers.dev`. If the site moves to
+  a custom domain, replace that origin in those files.
 - CI runs `wrangler deploy --dry-run` to validate the config without credentials.
 
 ## Design rules
