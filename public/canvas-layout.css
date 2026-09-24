@@ -82,7 +82,7 @@ body.layout-canvas .cl-candidate #preview-accept{background:transparent!importan
 body.layout-canvas .cl-candidate #preview-accept:hover{background:var(--cl-accent-bg)!important}
 
 /* Popovers */
-body.layout-canvas .cl-popover{z-index:20;display:block;padding:12px;overflow:auto}
+body.layout-canvas .cl-popover{z-index:40;display:block;padding:12px;overflow:auto}
 body.layout-canvas .cl-menu{top:60px;left:12px;width:min(380px,calc(100vw - 24px));max-height:calc(100dvh - 130px)}
 body.layout-canvas .cl-menu nav.toolbar{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
 body.layout-canvas .cl-menu>*+*{margin-top:10px}
