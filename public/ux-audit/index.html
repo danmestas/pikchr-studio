@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pikchr Studio — observed UX backlog</title>
+<style>
+body{max-width:960px;margin:32px auto;padding:0 20px;font:16px/1.55 system-ui,sans-serif;color:#24292f;background:white}h1{font-size:28px}h2{font-size:22px;margin-top:36px}h3{font-size:18px}a{color:#0969da}table{border-collapse:collapse;width:100%;font-size:14px}th,td{border:1px solid #d0d7de;padding:9px;text-align:left;vertical-align:top}th{background:#f6f8fa}code{font:14px ui-monospace,monospace;background:#f6f8fa;padding:1px 3px}section.issue{border-top:1px solid #d0d7de;padding:14px 0}dt{font-weight:600;margin-top:10px}dd{margin-left:0}small,.meta{color:#57606a}.table-wrap{overflow:auto}li{margin:5px 0}nav a{margin-right:16px}img{max-width:100%;height:auto}figure{margin:20px 0}figcaption{font-size:14px;color:#57606a}
+</style>
+</head>
+<body>
+<h1>Pikchr Studio: diagram-authoring UX backlog</h1>
+<p><strong>New mobile-width audit:</strong> <a href="gitflow-mobile.html">Gitflow diagram built through Studio controls at 390 × 844, with eight prioritized UX findings</a>.</p>
+<p class="meta">Computer-use audit · 19 September 2026 · Desktop, 1280 × 720</p>
+<p>The app has been rebuilt against this audit. The two new diagrams below were created entirely through its visible controls using computer use, without editing Pikchr source. They demonstrate substantially better authoring of multiline text, repeated structures, dimensions, and styling. Remaining gaps include complex imported expressions, connector label placement, arbitrary route bends, and reusable grouped panels.</p>
+<nav><a href="#rebuild">Rebuilt examples</a><a href="#status">Current status</a><a href="#evidence">Original evidence</a><a href="#scores">Original scores</a><a href="#backlog">Issue details</a><a href="#sequence">Next work</a></nav>
+
+<h2 id="rebuild">Rebuilt through the app</h2>
+<p>These are live native Pikchr WASM renders of the source produced by actual computer-use interactions with the rebuilt app. No source editing was used to construct them. They are comparable-complexity authoring examples, not pixel-identical copies of the reference figures. Source links preserve the resulting documents; Open in Studio loads an editable example.</p>
+<figure><div id="polished-gates-render" role="img" aria-label="Rebuilt gate diagram with nine boxes, three headings, and six arrows">Loading rebuilt gate diagram…</div><figcaption>Rebuilt gate diagram · 18 objects: 9 boxes, 3 headings, 6 arrows · <a href="polished-gates.pikchr">Pikchr source</a> · <a href="../?sample=polished-gates">Open in Studio</a></figcaption></figure>
+<figure><div id="polished-stacks-render" role="img" aria-label="Rebuilt stack diagram with sixteen stack rows, three multiline cards, and three arrows">Loading rebuilt stack diagram…</div><figcaption>Rebuilt stack diagram · 22 objects: 16 stack rows, 3 multiline cards, 3 arrows · <a href="polished-stacks.pikchr">Pikchr source</a> · <a href="../?sample=polished-stacks">Open in Studio</a></figcaption></figure>
+
+<h2 id="status">Current implementation status</h2>
+<p>This update separates implemented controls from remaining work. “Implemented” describes the shipped capability, not a claim that every original acceptance criterion has been exhaustively retested. The original observations and scores below are retained as the pre-rebuild baseline, not statements about the current app.</p>
+<div class="table-wrap"><table><thead><tr><th>Issue</th><th>Status</th><th>Rebuild result / remaining work</th></tr></thead><tbody>
+<tr><td><a href="#PKUX-001">001 · Recovery</a></td><td>Implemented</td><td>Document persistence is available. Applied and persisted state are distinct concepts; external source downloads remain useful backups.</td></tr>
+<tr><td><a href="#PKUX-002">002 · Safe selection</a></td><td>Implemented</td><td>Reconnection is an explicit action rather than an incidental object-selection click.</td></tr>
+<tr><td><a href="#PKUX-003">003 · Focus</a></td><td>Implemented</td><td>Selecting objects no longer steals focus into the source editor.</td></tr>
+<tr><td><a href="#PKUX-004">004 · Readable canvas</a></td><td>Core implemented</td><td>Zoom and pan are available. The original request also covers overlay clarity and diagram-focused layout; retain these as regression checks.</td></tr>
+<tr><td><a href="#PKUX-005">005 · Nearby actions</a></td><td>Follow-up UX review</td><td>The rebuilt controls support the examples. Continue checking action proximity, stable Inspector order, and mode-accurate guidance; the rebuild alone does not close all of this workflow issue.</td></tr>
+<tr><td><a href="#PKUX-006">006 · Multiline / text</a></td><td>Implemented</td><td>Multiline labels and independent text are available; the rebuilt examples contain multiline cards and separate headings.</td></tr>
+<tr><td><a href="#PKUX-007">007 · Sizing / layout</a></td><td>Core implemented</td><td>Dimensions, multi-selection, align, equal-size, and distribute controls are available. Layout is numerical/control-driven, not an interactive smart-guide system.</td></tr>
+<tr><td><a href="#PKUX-008">008 · Import compatibility</a></td><td>Partial</td><td>Complex imported expressions still make some operations read-only. Rendering valid Pikchr does not imply full visual editability.</td></tr>
+<tr><td><a href="#PKUX-009">009 · New / Open</a></td><td>Implemented</td><td>Explicit New and Open document controls are available.</td></tr>
+<tr><td><a href="#PKUX-010">010 · Repeat objects</a></td><td>Core implemented</td><td>Single-object duplication is available. Duplicating an entire grouped panel is not implemented.</td></tr>
+<tr><td><a href="#PKUX-011">011 · Readable identities</a></td><td>Core implemented</td><td>Object identities are descriptive. Full reference-aware renaming remains outside this completion claim.</td></tr>
+<tr><td><a href="#PKUX-012">012 · Decimal positions</a></td><td>Implemented</td><td>Coordinate fields accept arbitrary decimal steps rather than enforcing tenths.</td></tr>
+<tr><td><a href="#PKUX-013">013 · Connector labels</a></td><td>Open</td><td>Deliberate connector-label positioning is not implemented.</td></tr>
+<tr><td><a href="#PKUX-014">014 · Route bends</a></td><td>Open</td><td>Arbitrary bend insertion and deletion are not implemented; existing routing controls remain the available workflow.</td></tr>
+<tr><td><a href="#PKUX-015">015 · Styling</a></td><td>Partial</td><td>Dimensions and basic style controls are implemented and used in the rebuilt examples. Font settings are not implemented.</td></tr>
+<tr><td><a href="#PKUX-016">016 · Panels</a></td><td>Partial</td><td>Select-many and multi-object movement are available. Reusable native groups and whole-panel duplication are not implemented.</td></tr>
+<tr><td><a href="#PKUX-017">017 · Delete</a></td><td>Implemented</td><td>Deletion and Undo are available.</td></tr>
+<tr><td><a href="#PKUX-018">018 · Batch review</a></td><td>Partial</td><td>Full batch comparison is available. Pending drafts still lock source editing; arbitrary amendment of an earlier change is not claimed.</td></tr>
+<tr><td><a href="#PKUX-019">019 · SVG export</a></td><td>Implemented</td><td>Rendered SVG export is available.</td></tr>
+</tbody></table></div>
+
+<h2 id="evidence">Original audit: what was tested</h2>
+<p>Audience: someone creating technical documentation diagrams who understands the subject but is not a Pikchr expert. The reference was the <a href="https://fossil.craftdesign.group/zit/doc/tip/docs/rfcs/submanifest-guide/index.html">submanifest guide</a>, particularly <a href="https://fossil.craftdesign.group/zit/doc/tip/docs/rfcs/submanifest-guide/index.html#ch1">Figure 3, Chapter 1</a> and <a href="https://fossil.craftdesign.group/zit/doc/tip/docs/rfcs/submanifest-guide/index.html#ch5">Figure 12, Chapter 5</a>.</p>
+<ul>
+<li>Created a gate/tree diagram through visible controls: 9 boxes and 6 arrows, 15 objects. <a href="gates.pikchr">UI-built source</a>.</li>
+<li>Created a card-stack diagram through visible controls: 15 boxes and 3 arrows, 18 objects. <a href="card-stacks.pikchr">UI-built source</a>.</li>
+<li>Pasted the actual Figure 12 source into the visible Source field and rendered its 18 objects, then attempted visual editing.</li>
+<li>The UI-built examples reproduce comparable topology and object counts, not exact visual replicas. Their formatting gaps are part of the evidence.</li>
+</ul>
+<p>All interaction evidence came from computer use in isolated browser tabs. No programmatic DOM changes or direct rendering-engine calls were used to create the examples. This was not a source-code review. An attempted phone viewport override still returned 1280 × 720; real mobile layouts and touch gestures were <strong>not tested</strong>.</p>
+<p><strong>Evidence labels:</strong> “Reproduced” means an action was performed and its result observed in the original audit. “No exposed control found” describes the original inspected toolbar, forms, and inspector; it does not prove the engine cannot perform the operation. The status table above records subsequent changes; original recommendations and acceptance criteria remain below for traceability.</p>
+<h3>UI-produced regression specimens</h3>
+<p>These are live Pikchr renders of the exact source produced during the visible-control exercises, with a provenance comment added. They are not screenshots or successful fidelity matches to the reference. They preserve the layout limitations encountered during the audit.</p>
+<figure><div id="gates-render" role="img" aria-label="UI-produced gate and tree diagram with nine boxes and six arrows">Loading gate diagram…</div><figcaption>Gate/tree specimen · <a href="gates.pikchr">Pikchr source</a></figcaption></figure>
+<figure><div id="card-stacks-render" role="img" aria-label="UI-produced three card stacks with fifteen boxes and three arrows">Loading card-stack diagram…</div><figcaption>Card-stack specimen · <a href="card-stacks.pikchr">Pikchr source</a></figcaption></figure>
+
+<h2>What worked</h2>
+<ul>
+<li>Both UI-built diagrams rendered, and the actual Figure 12 source rendered successfully.</li>
+<li>Queueing 18 changes updated both source and diagram; Apply all worked.</li>
+<li>Horizontal-first routing, a connector label, and dragging an existing square route handle worked.</li>
+<li>Undo recovered the unintended connector endpoint change.</li>
+<li>Literal, supported objects can be created and edited without writing their Pikchr statements.</li>
+</ul>
+
+<h2 id="scores">Original workflow assessment — before the rebuild</h2>
+<p>The rebuilt app has not been assigned a new overall score. The examples demonstrate improved capability, but do not substitute for repeating all workflow measurements.</p>
+<p>These are subjective audit scores, not benchmark measurements. Frequency weights are estimates for this authoring persona: frequent = 3, regular = 2, occasional = 1. Scale: 1–2 effectively blocked, 3–4 painful, 5–6 usable with friction, 7–8 good, 9–10 effortless. The weighted score is approximately <strong>4/10</strong> (78 weighted points ÷ 20 total weight, rounded).</p>
+<div class="table-wrap"><table><thead><tr><th>Workflow</th><th>Frequency / weight</th><th>Score</th><th>Observed steps and principal friction</th></tr></thead><tbody>
+<tr><td>Select and edit an existing object</td><td>Frequent / 3</td><td>3/10</td><td>Select object → locate inspector → change property → submit. Object-list selection focuses source; canvas selection can instead reconnect an active arrow.</td></tr>
+<tr><td>Build a repeated tree or stack</td><td>Frequent / 3</td><td>4/10</td><td>Expand Add shape → enter label → X → Y → submit, repeat. No duplicate, align, equal-size, or multiselect control found.</td></tr>
+<tr><td>Read and navigate a growing diagram</td><td>Frequent / 3</td><td>3/10</td><td>Create nodes → inspect reduced canvas → select nodes individually. Text becomes small; anchor overlays obscure labels; no zoom/pan controls found.</td></tr>
+<tr><td>Edit labels and fit presentation</td><td>Frequent / 3</td><td>4/10</td><td>Select → edit single-line text → submit. Multiline labels and independent title text cannot be authored through the exposed text controls.</td></tr>
+<tr><td>Connect and reroute nodes</td><td>Frequent / 3</td><td>5/10</td><td>Choose generic object IDs and anchors → create connector → find Inspector routing controls → choose route → drag handle. Basic routes work; selection safety and label positioning are gaps.</td></tr>
+<tr><td>Review and apply a batch</td><td>Regular / 2</td><td>6/10</td><td>Queue edits → inspect live result/latest diff → Apply all. Works, but only latest-diff review and last-change undo are exposed; source is locked during the batch.</td></tr>
+<tr><td>Resume and deliver work</td><td>Regular / 2</td><td>2/10</td><td>Apply → reload → default Pipeline replaces work. Source download is available; no restoration, Open, or SVG export control found.</td></tr>
+<tr><td>Import and visually modify real Pikchr</td><td>Occasional / 1</td><td>5/10</td><td>Paste source → Render → select → try drag/route. Figure 12 renders but key shapes and connectors become inspect-only.</td></tr>
+</tbody></table></div>
+
+<h2 id="backlog">Original issue details and acceptance criteria</h2>
+<p>Historical observations are intentionally unchanged below. Consult <a href="#status">Current implementation status</a> before interpreting an issue as still open.</p>
+<p>P1 = address before expanding authoring features; P2 = important capability or workflow improvement. Order combines severity, likely frequency, and implementation leverage; effort estimates require engineering investigation. These are local backlog entries, not externally filed issues.</p>
+
+<section class="issue" id="PKUX-001"><h3>PKUX-001 · P1 · Recover work after reload</h3><dl>
+<dt>Evidence / reproduce</dt><dd>Reproduced: build the 18-object stack, Apply all, reload. The app returns to the five-object Pipeline example with no restoration. The audit recovered using previously captured source.</dd>
+<dt>Impact</dt><dd>A normal browser action discards work; “Applied” can be mistaken for saved.</dd>
+<dt>Recommended change</dt><dd>Persist the working document locally, including pending draft state; distinguish Applied, Saved locally, and Downloaded. Explain storage limits.</dd>
+<dt>Acceptance</dt><dd>Reload restores both applied and pending work without silently applying or discarding it. Recovery is offered after an interrupted session. Persistence failure is visible. New document cannot silently overwrite recoverable work.</dd></dl></section>
+
+<section class="issue" id="PKUX-002"><h3>PKUX-002 · P1 · Make selection safe while connector endpoints are active</h3><dl>
+<dt>Evidence / reproduce</dt><dd>Reproduced: select Link6, from Shape7.se to Shape9.n, in endpoint mode. Click the center of Shape1 intending to select it. Link6 reconnects to Shape1.c under auto-apply, without an endpoint drag. Undo recovers.</dd>
+<dt>Impact</dt><dd>A navigation action silently changes diagram meaning.</dd>
+<dt>Recommended change</dt><dd>Require an explicit endpoint drag or clearly entered Reconnect action. An ordinary object click should select that object; Escape should exit reconnection.</dd>
+<dt>Acceptance</dt><dd>Clicking any unrelated shape after selecting a connector changes selection only. Endpoint drag still reconnects. Cancellation leaves source unchanged. Cover auto-apply and queue modes.</dd></dl></section>
+
+<section class="issue" id="PKUX-003"><h3>PKUX-003 · P1 · Keep focus in the diagram during selection</h3><dl>
+<dt>Evidence / reproduce</dt><dd>Reproduced: click Shape1 in the Objects list. The Pikchr source textarea gains focus and selects the statement; the focused source has a blue outline.</dd>
+<dt>Impact</dt><dd>Selection pulls attention away from the manipulation workflow and makes repeated editing feel like navigation between tools.</dd>
+<dt>Recommended change</dt><dd>Separate selection from source navigation. Highlight matching source without moving focus; provide explicit Show source.</dd>
+<dt>Acceptance</dt><dd>Mouse selection keeps focus on the activating control or canvas, and does not scroll to source. Keyboard selection retains usable keyboard focus. Show source deliberately focuses the matching statement.</dd></dl></section>
+
+<section class="issue" id="PKUX-004"><h3>PKUX-004 · P1 · Keep larger diagrams readable</h3><dl>
+<dt>Evidence / reproduce</dt><dd>Reproduced: the nine-node tree displays tiny labels, with anchor circles covering text. Select Link6 → Endpoints → uncheck Anchors: target anchor circles remain visible on all nine shapes. No exposed zoom, pan, fit-view, fullscreen, or source-collapse controls were found.</dd>
+<dt>Impact</dt><dd>Users lose readable labels and reliable hit targets precisely when diagrams become useful.</dd>
+<dt>Recommended change</dt><dd>Add zoom, pan, Fit view, and a diagram-focused layout. Reveal anchors only when relevant; avoid label overlap.</dd>
+<dt>Acceptance</dt><dd>The gate and stack fixtures can be read and edited at a useful scale without browser zoom. Zoom preserves the point of interest; Fit view restores the entire diagram. Anchors do not obstruct ordinary text selection targets. The Anchors toggle hides target anchors, except during a deliberately initiated reconnect gesture.</dd></dl></section>
+
+<section class="issue" id="PKUX-005"><h3>PKUX-005 · P1 · Put selection actions beside the canvas</h3><dl>
+<dt>Evidence / reproduce</dt><dd>Observed: connector routing and property controls sit in the separate Inspector. Authoring repeatedly requires selecting the diagram, finding controls, then returning to the diagram. Route guidance refers to preview/review even when auto-apply is active. Reproduced: toggling Anchors moves the Connector section above Text/Arrowheads, pushing those properties below the fold; reselecting Link6 restores their previous order. The controls move; they are not deleted.</dd>
+<dt>Impact</dt><dd>The core edit loop involves unnecessary attention and navigation changes; instructions do not consistently explain what committing an edit will do.</dd>
+<dt>Recommended change</dt><dd>Add a stable preview toolbar with contextual Text, Fit, Shape, Route, Arrowheads, and Reconnect actions, plus visible status and Undo. Show Apply/Discard only in queue mode.</dd>
+<dt>Acceptance</dt><dd>Common text and connector operations start from the preview without searching a distant panel. Controls remain discoverable without covering diagram content and retain consistent order after toggles and reselection. Every commit hint accurately describes the active apply mode.</dd></dl></section>
+
+<section class="issue" id="PKUX-006"><h3>PKUX-006 · P1 · Support multiline labels and standalone text</h3><dl>
+<dt>Evidence / reproduce</dt><dd>Reproduced: Shift+Enter in Object text does not insert a newline; the field is single-line. Figure 3 needs five-line leaf labels and an independent title. No Text option was found among box, circle, ellipse, oval, cylinder, and diamond.</dd>
+<dt>Impact</dt><dd>Reference-like labels and titles require source editing, not direct authoring.</dd>
+<dt>Recommended change</dt><dd>Provide multiline label editing with explicit line-break behavior, and an independent text object.</dd>
+<dt>Acceptance</dt><dd>Create and edit a five-line label and an independent title without source edits. The generated Pikchr rerenders with the same breaks, labels remain editable, and Fit accounts for every line.</dd></dl></section>
+
+<section class="issue" id="PKUX-007"><h3>PKUX-007 · P1 · Add predictable sizing and alignment</h3><dl>
+<dt>Evidence / reproduce</dt><dd>Observed: fitted card rows range from roughly 0.456 to 1.0 wide at 0.210 high. No width/height, resize handles, equal-width, align, distribute, or multiselect controls were found.</dd>
+<dt>Impact</dt><dd>A stacked-card visual cannot be made into clean, equal-width rows through exposed controls.</dd>
+<dt>Recommended change</dt><dd>Add explicit dimensions and resize handles, then multi-selection with equal width, edge alignment, and spacing distribution. Make fit-vs-fixed-size behavior explicit.</dd>
+<dt>Acceptance</dt><dd>Build a five-row stack with common width, aligned edges, and consistent spacing without manual source edits. Moving or resizing it keeps anchored connectors attached. Undo restores the whole layout action.</dd></dl></section>
+
+<section class="issue" id="PKUX-008"><h3>PKUX-008 · P1 · Explain and expand visual-edit compatibility</h3><dl>
+<dt>Evidence / reproduce</dt><dd>Reproduced: import actual Figure 12 and Render. Dragging Y1 is a no-op with “Placement or attributes outside supported literal subset”; Fit is disabled and type controls are absent. Selecting arrow o5 reports inspect-only connector editing despite explicit G1.sw to Y1.n references. The source includes dimensions, hex colors, and relative expressions; the exact rejecting construct was not isolated.</dd>
+<dt>Impact</dt><dd>Valid, rendered Pikchr unexpectedly becomes visually uneditable. Generic explanations do not tell the user what to change.</dd>
+<dt>Recommended change</dt><dd>Identify the exact unsupported construct and offer safe targeted edits or an explicit, previewed conversion. Expand supported syntax based on these real fixtures, without silently flattening relationships.</dd>
+<dt>Acceptance</dt><dd>Each disabled operation identifies its precise reason and workaround. Regression tests cover the original Figure 12. Supported changes preserve unrelated styling and relative relationships; unsupported cases never imply a successful edit.</dd></dl></section>
+
+<section class="issue" id="PKUX-009"><h3>PKUX-009 · P2 · Start and open documents explicitly</h3><dl>
+<dt>Evidence / reproduce</dt><dd>Observed: no New, Blank, or Open control was found. Starting from blank required clearing Source and clicking Render.</dd>
+<dt>Impact</dt><dd>Basic document work begins with a source-code workaround and risks overwriting existing work.</dd>
+<dt>Recommended change</dt><dd>Add New diagram, Open source, and an obvious example picker with unsaved-work protection.</dd>
+<dt>Acceptance</dt><dd>Start blank or open a downloaded Pikchr file without editing the source field. Existing work is recoverable or explicitly discarded.</dd></dl></section>
+
+<section class="issue" id="PKUX-010"><h3>PKUX-010 · P2 · Duplicate and repeat objects efficiently</h3><dl>
+<dt>Evidence / reproduce</dt><dd>Reproduced: every new shape requires Label, X, Y, and submit. After creation the label resets to “New shape”, X moves rightward, and Y resets to zero. No duplicate control was found.</dd>
+<dt>Impact</dt><dd>Repeated leaf nodes and stack rows require many repetitive entries and coordinates.</dd>
+<dt>Recommended change</dt><dd>Add Duplicate with predictable placement and unique names; preserve useful creation settings and offer click-to-place.</dd>
+<dt>Acceptance</dt><dd>Duplicate a styled row four times, edit its labels, and arrange it without re-entering dimensions or type. Names remain unique, existing connections stay unambiguous, and each action is undoable.</dd></dl></section>
+
+<section class="issue" id="PKUX-011"><h3>PKUX-011 · P2 · Use human-readable object identities</h3><dl>
+<dt>Evidence / reproduce</dt><dd>Observed: Objects and connector selectors expose Shape1…Shape9 and Link1…Link6 rather than the displayed labels; no rename control was found.</dd>
+<dt>Impact</dt><dd>Connecting or selecting nodes requires memorizing an ID-to-label mapping.</dd>
+<dt>Recommended change</dt><dd>Display label plus stable ID, highlight candidate objects on selection, and provide safe renaming where supported.</dd>
+<dt>Acceptance</dt><dd>Connector selection distinguishes similarly named nodes and identifies the intended visible node without counting shapes. Renaming updates references safely or clearly explains why it cannot.</dd></dl></section>
+
+<section class="issue" id="PKUX-012"><h3>PKUX-012 · P2 · Accept reasonable decimal coordinates</h3><dl>
+<dt>Evidence / reproduce</dt><dd>Reproduced: Add shape X/Y step validation rejects −0.25, −0.75, and −2.55. The native message says the nearest valid values to −0.25 are −0.3 and −0.2. Values −0.2, −0.7, −1.3, and −2.6 were used as workarounds.</dd>
+<dt>Impact</dt><dd>Valid intended placements cannot be submitted; the form can appear not to create the object. This was native step validation, not an observed asynchronous lost-edit bug.</dd>
+<dt>Recommended change</dt><dd>Accept finite decimal coordinates at useful precision; make grid snapping an explicit, optional manipulation behavior.</dd>
+<dt>Acceptance</dt><dd>All three rejected sample values submit and render at their intended positions. Invalid/nonfinite input has an inline explanation; snapping never silently changes entered coordinates.</dd></dl></section>
+
+<section class="issue" id="PKUX-013"><h3>PKUX-013 · P2 · Position connector labels deliberately</h3><dl>
+<dt>Evidence / reproduce</dt><dd>Reproduced: a “yes” label renders on a horizontal-first route. No label-position control was found.</dd>
+<dt>Impact</dt><dd>Branch meaning is harder to read, and authors cannot move a label away from geometry through the inspector.</dd>
+<dt>Recommended change</dt><dd>Offer label placement along the route and an offset from it, with sensible default clearance.</dd>
+<dt>Acceptance</dt><dd>Move “yes” to an unambiguous branch segment with clear separation from its line. Rerouting preserves an understandable label position and does not overlap an endpoint.</dd></dl></section>
+
+<section class="issue" id="PKUX-014"><h3>PKUX-014 · P2 · Add and remove route bends</h3><dl>
+<dt>Evidence / reproduce</dt><dd>Observed: three route presets are exposed and an existing square route handle can be dragged. No arbitrary bend insertion/removal control was found.</dd>
+<dt>Impact</dt><dd>Routing around multiple intervening cards cannot be authored as freely as the underlying diagram language allows.</dd>
+<dt>Recommended change</dt><dd>Add explicit bend insertion/removal and constrain segments predictably, retaining presets for simple cases.</dd>
+<dt>Acceptance</dt><dd>Create a multi-bend path around an obstacle, remove a bend, and preserve both endpoint attachments. Show the resulting valid source; invalid geometry can be cancelled without changing the document.</dd></dl></section>
+
+<section class="issue" id="PKUX-015"><h3>PKUX-015 · P2 · Expose semantic styling</h3><dl>
+<dt>Evidence / reproduce</dt><dd>No exposed fill, stroke, font, or style controls were found. The reference uses a rust-colored changed branch and contrasting card-header backgrounds.</dd>
+<dt>Impact</dt><dd>Meaning encoded by color or emphasis requires source edits.</dd>
+<dt>Recommended change</dt><dd>Add basic fill, line color, line weight, and text styling, with clear defaults and a reset action.</dd>
+<dt>Acceptance</dt><dd>Style the changed branch and header rows through controls. Existing imported colors survive unrelated edits. The same distinction can also be represented without relying on color alone.</dd></dl></section>
+
+<section class="issue" id="PKUX-016"><h3>PKUX-016 · P2 · Treat repeated panels as movable units</h3><dl>
+<dt>Evidence / reproduce</dt><dd>No grouping or duplicate-panel control was found while building the 15-row stack diagram. Reproduced in the 18-object stack: Shift-click Shape1 then Shape10 in Objects leaves only Shape10 pressed, not a multi-selection.</dd>
+<dt>Impact</dt><dd>Moving or reusing a five-row panel requires treating each row separately, risking broken alignment.</dd>
+<dt>Recommended change</dt><dd>Support multi-object movement and reusable grouped panels, explicitly distinguishing visual selection groups from native Pikchr grouping semantics.</dd>
+<dt>Acceptance</dt><dd>Move or duplicate a complete five-row panel in one operation. Internal layout remains intact, names are unique, and connector treatment is explicit and undoable.</dd></dl></section>
+
+<section class="issue" id="PKUX-017"><h3>PKUX-017 · P2 · Delete selected objects safely</h3><dl>
+<dt>Evidence / reproduce</dt><dd>No delete-selection control was found in the inspected toolbar or inspector. Reproduced: focus Rendered diagram and press Delete in the stack specimen; all 18 objects remain. Manual source editing remains a fallback.</dd>
+<dt>Impact</dt><dd>Removing a mistaken object requires source knowledge and consideration of references.</dd>
+<dt>Recommended change</dt><dd>Add Delete with a preview of dependent connectors and a clear policy for dangling references.</dd>
+<dt>Acceptance</dt><dd>Delete a leaf or connected node through the UI without producing invalid Pikchr. The user can see which connectors will also change; Undo restores the complete prior state.</dd></dl></section>
+
+<section class="issue" id="PKUX-018"><h3>PKUX-018 · P2 · Review and amend an entire queued batch</h3><dl>
+<dt>Evidence / reproduce</dt><dd>Reproduced: 18 queued changes update source and diagram and Apply all succeeds. While pending, source is readonly and auto-apply is disabled. Review exposes the latest diff and Undo last change, not a full batch comparison or arbitrary amendment.</dd>
+<dt>Impact</dt><dd>The longer the successful queue becomes, the harder it is to understand or correct an early mistake.</dd>
+<dt>Recommended change</dt><dd>Show a base-to-current diff and meaningful history labels; support stepping back or amending safely. Explain the source lock and mode-switch constraints.</dd>
+<dt>Acceptance</dt><dd>Review all 18 changes against the initial document, identify an earlier edit, and recover without unexpectedly discarding unrelated work. Any dependency restriction is explained before the operation.</dd></dl></section>
+
+<section class="issue" id="PKUX-019"><h3>PKUX-019 · P2 · Export the rendered artifact</h3><dl>
+<dt>Evidence / reproduce</dt><dd>Observed: Download source is exposed; no SVG export control was found.</dd>
+<dt>Impact</dt><dd>Authors can preserve code but cannot finish the documentation handoff from the same workflow.</dd>
+<dt>Recommended change</dt><dd>Add Download SVG and Copy SVG for the displayed valid diagram, clearly identifying whether it represents pending or applied state.</dd>
+<dt>Acceptance</dt><dd>Export both fixtures as standalone SVGs matching the visible diagram, without editing handles or selection overlays. Source download remains available and its state is explicit.</dd></dl></section>
+
+<h2 id="sequence">Recommended next work</h2>
+<ol>
+<li><strong>Verify the complete editing loop:</strong> regression-test recovery, safe selection, focus, nearby actions, and stable Inspector order in both apply modes (001–005).</li>
+<li><strong>Finish connector authoring:</strong> label positioning and arbitrary bend insertion/removal (013–014).</li>
+<li><strong>Reduce layout effort:</strong> smart alignment feedback, reusable panels, and grouped duplication on top of the existing numerical layout tools (007, 010, 016).</li>
+<li><strong>Improve real-source interoperability:</strong> actionable diagnostics and safe edits for complex imported expressions, without silently flattening their relationships (008).</li>
+<li><strong>Complete presentation and review:</strong> font settings and safe amendment of queued work while explaining the source lock (015, 018).</li>
+</ol>
+<p>Retest each slice by rebuilding both fixtures through visible controls, then editing the imported Figure 12. Add separate real-phone/touch testing; this desktop session provides no evidence that touch dragging, mobile focus, or mobile panel navigation works.</p>
+<p class="meta">Original evidence is preserved; the status table distinguishes implemented capabilities, partial work, and open issues. Real-phone/touch verification remains a separate task.</p>
+<script>
+(() => {
+  const specimens = ['polished-gates', 'polished-stacks', 'gates', 'card-stacks'];
+  for (const name of specimens) {
+    const target = document.getElementById(name + '-render');
+    let worker;
+    let timer;
+    const fail = () => {
+      clearTimeout(timer);
+      target.textContent = 'Diagram could not be rendered. The Pikchr source is available below.';
+      worker?.terminate();
+    };
+    try {
+      worker = new Worker('../worker.js');
+      timer = setTimeout(fail, 30000);
+      worker.onerror = fail;
+      worker.onmessage = event => {
+        if (event.data.id !== 1) return;
+        const svg = event.data.result?.svg;
+        if (!svg) return fail();
+        clearTimeout(timer);
+        target.innerHTML = svg;
+        const rendered = target.querySelector('svg');
+        if (rendered) {
+          rendered.style.width = '100%';
+          rendered.style.maxWidth = name.startsWith('polished-') ? '940px' : '650px';
+          rendered.style.height = 'auto';
+          rendered.style.maxHeight = 'none';
+        }
+        worker.terminate();
+      };
+      fetch(name + '.pikchr').then(response => {
+        if (!response.ok) throw new Error('Fixture unavailable');
+        return response.text();
+      }).then(source => worker.postMessage({id: 1, source})).catch(fail);
+    } catch { fail(); }
+  }
+})();
+</script>
+</body>
+</html>

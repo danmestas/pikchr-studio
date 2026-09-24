@@ -1,0 +1,318 @@
+/* Canvas-first layout. Every rule is scoped to body.layout-canvas so the
+   classic layout is untouched. Colours come from the tokens in style.css. */
+body.layout-canvas{height:100dvh;overflow:hidden;margin:0;
+  --cl-canvas:#fff;--cl-chip:#fff;--cl-ink:#1f2328;--cl-muted:#656d76;--cl-line:#d0d7de;--cl-grid:#d0d7de;--cl-accent:#0969da;--cl-accent-bg:#ddf4ff;--cl-ok:#1a7f37;--cl-bad:#cf222e;--cl-warn:#9a6700;
+  --cl-shadow:0 2px 10px rgba(31,35,40,.12),0 0 0 1px rgba(31,35,40,.06)}
+body.layout-canvas.cl-dark{--cl-canvas:#161b22;--cl-chip:#1c2128;--cl-ink:#e6edf3;--cl-muted:#9198a1;--cl-line:#30363d;--cl-grid:#30363d;--cl-accent:#4493f8;--cl-accent-bg:#1f3a5f;--cl-ok:#3fb950;--cl-bad:#f85149;--cl-warn:#d29922;
+  --cl-shadow:0 2px 12px rgba(0,0,0,.5),0 0 0 1px rgba(240,246,252,.08)}
+body.layout-canvas>header,body.layout-canvas>footer,body.layout-canvas>main,body.layout-canvas>.document-menu{display:none!important}
+
+/* Stage: the diagram fills the viewport on a dot grid. The canvas stays white
+   in dark mode because Pikchr draws black ink. */
+body.layout-canvas .cl-stage{position:fixed;inset:0;z-index:0}
+body.layout-canvas #diagram{position:absolute;inset:0;height:auto!important;min-height:0!important;width:auto;border:0;margin:0;
+  background-color:var(--cl-canvas);background-image:radial-gradient(var(--cl-grid) 1px,transparent 1px);background-size:24px 24px;outline-offset:-3px;color:var(--cl-ink)}
+body.layout-canvas #diagram{box-sizing:border-box;padding:0}
+body.layout-canvas #diagram:focus:not(:focus-visible),body.layout-canvas.cl-pointer #diagram:focus{outline:none}
+body.layout-canvas #diagram.stale{opacity:.55}
+body.layout-canvas #diagram svg{max-height:none}
+body.layout-canvas #diagram.previewing{outline:none}
+
+/* Floating chrome */
+body.layout-canvas .cl-float{position:fixed;z-index:10;display:flex;align-items:center;gap:2px;padding:4px;background:var(--cl-chip);color:var(--cl-ink);
+  border:0;border-radius:10px;box-shadow:var(--cl-shadow)}
+body.layout-canvas .cl-float button,body.layout-canvas .cl-float summary{color:var(--cl-ink)}
+body.layout-canvas :is(.cl-palette,.cl-doc,.cl-history,.cl-zoom,.cl-context,.cl-candidate,.cl-status) button{border:0;background:transparent;box-shadow:none}
+body.layout-canvas :is(.cl-palette,.cl-doc,.cl-history,.cl-zoom,.cl-context,.cl-candidate,.cl-status) button:hover:not(:disabled){background:var(--cl-accent-bg)}
+body.layout-canvas :is(.cl-history,.cl-zoom) button:disabled{color:var(--cl-muted);background:transparent}
+body.layout-canvas .cl-float[hidden]{display:none!important}
+body.layout-canvas .cl-float button{min-height:34px;min-width:34px;border-radius:7px}
+body.layout-canvas .cl-sep{width:1px;height:22px;background:var(--cl-line);margin:0 4px;flex:none}
+body.layout-canvas .cl-muted{color:var(--cl-muted);font-size:12px}
+body.layout-canvas .cl-offstage{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;margin:-1px!important;padding:0!important;border:0!important}
+
+body.layout-canvas .cl-doc{top:12px;left:12px}
+body.layout-canvas .cl-title{padding:0 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.layout-canvas .cl-icon{font-weight:600}
+
+body.layout-canvas .cl-palette{top:12px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 24px);overflow-x:auto;scrollbar-width:none}
+body.layout-canvas .cl-palette button{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-width:40px;height:44px;padding:2px 6px}
+body.layout-canvas .cl-palette button[aria-pressed=true]{background:var(--cl-accent-bg);color:var(--cl-accent)}
+body.layout-canvas .cl-palette button svg{width:18px;height:18px}
+body.layout-canvas .cl-palette button[data-key]::after{content:attr(data-key);font-size:10px;line-height:1;color:var(--cl-muted);min-height:10px}
+body.layout-canvas .cl-palette button[aria-pressed=true]::after{color:var(--cl-accent)}
+body.layout-canvas .cl-palette .cl-tool span{font-size:18px;line-height:1}
+body.layout-canvas .cl-palette .tool-options{position:relative}
+body.layout-canvas .cl-palette .tool-options>summary{font-size:12px;padding:8px;cursor:pointer;list-style:none}
+body.layout-canvas .cl-palette .tool-options[open]>.tool-options-panel{position:fixed;top:64px;left:50%;transform:translateX(-50%);background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;box-shadow:0 2px 10px var(--shadow);display:flex;flex-wrap:wrap;gap:8px;max-width:min(560px,calc(100vw - 24px));z-index:12}
+
+body.layout-canvas .cl-status{top:12px;right:12px;flex-direction:column;align-items:stretch;max-width:min(360px,calc(100vw - 24px));padding:4px 10px;min-height:42px;justify-content:center}
+body.layout-canvas .cl-status-line{display:flex;align-items:center;gap:8px;min-width:0}
+body.layout-canvas .cl-dot-state{width:8px;height:8px;border-radius:50%;background:var(--cl-ok);flex:none}
+body.layout-canvas .cl-status[data-state=invalid] .cl-dot-state{background:var(--cl-bad)}
+body.layout-canvas .cl-status[data-state=invalid] .cl-summary{color:var(--cl-bad)}
+body.layout-canvas .cl-summary{white-space:nowrap;font-size:12px;color:var(--cl-muted)}
+body.layout-canvas .cl-status #state{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
+body.layout-canvas .cl-status #diagnostic{color:var(--cl-bad);font-size:12px;padding:4px 2px;white-space:pre-wrap;max-height:30vh;overflow:auto}
+body.layout-canvas .cl-status #diagnostic:empty{display:none}
+
+body.layout-canvas .cl-history{bottom:12px;left:12px}
+body.layout-canvas .cl-zoom{bottom:12px;right:12px}
+body.layout-canvas .cl-zoom #zoom-level{min-width:44px;text-align:center;font-size:12px}
+
+/* Contextual toolbar: the existing selection buttons, shown as icons. */
+body.layout-canvas .cl-context{z-index:11;max-width:calc(100vw - 16px);overflow-x:auto;scrollbar-width:none}
+body.layout-canvas .cl-context .selection-toolbar{display:flex!important;align-items:center;gap:2px;margin:0;padding:0;border:0;background:none;flex-wrap:nowrap}
+body.layout-canvas .cl-context .selection-toolbar>:is(#selection-count,#multi-select,#clear-selection,.move-selection){display:none!important}
+body.layout-canvas .cl-context .selection-toolbar>button:disabled{display:none!important}
+body.layout-canvas .cl-context button[data-icon]{font-size:0;border-color:transparent;background:transparent;padding:0 6px}
+body.layout-canvas .cl-context button[data-icon]::before{content:attr(data-icon);font-size:15px}
+body.layout-canvas .cl-context button{min-width:34px;height:34px}
+body.layout-canvas .cl-more-button{font-size:18px}
+
+/* Candidate chip beside the object being changed. */
+body.layout-canvas .cl-candidate{z-index:11;flex-wrap:nowrap;max-width:calc(100vw - 16px);gap:6px;padding:6px 8px;margin:0;font-size:13px;border:0}
+body.layout-canvas .cl-candidate :is(.hint,#preview-label){display:none}
+body.layout-canvas .cl-candidate .cl-check{color:var(--cl-ok);padding:0 2px}
+body.layout-canvas .cl-candidate .cl-code{font:12px ui-monospace,monospace;background:var(--cl-accent-bg);color:var(--cl-accent);padding:3px 7px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:52vw}
+body.layout-canvas .cl-candidate .cl-count{color:var(--cl-muted);white-space:nowrap}
+body.layout-canvas .cl-candidate button{min-width:30px;height:30px;padding:0 8px}
+body.layout-canvas #preview-actions.cl-candidate{border:0!important;background:var(--cl-chip)!important;outline:none}
+body.layout-canvas .cl-candidate #preview-accept{background:transparent!important;color:var(--cl-accent)!important;border:0!important;font-weight:600}
+body.layout-canvas .cl-candidate #preview-accept:hover{background:var(--cl-accent-bg)!important}
+
+/* Popovers */
+body.layout-canvas .cl-popover{z-index:20;display:block;padding:12px;overflow:auto}
+body.layout-canvas .cl-menu{top:60px;left:12px;width:min(380px,calc(100vw - 24px));max-height:calc(100dvh - 130px)}
+body.layout-canvas .cl-menu nav.toolbar{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+body.layout-canvas .cl-menu>*+*{margin-top:10px}
+body.layout-canvas .cl-menu-row{display:flex;gap:10px;align-items:center}
+body.layout-canvas .cl-menu details>summary{cursor:pointer;font-weight:600}
+body.layout-canvas .cl-menu .canvas-view-options>div{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+body.layout-canvas .cl-more{top:60px;right:12px;width:min(360px,calc(100vw - 24px));max-height:calc(100dvh - 130px)}
+body.layout-canvas .cl-more aside{display:block!important;position:static!important;padding:0;border:0;width:auto;height:auto;transform:none!important;box-shadow:none}
+
+body.layout-canvas .cl-more .canvas-context-dock{display:block;margin:0 0 12px;position:static}
+body.layout-canvas .cl-export{top:60px;left:12px;flex-direction:column;align-items:stretch;gap:6px;width:min(260px,calc(100vw - 24px))}
+body.layout-canvas .cl-export:not([hidden]){display:flex}
+body.layout-canvas .cl-menu-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start}
+body.layout-canvas .cl-menu-tools .tool-options[open]>.tool-options-panel{position:static;transform:none;box-shadow:none;padding:8px 0;display:flex;flex-wrap:wrap;gap:8px}
+body.layout-canvas .cl-help{bottom:64px;right:12px;width:min(360px,calc(100vw - 24px));max-height:calc(100dvh - 140px)}
+body.layout-canvas .cl-help h2{font-size:14px;margin:0 0 8px}
+body.layout-canvas .cl-help dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;font-size:12px;margin:0 0 10px}
+body.layout-canvas .cl-help dt{font-family:ui-monospace,monospace;color:var(--muted)}
+body.layout-canvas .cl-help dd{margin:0}
+
+/* Source drawer */
+body.layout-canvas .cl-drawer{position:fixed;z-index:15;top:60px;bottom:60px;left:12px;width:min(380px,calc(100vw - 24px));display:flex;flex-direction:column;gap:8px;padding:12px;
+  background:var(--cl-chip);color:var(--cl-ink);border:0;border-radius:10px;box-shadow:var(--cl-shadow);transform:translateX(calc(-100% - 24px));visibility:hidden;transition:transform .18s,visibility 0s .18s}
+/* Visible at once on open so the textarea can take focus immediately. */
+body.layout-canvas .cl-drawer.open{transform:none;visibility:visible;transition:transform .18s,visibility 0s}
+body.layout-canvas .cl-drawer-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+body.layout-canvas .cl-drawer-head .cl-muted{flex:1}
+body.layout-canvas .cl-drawer .source-pane{display:flex!important;flex-direction:column;flex:1;min-height:0;padding:0;border:0;margin:0}
+body.layout-canvas .cl-drawer .source-pane .pane-heading{display:none}
+body.layout-canvas .cl-drawer #source{flex:1;min-height:120px;height:auto;resize:none;width:100%;box-sizing:border-box}
+
+/* Feedback: a screen-reader region, visible only when it offers choices. */
+body.layout-canvas .cl-toast{position:fixed;left:50%;bottom:72px;transform:translateX(-50%);z-index:12;max-width:calc(100vw - 24px);
+  background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:6px 10px;box-shadow:0 2px 10px var(--shadow);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+body.layout-canvas .cl-toast:not(:has(button)){position:fixed;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);padding:0;border:0;white-space:nowrap}
+
+/* Transient status note, bottom-centre. */
+body.layout-canvas .cl-note{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:12;max-width:min(560px,calc(100vw - 200px));
+  background:var(--cl-chip);color:var(--cl-ink);border-radius:10px;padding:8px 12px;box-shadow:var(--cl-shadow);font-size:12px;opacity:1;transition:opacity .4s}
+body.layout-canvas .cl-note.cl-fade{opacity:0}
+body.layout-canvas .cl-note[hidden]{display:none}
+
+/* Selection: accent ink on the selected shape instead of a dashed box. */
+body.layout-canvas #diagram [data-pikchr-id]:is(.cl-selected,.cl-target-shape) :is(path,polygon,polyline,circle,ellipse,rect,line):not([stroke=transparent]):not([fill=transparent]){stroke:var(--cl-accent)!important}
+body.layout-canvas #diagram [data-pikchr-id].cl-target-shape :is(path,polygon,polyline,circle,ellipse,rect,line):not([stroke=transparent]){stroke-width:2.5px!important}
+body.layout-canvas .studio-overlay:not(.preview-overlay)>rect{display:none}
+body.layout-canvas .preview-overlay rect{stroke:var(--cl-accent);stroke-dasharray:none;opacity:.6}
+/* Resize: one small corner handle; edge midpoints belong to the attach dots. */
+
+/* Drag-to-connect */
+body.layout-canvas .cl-dot{fill:var(--cl-canvas);stroke:var(--cl-accent);stroke-width:2;cursor:crosshair}
+body.layout-canvas .cl-dot-hit{cursor:crosshair;pointer-events:all}
+body.layout-canvas .cl-dots .cl-dot{pointer-events:none}
+body.layout-canvas .cl-dots .cl-dot-hit:hover+.cl-dot{fill:var(--cl-accent)}
+body.layout-canvas .cl-rubber-line{fill:none;stroke:var(--cl-accent);stroke-width:2;stroke-dasharray:6 4}
+body.layout-canvas .cl-head{fill:var(--cl-accent)}
+body.layout-canvas .cl-dot.cl-snap{fill:var(--cl-accent)}
+body.layout-canvas .cl-rubber{pointer-events:none}
+body.layout-canvas .cl-badge{position:fixed;z-index:30;background:var(--cl-accent);color:#fff;font-size:12px;padding:3px 8px;border-radius:6px;pointer-events:none;white-space:nowrap}
+body.layout-canvas.cl-dark .cl-badge{color:#0d1117}
+body.layout-canvas .cl-badge[hidden]{display:none}
+
+/* Phones: palette moves to the bottom, chrome stays inside the viewport. */
+@media (max-width:700px){
+  body.layout-canvas .cl-palette{top:auto;bottom:12px}
+  body.layout-canvas .cl-history,body.layout-canvas .cl-zoom{bottom:66px}
+  body.layout-canvas .cl-help{bottom:118px}
+  body.layout-canvas .cl-title{display:none}
+  body.layout-canvas .cl-status{top:62px;max-width:calc(100vw - 24px)}
+  body.layout-canvas .cl-palette{gap:0;padding:3px}
+  body.layout-canvas .cl-palette button{min-width:33px;padding:2px 1px}
+  body.layout-canvas .cl-palette .cl-sep{margin:0 2px}
+  body.layout-canvas .cl-status #state{display:none}
+  body.layout-canvas .cl-toast{bottom:124px}
+  body.layout-canvas .cl-note{bottom:124px;max-width:calc(100vw - 24px)}
+  body.layout-canvas .cl-candidate{flex-wrap:wrap}
+  body.layout-canvas .cl-drawer{top:60px;bottom:124px}
+  body.layout-canvas .cl-palette .tool-options{display:none}
+}
+@media (prefers-reduced-motion:reduce){body.layout-canvas :is(.cl-drawer,.cl-note){transition:none}}
+
+/* ---- Panel kit: one flat visual language for every popover and dialog ----
+   Flat chip surfaces, no nested borders, small uppercase section labels,
+   32px controls, 8px rhythm. Scoped to the canvas layout. */
+body.layout-canvas :is(.cl-popover,.cl-drawer,dialog){font-size:13px;color:var(--cl-ink)}
+body.layout-canvas .cl-popover{padding:12px 14px;border-radius:10px;scrollbar-width:thin;overscroll-behavior:contain}
+body.layout-canvas .cl-popover :is(section,fieldset,aside,.queue-panel,#inspector,details,.canvas-context-dock,.canvas-context,.arrow-editor,.route-editor,.appearance-editor){border:0!important;background:transparent!important;box-shadow:none!important;padding:0;margin:0}
+body.layout-canvas .cl-popover :is(h2,h3,.cl-section-title){font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--cl-muted);margin:0 0 8px}
+body.layout-canvas .cl-popover h4{font-size:12px;margin:8px 0 4px}
+body.layout-canvas .cl-popover p{margin:0 0 8px;color:var(--cl-muted);font-size:12px;line-height:1.45}
+/* Controls */
+body.layout-canvas :is(.cl-popover,.cl-drawer,dialog) :is(button,.cl-link){display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:32px;padding:0 10px;border-radius:7px;
+  border:1px solid var(--cl-line);background:transparent;color:var(--cl-ink);font:inherit;font-size:13px;cursor:pointer;text-decoration:none;white-space:nowrap;box-shadow:none}
+body.layout-canvas :is(.cl-popover,.cl-drawer,dialog) :is(button,.cl-link):hover:not(:disabled){background:var(--cl-accent-bg);border-color:var(--cl-accent)}
+body.layout-canvas :is(.cl-popover,.cl-drawer,dialog) button:disabled{color:var(--cl-muted);border-color:var(--cl-line);opacity:1;cursor:default}
+body.layout-canvas :is(.cl-popover,.cl-drawer,dialog) :is(#accept,[data-use],.primary,button[type=submit]):not(:disabled){background:var(--cl-accent);border-color:var(--cl-accent);color:#fff}
+body.layout-canvas :is(.cl-popover,.cl-drawer,dialog) :is(input:not([type=checkbox]):not([type=radio]),select,textarea){min-height:32px;box-sizing:border-box;padding:4px 8px;border-radius:7px;border:1px solid var(--cl-line);
+  background:var(--cl-canvas);color:var(--cl-ink);font:inherit;font-size:13px;max-width:100%}
+body.layout-canvas :is(.cl-popover,.cl-drawer,dialog) :is(input,select,textarea):focus-visible{outline:2px solid var(--cl-accent);outline-offset:1px}
+body.layout-canvas :is(.cl-popover,dialog) input[type=checkbox]{accent-color:var(--cl-accent);width:16px;height:16px;margin:0}
+body.layout-canvas :is(.cl-popover,dialog) label{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;color:var(--cl-ink);font-size:13px}
+body.layout-canvas .cl-popover details>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;min-height:32px;font-weight:600;color:var(--cl-ink)}
+body.layout-canvas .cl-popover details>summary::-webkit-details-marker{display:none}
+body.layout-canvas .cl-popover details>summary::before{content:'›';display:inline-block;width:12px;color:var(--cl-muted);transition:transform .12s}
+body.layout-canvas .cl-popover details[open]>summary::before{transform:rotate(90deg)}
+body.layout-canvas .cl-popover dl{display:grid;grid-template-columns:96px 1fr;gap:4px 10px;font-size:12px;margin:0}
+body.layout-canvas .cl-popover dt{color:var(--cl-muted)}
+body.layout-canvas .cl-popover dd{margin:0;overflow-wrap:anywhere}
+body.layout-canvas .cl-popover pre{background:var(--cl-canvas);border-radius:7px;padding:8px;margin:4px 0 0;font:12px/1.5 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;max-height:160px;overflow:auto}
+body.layout-canvas .cl-popover pre:empty{display:none}
+
+/* ☰ menu sections */
+body.layout-canvas .cl-menu{width:min(360px,calc(100vw - 24px));padding:6px 14px 10px}
+body.layout-canvas .cl-menu>*+*{margin-top:0}
+body.layout-canvas .cl-section{padding:10px 0!important;border-top:1px solid var(--cl-line)!important;display:flex;flex-direction:column;gap:8px}
+body.layout-canvas .cl-section:first-child{border-top:0!important}
+body.layout-canvas .cl-section>.cl-section-title{margin:0}
+body.layout-canvas .cl-section:not(:has(> :not(.cl-section-title):not([hidden]):not(.cl-offstage))){display:none}
+body.layout-canvas:not(.advanced) .cl-advanced-only{display:none}
+body.layout-canvas .cl-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+body.layout-canvas .cl-check-row{min-height:28px}
+body.layout-canvas .cl-field{display:flex!important;flex-direction:column;align-items:stretch!important;gap:4px}
+body.layout-canvas .cl-field select{width:100%}
+body.layout-canvas .cl-field-name{font-size:12px;color:var(--cl-muted);margin-top:4px}
+body.layout-canvas .cl-queue-text{flex:1 1 100%;font-size:13px;font-weight:600}
+body.layout-canvas .cl-menu #queue-list{margin:0;padding-left:18px;font-size:12px}
+body.layout-canvas .cl-menu #queue-list:empty{display:none}
+body.layout-canvas .cl-menu #suggestions{display:none}
+body.layout-canvas .cl-menu .canvas-view-options{display:none}
+body.layout-canvas .cl-menu #creation-tools{display:none}
+body.layout-canvas.creation-open .cl-menu #creation-tools{display:block!important;position:static!important;inset:auto!important;max-height:none!important;background:transparent!important;border:0!important;padding:0!important}
+body.layout-canvas .cl-menu #mobile-add[aria-pressed=true],body.layout-canvas.creation-open .cl-menu #mobile-add{background:var(--cl-accent-bg);border-color:var(--cl-accent)}
+body.layout-canvas .cl-menu .cl-components>summary{display:none}
+body.layout-canvas .cl-menu .cl-components{display:flex!important;flex-direction:column;gap:8px}
+body.layout-canvas .cl-menu .cl-components label{flex-direction:column;align-items:stretch}
+body.layout-canvas .cl-menu-tools{display:flex;flex-direction:column;gap:8px;align-items:stretch}
+body.layout-canvas .cl-menu-tools>button{justify-content:flex-start}
+body.layout-canvas .cl-menu .tool-options>summary{font-weight:400}
+
+/* ⋯ inspector popover */
+body.layout-canvas .cl-more{width:min(340px,calc(100vw - 24px));padding-top:8px}
+body.layout-canvas .cl-popover-head{position:sticky;top:-8px;z-index:1;display:flex;align-items:center;gap:8px;margin:-8px -14px 8px;padding:10px 8px 8px 14px;background:var(--cl-chip);border-bottom:1px solid var(--cl-line)}
+body.layout-canvas .cl-popover-head .cl-muted{flex:1}
+body.layout-canvas .cl-more-title{font-size:14px}
+body.layout-canvas .cl-popover .cl-close{border:0!important;min-width:32px;padding:0;font-size:18px;color:var(--cl-muted)}
+body.layout-canvas .cl-more aside>section{padding:0 0 10px!important;margin:0 0 10px!important;border-bottom:1px solid var(--cl-line)!important}
+body.layout-canvas .cl-more aside>section:last-child{border-bottom:0!important;margin-bottom:0!important}
+body.layout-canvas .cl-more aside>section>h2{display:none}
+body.layout-canvas .cl-more #inspector>*+*{margin-top:8px}
+body.layout-canvas .cl-more .canvas-context-dock{margin:0 0 10px!important;padding-bottom:10px!important;border-bottom:1px solid var(--cl-line)!important}
+body.layout-canvas .cl-more .canvas-context-dock :is(.canvas-context,.resize-controls,.context-panel,form,div){display:flex;flex-wrap:wrap;gap:8px;align-items:center;min-width:0;max-width:100%}
+body.layout-canvas .cl-more .canvas-context-dock label{flex-wrap:nowrap}
+body.layout-canvas .cl-more .canvas-context-dock input:not([type=checkbox]){width:72px}
+body.layout-canvas .cl-more .canvas-context-dock .context-toggle{display:none}
+body.layout-canvas .cl-more .canvas-context>label:first-child{display:none}
+body.layout-canvas .cl-more .context-hint{color:var(--cl-muted);font-size:12px}
+body.layout-canvas .cl-more .route-style-thumb,body.layout-canvas .route-style-thumb{background:var(--cl-canvas)}
+body.layout-canvas .cl-more [role=listbox] button,body.layout-canvas .cl-more .route-styles button{flex-direction:column;height:auto;padding:6px;white-space:normal;line-height:1.25;font-size:11px}
+
+/* Export menu: left-aligned rows */
+body.layout-canvas .cl-export{padding:8px}
+body.layout-canvas .cl-export>strong{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--cl-muted);padding:4px 6px}
+body.layout-canvas .cl-export button{justify-content:flex-start;border-color:transparent!important}
+
+/* Shortcuts sheet */
+body.layout-canvas .cl-help dt{font-family:inherit}
+body.layout-canvas .cl-help dt kbd,body.layout-canvas .cl-help dt{font-size:11px}
+body.layout-canvas .cl-help .canvas-help p{font-size:12px}
+
+/* Source drawer */
+body.layout-canvas .cl-drawer{border-radius:10px;box-shadow:var(--cl-shadow);background:var(--cl-chip)}
+body.layout-canvas .cl-drawer #source{background:var(--cl-canvas);color:var(--cl-ink);border:1px solid var(--cl-line);border-radius:7px;padding:10px;font:12px/1.6 ui-monospace,monospace}
+body.layout-canvas .cl-drawer #source:focus-visible{outline:2px solid var(--cl-accent);outline-offset:0}
+body.layout-canvas .cl-drawer-head strong{font-size:14px}
+
+/* Dialogs (example picker, edit label) */
+body.layout-canvas dialog{background:var(--cl-chip);border:0;border-radius:12px;box-shadow:var(--cl-shadow),0 12px 40px rgba(0,0,0,.25);padding:16px;max-width:min(560px,calc(100vw - 24px));max-height:calc(100dvh - 48px);overflow:auto}
+body.layout-canvas dialog::backdrop{background:rgba(1,4,9,.35)}
+body.layout-canvas dialog :is(h2){font-size:16px;margin:0}
+body.layout-canvas dialog p{color:var(--cl-muted);font-size:12px;margin:8px 0}
+body.layout-canvas #example-picker .example-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
+body.layout-canvas #example-picker [data-list]{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px;margin:8px 0}
+body.layout-canvas #example-picker [data-list] button{justify-content:flex-start}
+body.layout-canvas #example-picker [data-list] button[aria-pressed=true],body.layout-canvas #example-picker [data-list] button[aria-selected=true]{background:var(--cl-accent-bg);border-color:var(--cl-accent);color:var(--cl-ink)}
+body.layout-canvas #example-picker [data-preview]{background:var(--cl-canvas);border-radius:8px;border:0;min-height:160px}
+body.layout-canvas #example-picker .example-actions{display:flex;justify-content:flex-end;gap:8px;align-items:center}
+body.layout-canvas .label-dialog{width:min(420px,calc(100vw - 24px))}
+body.layout-canvas .label-dialog textarea{width:100%;min-height:72px}
+body.layout-canvas .label-dialog :is(.actions,.dialog-actions,div:last-child){display:flex;gap:8px;justify-content:flex-end}
+
+/* Candidate chip and toast */
+body.layout-canvas .cl-candidate #preview-accept{color:var(--cl-accent);font-weight:600}
+body.layout-canvas .cl-note{border-radius:8px}
+
+@media (max-width:700px){
+  body.layout-canvas .cl-more{top:auto;bottom:118px;left:12px;right:12px;width:auto;max-height:55dvh}
+  body.layout-canvas .cl-menu{max-height:calc(100dvh - 190px)}
+  body.layout-canvas dialog{padding:12px}
+  body.layout-canvas #example-picker [data-list]{grid-template-columns:1fr 1fr}
+}
+body.layout-canvas .cl-more .canvas-context-dock{height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important}
+body.layout-canvas .cl-menu .queue-panel .cl-field-name:has(+ #diff:empty){display:none}
+body.layout-canvas .cl-menu .cl-menu-tools>button,body.layout-canvas .cl-popover.cl-export button{justify-content:flex-start}
+body.layout-canvas .cl-menu .tool-options>summary{background:transparent;border:0;padding:0;color:var(--cl-ink)}
+body.layout-canvas .cl-menu .tool-options[open]>.tool-options-panel{background:transparent;border:0}
+body.layout-canvas .cl-more .canvas-context-dock input[type=checkbox]{width:16px}
+body.layout-canvas .cl-popover .cl-more .canvas-context-dock input:not([type]),body.layout-canvas .cl-more .canvas-context-dock input:is([type=number],[type=text]){width:72px}
+body.layout-canvas #example-picker [data-list] button{white-space:normal;text-align:left;min-width:0}
+body.layout-canvas dialog{outline:none}
+body.layout-canvas .cl-line-handles .cl-end-handle{pointer-events:all;cursor:move}
+body.layout-canvas .cl-line-handles .cl-end-handle:hover{fill:var(--cl-accent)}
+.cl-marquee{position:absolute;pointer-events:none;border:1px solid var(--accent,#0969da);background:color-mix(in srgb,var(--accent,#0969da) 12%,transparent);border-radius:2px;z-index:5}
+
+/* On-canvas text editor: sits exactly over the label it edits. */
+.cl-inline-text{position:fixed;z-index:40;margin:0;padding:2px 4px;border:1px dashed var(--cl-accent);border-radius:4px;background:transparent;color:var(--cl-ink);text-align:center;resize:none;overflow:hidden;outline:none;box-sizing:border-box;caret-color:var(--cl-accent)}
+body.layout-canvas .cl-inline-text:focus-visible{outline:none}
+/* Text style bar under the selection toolbar. */
+body.layout-canvas .cl-textbar{position:fixed;z-index:30;display:flex;align-items:center;gap:2px;padding:4px}
+body.layout-canvas .cl-textbar[hidden]{display:none}
+body.layout-canvas .cl-textbar .cl-tb{min-width:30px;height:30px;padding:0 6px;border:0;border-radius:6px;background:transparent;color:var(--cl-ink);font:13px/1 system-ui,sans-serif;cursor:pointer}
+body.layout-canvas .cl-textbar .cl-tb:hover{background:var(--cl-accent-bg)}
+body.layout-canvas .cl-textbar .cl-tb[aria-pressed=true]{background:var(--cl-accent-bg);color:var(--cl-accent)}
+body.layout-canvas .cl-textbar .cl-tb.cl-swatch{flex:0 0 22px;min-width:22px;min-height:22px;max-height:22px;width:22px;height:22px;margin:0 2px;padding:0;border-radius:50%;border:2px solid var(--cl-line)}
+body.layout-canvas .cl-textbar .cl-tb.cl-swatch[aria-pressed=true]{border-color:var(--cl-accent);box-shadow:0 0 0 2px var(--cl-accent-bg)}
+body.layout-canvas .cl-textbar .cl-tb.cl-swatch[data-colour=default]{background:linear-gradient(135deg,var(--cl-ink) 50%,var(--cl-canvas) 50%)}
+body.layout-canvas .cl-textbar .cl-tb.cl-swatch[data-colour=black]{background:#000}
+body.layout-canvas .cl-textbar .cl-tb.cl-swatch[data-colour=red]{background:#d1242f}
+body.layout-canvas .cl-textbar .cl-tb.cl-swatch[data-colour=blue]{background:#0969da}
+body.layout-canvas .cl-textbar .cl-tb.cl-swatch[data-colour=green]{background:#1a7f37}
+body.layout-canvas .cl-textbar .cl-tb.cl-swatch[data-colour=gray]{background:#8c959f}
+@media (max-width:700px){body.layout-canvas .cl-textbar{flex-wrap:wrap;max-width:calc(100vw - 16px)}}
+/* Selected shapes stay highlighted in the live drag preview. */
+body.layout-canvas #diagram .live-drag .cl-live-selected :is(path,polygon,polyline,circle,ellipse,rect,line):not([stroke=transparent]):not([fill=transparent]){stroke:var(--cl-accent)!important}

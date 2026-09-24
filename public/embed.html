@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pikchr host example</title>
+<link rel="stylesheet" href="style.css">
+<style>
+.embed-demo{max-width:960px;margin:24px auto;padding:0 20px}
+.embed-demo textarea{display:block;width:100%;min-height:180px;margin:8px 0 12px;padding:12px;font:14px/1.5 monospace;border:1px solid #afb8c1}
+.embed-output{border:1px solid #d0d7de;min-height:200px;padding:16px;margin-top:16px;overflow:auto}
+.embed-output svg{max-width:100%;height:auto}
+#embed-error{color:#b42318;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<header><h1>Host editor example</h1><a href="index.html">Open Studio</a></header>
+<article class="embed-demo">
+<p>This small editor uses the same local WebAssembly worker as Studio. It shows the minimum rendering integration: bounded requests, stale-result rejection, errors, and worker recovery. It does not provide visual editing.</p>
+<label for="embed-source">Pikchr source</label>
+<textarea id="embed-source" spellcheck="false">Client: box "Client"
+arrow right
+Server: cylinder "Server"</textarea>
+<button id="embed-render">Render diagram</button>
+<span id="embed-state" role="status">Loading renderer…</span>
+<p id="embed-error" role="alert"></p>
+<div id="embed-output" class="embed-output" aria-label="Rendered diagram"></div>
+<p>Edit the source, then render. Previous output is marked stale immediately. Ctrl/⌘ Enter also renders. Nothing is sent to a server.</p>
+<p><a href="api.html">Renderer API and host responsibilities</a> · <a href="embed.js">Example JavaScript</a></p>
+</article>
+<script type="module" src="embed.js"></script>
+</body>
+</html>

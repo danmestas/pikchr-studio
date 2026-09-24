@@ -1,0 +1,13 @@
+{
+  "built": "2026-09-24T12:11:21.050Z",
+  "emcc": "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 6.0.9-git",
+  "node": "v24.15.0",
+  "upstreamFossilCheckin": "a7f1c35bc0448daf15e2bafa36e510c1517534e6",
+  "inputs": {
+    "vendor/studio.patch": "af79efc22df0bccbc483a70dc0251087d4cc1ffb275150361d3a9a4736308e64"
+  },
+  "outputs": {
+    "public/pikchr.wasm": "c61a292556085fa336066ea2b508194f845912b89d264da6bf4cfdf067116895",
+    "public/pikchr.js": "69fd802ba3cce967a7865973930230fb7fa91aa66db5d7b9f61e74b223c4934d"
+  }
+}

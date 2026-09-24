@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pikchr Studio help</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header><h1>Using Pikchr Studio</h1><nav><a href="index.html">Editor</a> · <a href="api.html">Developer API</a> · <a href="embed.html">Embedding example</a></nav></header>
+<article style="max-width:760px;margin:32px auto;padding:0 20px;line-height:1.55">
+<h2>The canvas</h2>
+<p>The diagram fills the window. Around it float a few controls: ☰ opens the document menu (documents, examples, view options, queued changes, tools), <kbd>&lt;/&gt;</kbd> opens the source drawer, ⤓ exports, the tool palette sits at the top (at the bottom on phones), the status chip at the top right shows whether the diagram rendered, and undo, redo and zoom sit at the bottom corners. Select an object and a toolbar floats above it; its ⋯ button opens the inspector with size, style, connector and label options.</p>
+<p>The source text is the document. Every gesture becomes a small Pikchr edit that is rendered before it is applied, so the canvas never shows geometry the source cannot reproduce. Open the source drawer to read or type Pikchr; the diagram re-renders as you type.</p>
+<h2>Tools and shortcuts</h2>
+<p>With the canvas focused: <kbd>V</kbd> select, <kbd>H</kbd> pan, <kbd>B</kbd> box, <kbd>C</kbd> circle, <kbd>D</kbd> cylinder, <kbd>T</kbd> text, <kbd>A</kbd> arrow, <kbd>L</kbd> line, <kbd>S</kbd> source drawer, <kbd>?</kbd> shortcuts. <kbd>Escape</kbd> cancels a gesture and returns to Select. <kbd>⌘Z</kbd> undoes and <kbd>⇧⌘Z</kbd> redoes. Pan with the Hand tool, by holding Space, with the middle mouse button, or by scrolling; <kbd>⌘</kbd>/Ctrl + scroll zooms.</p>
+<h2>Select</h2>
+<p>Click a shape to select it; Shift-click adds to the selection. Drag on empty canvas to draw a selection box: every shape and connector fully inside is selected. A shape that encloses other shapes, such as a frame, is selected by its border, so clicks inside it reach the shapes within.</p>
+<h2>Move and align</h2>
+<p>Drag a shape. While you drag, the diagram re-renders with the edit that will be applied, and the shape snaps to other shapes' edges and centres, to the mirror position of a sibling about a third shape, and to equal gaps along a row; red guides show what it snapped to. Hold <kbd>Shift</kbd> to lock the move to horizontal, vertical or 45°. On release the top-ranked edit applies immediately: Studio prefers Pikchr-native placements such as <code>with .n at 0.6 below API.s</code> over literal coordinates. Undo reverts it.</p>
+<p>With several shapes selected, Arrange in the selection toolbar aligns or distributes them (Advanced tools). Arrow keys nudge a selected shape by 0.1 inch, Shift by 1 inch, Alt by 0.01 inch.</p>
+<h2>Resize</h2>
+<p>A selected shape has four corner handles and a grab strip along each edge. The side or corner opposite the handle stays fixed; <kbd>Shift</kbd> keeps the aspect ratio and <kbd>Alt</kbd> resizes from the centre. Moving edges snap to other shapes, otherwise to a 0.05 inch grid. A shape attached to another (for example <code>with .n at API.s</code>) keeps that attachment and grows around it.</p>
+<h2>Connect</h2>
+<p>Hover a shape to show its four attach dots. Drag from a dot to another shape to connect them; a dashed guide shows the route and a badge names the connection. Dropping on empty canvas creates a new connected shape there. With the Arrow or Line tool, drag anywhere to draw a free line: each end attaches to a shape if it lands on one and stays a point otherwise. Shift locks the line to straight or 45°.</p>
+<h2>Text and labels</h2>
+<p>With the Text tool, click the canvas and type; Shift+Enter starts a new line and Enter finishes. Double-click any text or shape label to edit it in place. When text is selected, a style bar offers size, bold, italic, alignment and colour. For label sizing, choose ⋯ › Label options: the shape can grow to fit, wrap the text inside its width, or keep a fixed size.</p>
+<h2>Route styles</h2>
+<p>Select any arrow, line, spline or arc and open ⋯ to see Route styles. Each thumbnail is a complete Pikchr program that has already been rendered: Curve turns an elbowed route into a <code>spline</code> through the same waypoints, Arc swaps a two-point connector for <code>arc cw</code> or <code>arc ccw</code>, and Rounded corners adds <code>rad 0.1</code>. Arrowhead options switch between <code>-&gt;</code>, <code>&lt;-</code>, <code>&lt;-&gt;</code> and none; removing an arrow's heads changes its type to <code>line</code>, because Pikchr has no property that clears an arrow's default head.</p>
+<p>Shape-aware styles read the diagram. Tie bends replaces a literal bend with <code>until even with</code> a shape it already lines up with, so the bend follows that shape later. Route above, below, left and right detour around every shape in between. Back-edges arch over or under shapes on one row, and a connector whose ends are on the same shape gets loops. Choosing a thumbnail previews it; Enter or Accept applies it, Escape keeps the original, and <kbd>[</kbd> <kbd>]</kbd> cycle. Styles that would move any other object are not offered. Tidy route proposes an orthogonal path around obstacles.</p>
+<h2>Delete</h2>
+<p>Delete or Backspace removes the selection and its connectors. A shape positioned relative to a deleted one is pinned where it is, so nothing else moves; the change says which shapes were pinned.</p>
+<h2>Queue mode</h2>
+<p>Changes apply immediately by default. To review edits before they apply, turn off Auto-apply in ☰ › Changes: accepted edits then join a draft, the status chip shows how many are queued, and Apply all or Discard all finishes the batch. While changes are queued the source is read-only.</p>
+<h2>Advanced tools</h2>
+<p>Reusable components, saved documents and workspace backups, Arrange, and shape-type conversion are hidden by default. Turn on Advanced tools in ☰ › View, or open the editor with <code>?advanced=1</code>.</p>
+<h2>Supported scope</h2>
+<p>Macros, nested objects, complex expressions, and unsupported placements can be inspected but not freely manipulated; Studio explains why an operation is unavailable. Your Pikchr remains the canonical document. If the source fails to render, the error appears on the canvas, the last valid diagram stays visible but dimmed, and it cannot be manipulated until the source renders again. The renderer accepts source up to 100000 UTF-8 bytes and rejects NUL characters.</p>
+<h2>Run locally</h2>
+<p>From the studio directory, run <code>npm run build</code> with a C compiler and Emscripten installed. Then run <code>npm start</code> and open <code>http://127.0.0.1:8790</code>. Use <code>npm test</code> for the unit, native and browser suites.</p>
+<p>For integrating the renderer into another page, see the <a href="api.html">developer API contract</a> and <a href="embed.html">embedding example</a>.</p>
+</article>
+</body>
+</html>

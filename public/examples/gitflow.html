@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gitflow — a guided branching diagram</title><link rel="stylesheet" href="gitflow.css?v=3"></head>
+<body><main>
+<header><nav><a href="../">Studio</a><a href="../?sample=gitflow-guide">Edit diagram</a><details class="downloads"><summary>Download</summary><a href="gitflow.pikchr" download>Pikchr source</a><button id="download" disabled>Full SVG</button></details></nav>
+<h1>Gitflow, one release at a time</h1>
+<p>Follow a feature, a release, and a production fix. Then see what happens to work that misses the release.</p></header>
+<section aria-label="Interactive Gitflow diagram">
+<div class="view-controls"><button id="guided" aria-pressed="true">Guided steps</button><button id="overview" aria-pressed="false">Full overview</button></div>
+<div id="guide">
+<label class="sr-only" for="step">Jump to an event</label><select id="step">
+<option value="0">1. Stable baseline</option><option value="1">2. Parallel features</option><option value="2">3. Cut release/1.1</option><option value="3">4. Ship v1.1</option><option value="4">5. Urgent hotfix</option><option value="5">6. Finish Later</option><option value="6">7. Ship v1.2</option>
+</select><div class="step-nav"><button id="previous">Previous</button><span id="position">1 of 7</span><button id="next">Next</button></div>
+</div>
+<p class="hint" id="pan-hint">Scroll sideways to follow connections. The diagram keeps its text readable instead of shrinking to your screen.</p>
+<div id="viewport" tabindex="0" role="region" aria-label="Gitflow diagram, horizontally scrollable"><div id="lane-headings" aria-hidden="true"><span style="left:15.7%">feature</span><span style="left:36.3%">develop</span><span style="left:53.2%">release</span><span style="left:70.1%">hotfix</span><span style="left:87%">main</span></div><div id="diagram"><p role="status">Rendering the Pikchr diagram…</p></div></div>
+<div id="explanation" aria-live="polite"><h3 id="step-title"></h3><p id="step-copy"></p></div>
+<p id="status" role="status"></p>
+</section>
+<section aria-labelledby="key"><h2 id="key">How to read it</h2>
+<p>Time runs downward. Circles are commits; squares identify numbered events. Arrows show chronological work and merges, not Git parent pointers. Two feature tracks share one branch family. Color is reinforced by named lanes.</p>
+<div class="legend"><span><i style="--branch:#a93886"></i>Feature</span><span><i style="--branch:#c18d00"></i>Develop</span><span><i style="--branch:#378a39"></i>Release</span><span><i style="--branch:#c85042"></i>Hotfix</span><span><i style="--branch:#007b91"></i>Main</span></div>
+<p>In this example the hotfix happens after the release closes. With an active release, merge a hotfix into that release instead of develop; the release later carries it back.</p>
+<details><summary>Source and model notes</summary><p>Based on Vincent Driessen’s <a href="https://nvie.com/posts/a-successful-git-branching-model/">A successful Git branching model</a> (original illustration: CC BY-SA). Independently drawn here; no original artwork reused. “Main” replaces the original “master.” Gitflow suits scheduled, versioned releases; it is not a universal recommendation for continuous delivery.</p><p>This example and its Pikchr source are shared under <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. The SVG is rendered from the downloadable source, including in the guided views.</p></details>
+</section></main><script src="gitflow.js?v=4" type="module"></script></body></html>

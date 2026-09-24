@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pikchr Studio developer API</title>
+<link rel="stylesheet" href="style.css">
+<style>article{max-width:860px;margin:32px auto;padding:0 20px;line-height:1.55}article table{border-collapse:collapse;width:100%}article th,article td{border:1px solid #d0d7de;text-align:left;vertical-align:top;padding:8px}article pre{overflow:auto;padding:12px;background:#f6f8fa}article h2{margin-top:32px}article code{overflow-wrap:anywhere}header nav{display:flex;gap:16px;flex-wrap:wrap}</style>
+</head>
+<body>
+<header><h1>Pikchr Studio developer API</h1><nav><a href="index.html">Editor</a><a href="help.html">User help</a><a href="embed.html">Embedding example</a></nav></header>
+<article>
+<p>This is the opt-in introspection API in this app’s vendored renderer. It is not an upstream Pikchr API or a general SVG-to-Pikchr converter. Ordinary <code>pikchr()</code> remains available independently.</p>
+
+<h2>Contract and version</h2>
+<p>The native result currently contains <code>version: 2</code>. This is an experimental contract: pin the renderer and wrapper together, check the version before consuming geometry, and run compatibility tests when updating either. There is no <code>schemaVersion</code> field, schema negotiation, or stable cross-version object identity.</p>
+<p>The source of truth is <code>vendor/pikchr.y</code>, with the exported C declaration in <code>vendor/studio.h</code>. <code>vendor/check.cjs</code> checks geometry, spans and sub-spans, comment exclusion, complete dependencies, class/flag passthrough, invalid UTF-8 repair, unsupported-object guards, allocation/free use, and legacy rendering equivalence against the locally available upstream fixtures. The studio patch is compiled in with <code>-DPIKCHR_STUDIO</code>; without that define the vendored source builds as plain upstream Pikchr. The native CLI accepts <code>--studio</code> to print the same JSON.</p>
+
+<h2>C and WebAssembly ownership</h2>
+<pre><code>char *pikchr_studio(const char *source, const char *cls, unsigned flags);</code></pre>
+<p><code>cls</code> and <code>flags</code> behave exactly as for <code>pikchr()</code>: <code>cls</code> adds <code>class="…"</code> to the <code>&lt;svg&gt;</code> element or may be NULL; <code>flags</code> is a bitmask of <code>PIKCHR_PLAINTEXT_ERRORS</code> (1) and <code>PIKCHR_DARK_MODE</code> (2). Without the plaintext flag, <code>error</code> contains Pikchr's HTML diagnostic. Pass a NUL-terminated UTF-8 string. The returned pointer owns a NUL-terminated UTF-8 JSON allocation. Copy or parse its contents, then release it with <code>free()</code>, including renderer-error results. Check for a null pointer before reading it. Do not pass embedded NUL characters: they terminate the C input.</p>
+<pre><code>const module = await initPikchrModule();
+const render = module.cwrap('pikchr_studio', 'number', ['string', 'string', 'number']);
+const pointer = render(source, null, 1);
+if (!pointer) throw new Error('Renderer allocation failed');
+let result;
+try {
+  result = JSON.parse(module.UTF8ToString(pointer));
+} finally {
+  module._free(pointer);
+}</code></pre>
+<p>The worker performs this copy-and-free cycle for callers. The returned JavaScript object no longer depends on WASM memory.</p>
+
+<h2>Native JSON result</h2>
+<table><thead><tr><th>Field</th><th>Current meaning</th></tr></thead><tbody>
+<tr><td><code>version</code></td><td>Integer <code>2</code>. Version 2 added <code>spans</code>, complete <code>dependencies</code>, and the <code>cls</code>/<code>flags</code> parameters.</td></tr>
+<tr><td><code>svg</code></td><td>Rendered SVG string on success; empty string on parser/render failure.</td></tr>
+<tr><td><code>error</code></td><td><code>null</code> on success, otherwise a diagnostic string: plain text when flag 1 is set (the worker default), Pikchr's HTML otherwise. Display plain-text diagnostics as text, not HTML.</td></tr>
+<tr><td><code>objects</code></td><td>Flat array of object records. Nested lists are recursively included after their containing object. Empty on render failure; valid empty source also has no objects.</td></tr>
+<tr><td><code>transform</code></td><td>Object containing numeric <code>a, b, c, d, e, f</code> for world-to-SVG coordinates. Do not use error-result geometry or invert a singular transform.</td></tr>
+</tbody></table>
+
+<h2>Object records</h2>
+<table><thead><tr><th>Field</th><th>Current meaning</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td>Render-local string such as <code>o1</code>. SVG groups carry the corresponding <code>data-pikchr-id</code>. IDs are not persistent document IDs.</td></tr>
+<tr><td><code>name</code>, <code>kind</code></td><td>Pikchr object name, or empty string for unnamed objects; native primitive type name. Names need not be globally unique.</td></tr>
+<tr><td><code>span</code></td><td><code>{start, end}</code>, half-open UTF-8 byte offsets into this exact source; identical to <code>spans.statement</code> and kept for compatibility. Unavailable provenance can be <code>{start:-1,end:-1}</code>. Ranges exclude the terminating statement separator, trailing whitespace, and trailing <code>#</code>, <code>//</code> or <code>/* */</code> comments, so replacing a whole span never deletes a comment. Nested ranges can overlap enclosing ranges.</td></tr>
+<tr><td><code>spans</code></td><td><code>{statement, label, placement}</code>, each <code>{start,end}</code> or <code>null</code>. <code>statement</code> equals <code>span</code>. <code>label</code> is the first string literal of the statement including its quotes, or null. <code>placement</code> is the last top-level <code>at …</code> or <code>with … at …</code> clause, from its keyword to the end of the position expression, or null when the object has no explicit placement. Macro-expanded objects have null sub-spans. Path movement (<code>from</code>, <code>to</code>, <code>then</code>, <code>even with</code>) is not a placement.</td></tr>
+<tr><td><code>center</code></td><td><code>{x,y}</code>, the native placement point.</td></tr>
+<tr><td><code>bbox</code></td><td><code>{x,y,width,height}</code>, native bounds with lower-left origin in world coordinates.</td></tr>
+<tr><td><code>anchors</code></td><td>Named points <code>c,n,s,e,w,ne,nw,se,sw</code>, each <code>{x,y}</code>, computed by the renderer.</td></tr>
+<tr><td><code>path</code></td><td>Ordered native path points, each <code>{x,y}</code>. Usually empty for shapes. It is not an SVG command stream, outline tessellation, or complete curve representation.</td></tr>
+<tr><td><code>editable</code></td><td>Coarse renderer eligibility for movement: named top-level supported native shapes with usable provenance, outside macro expansion. It does not guarantee that an arbitrary source expression can be edited safely.</td></tr>
+<tr><td><code>reason</code></td><td>Empty when renderer-eligible; otherwise a human-readable explanation. This is not a stable machine-readable error code.</td></tr>
+<tr><td><code>dependenciesComplete</code></td><td>Always <code>true</code> since version 2.</td></tr>
+<tr><td><code>dependencies</code></td><td>Deduplicated render-local IDs of every object this statement resolved by name or ordinal while parsing: <code>at</code>, <code>with … at</code>, <code>from</code>, <code>to</code>, <code>then</code>, <code>even with</code>, <code>same as</code>, <code>behind</code>, <code>last box</code>, <code>2nd circle</code>, vertex and property references such as <code>A.width</code>. The object itself is excluded. Variables and macros are not tracked, and the list is direct, not transitive: compute dependents by inverting it across <code>objects</code>.</td></tr>
+</tbody></table>
+<p>There are no exported <code>depth</code>, <code>parent</code>, or <code>macro</code> fields. Do not invent them when interpreting native results. Macro and nested provenance restrictions are represented by eligibility/reason and, where available, source ranges. Additional conservative checks belong in the edit layer.</p>
+
+<h2>Coordinates and pointer mapping</h2>
+<p>World geometry uses inches, with positive y pointing upward. SVG coordinates use the supplied affine transform:</p>
+<pre><code>svgX = a * worldX + c * worldY + e
+svgY = b * worldX + d * worldY + f</code></pre>
+<p>The current renderer emits <code>b=0</code>, <code>c=0</code>, <code>a=scale</code>, <code>d=-scale</code>, with translation derived from the rendered bounds. Do not hard-code a scale or treat world inches as CSS pixels. Convert browser pointer coordinates through the inverse SVG screen matrix, then the inverse world transform. Handle missing matrices and singular transforms.</p>
+<pre><code>const t = result.transform;
+const worldToSvg = new DOMMatrix([t.a, t.b, t.c, t.d, t.e, t.f]);
+const screen = svgElement.getScreenCTM();
+if (!screen) throw new Error('SVG is not displayed');
+const worldPoint = new DOMPoint(event.clientX, event.clientY)
+  .matrixTransform(screen.inverse())
+  .matrixTransform(worldToSvg.inverse());</code></pre>
+
+<h2>Source spans, suggestions, and stale results</h2>
+<p>JavaScript string indices use UTF-16 code units; source spans use UTF-8 bytes. Never pass native spans directly to <code>slice()</code> or <code>setSelectionRange()</code>. Use <code>byteOffsetToIndex()</code> from <code>edits.js</code>, which rejects out-of-range offsets and offsets splitting a UTF-8 character.</p>
+<pre><code>import {byteOffsetToIndex, applyPatch} from './edits.js';
+const start = byteOffsetToIndex(source, object.span.start);
+const end = byteOffsetToIndex(source, object.span.end);
+const statement = source.slice(start, end);</code></pre>
+<p>Edit candidates carry <code>{label, source, patch}</code>; creation/conversion candidates also carry <code>selectName</code>. Patches contain <code>{base,start,end,expected,text}</code>. <code>applyPatch()</code> requires the exact base document and expected old text, and translates byte offsets. An accepted patch is still subject to rendering validation. Re-render every candidate through Pikchr before offering acceptance; never use SVG movement alone as proof of valid source.</p>
+<p>Keep a source revision and request ID for each render. Ignore results for older source, invalidate old selections and suggestions after manual edits, and block manipulation of a stale diagram. If retaining a last-valid diagram after a failure, label it clearly. Match names only when unique; never reuse an old <code>oN</code> ID as a persistent selection.</p>
+
+<h2>Worker protocol and limits</h2>
+<pre><code>const worker = new Worker('./worker.js');
+worker.postMessage({id: 1, source: 'A: box "Hello" at (0,0)'});
+worker.onmessage = ({data}) =&gt; {
+  // data = {id, result}; verify this id is still current first.
+  if (data.result.error) {
+    showErrorAsText(data.result.error);
+    return;
+  }
+  if (data.result.version !== 2) throw new Error('Unsupported API version');
+  // Consume data.result.svg and data.result.objects.
+};</code></pre>
+<p>Request <code>id</code> must be a nonnegative safe integer. Invalid requests without usable IDs and duplicate live IDs are silently ignored; they do not receive error responses. Use a fresh ID for each outstanding request. Source must be a string without NUL characters. Optional <code>cls</code> (short class string or null) and <code>flags</code> (0–3, default 1) pass through to the native call; invalid values receive an error response.</p>
+<p>The worker accepts at most <strong>100000 UTF-8 bytes</strong>, not 100000 JavaScript characters, and permits at most <strong>32 pending requests</strong> while initialization/render requests await completion. An over-capacity request with a valid ID receives a busy error. These are wrapper policies, not C API limits. Initialization failures, input rejection, allocation failure, JSON parsing failure, and other wrapper errors can produce only <code>{id,result:{error:message}}</code>; <code>svg</code>, <code>objects</code>, <code>transform</code>, and <code>version</code> are not guaranteed on that path. Allocated results are freed on success and failure.</p>
+<p>The renderer also has its native token limit, currently defined as <code>PIKCHR_TOKEN_LIMIT 100000</code>. Byte and token limits are different. The worker does not currently provide request cancellation, a time budget, or a complete hostile-input sandbox. Hosts should bound requests, handle worker errors/timeouts, and terminate/recreate a worker if their application requires cancellation or recovery.</p>
+
+<h2>Supported editing is narrower than rendering</h2>
+<p>The edit modules deliberately refuse unsupported syntax rather than rewriting the document. Macro-expanded and nested objects remain inspect-only. Shape conversion requires a supported named native primitive with one explicit numeric center placement and conservative attributes. Creation uses native box, circle, ellipse, oval, cylinder, or diamond syntax; triangle/trapezoid construction is not supplied by this API.</p>
+<p>Connector edits recognize explicit named endpoint references and the app’s generated routes. Literal bend editing changes a supported numeric vertex tuple while preserving surrounding route source. Route presets and lane controls can replace the entire path. These operations do not understand arbitrary expressions, every possible Pikchr path, or obstacle avoidance. A renderer-level <code>editable:false</code> on an arrow does not itself prohibit the separately validated connector operations. Ask the appropriate edit API whether it can safely handle the specific source.</p>
+<p>Because dependency metadata is incomplete, preview the entire re-rendered diagram and compare geometry to explain affected objects. Do not claim that an empty dependency list means an object is independent.</p>
+
+<h2>Host responsibilities</h2>
+<p>Serve <code>worker.js</code>, <code>pikchr.js</code>, and <code>pikchr.wasm</code> together over HTTP with an appropriate WebAssembly MIME type and worker policy. Keep untrusted source and error strings out of HTML insertion paths; only use the renderer’s SVG output for the diagram, with isolation or sanitization appropriate to your threat model. Keep the worker off the UI thread, provide loading/error states, and preserve keyboard alternatives to dragging. User source remains the canonical document; persistence, undo history, export, and approval of suggested edits belong to the host.</p>
+<p>See the <a href="embed.html">embedding example</a> for a small consumer, or <a href="help.html">user help</a> for editor behavior.</p>
+</article>
+</body>
+</html>

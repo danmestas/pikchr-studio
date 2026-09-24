@@ -1,0 +1,22 @@
+Flat: box "FLAT MANIFEST" width 2.9 height 0.32 fill 0xe7eef2 color 0x29333a at (0, 0)
+FlatB: box "B  baseline hash" width 2.9 height 0.32 fill 0xffffff color 0x29333a at (0, -0.32)
+FlatC: box "C  check-in comment" width 2.9 height 0.32 fill 0xffffff color 0x29333a at (0, -0.64)
+FlatD: box "D  timestamp" width 2.9 height 0.32 fill 0xffffff color 0x29333a at (0, -0.96)
+FlatF: box "F  src/main.c  hash" width 2.9 height 0.32 fill 0xffffff color 0x29333a at (0, -1.28)
+FlatF2: box "F  src/util.c  hash" width 2.9 height 0.32 fill 0xffffff color 0x29333a at (0, -1.6)
+FlatF3: box "F  docs/guide.md  hash" width 2.9 height 0.32 fill 0xffffff color 0x29333a at (0, -1.92)
+FlatZ: box "Z  checksum" width 2.9 height 0.32 fill 0xffffff color 0x29333a at (0, -2.24)
+Tree: box "TREE MANIFEST" width 2.9 height 0.32 fill 0xe7eef2 color 0x29333a at (3.6, 0)
+TreeB: box "B  baseline hash" width 2.9 height 0.32 fill 0xffffff color 0x29333a at (3.6, -0.32)
+TreeC: box "C  check-in comment" width 2.9 height 0.32 fill 0xffffff color 0x29333a at (3.6, -0.64)
+TreeD: box "D  timestamp" width 2.9 height 0.32 fill 0xffffff color 0x29333a at (3.6, -0.96)
+TreeS1: box "S  src  submanifest hash" width 2.9 height 0.32 fill 0xf4e8e2 color 0x29333a at (3.6, -1.28)
+TreeS2: box "S  docs  submanifest hash" width 2.9 height 0.32 fill 0xf4e8e2 color 0x29333a at (3.6, -1.6)
+TreeS3: box "S  tests  submanifest hash" width 2.9 height 0.32 fill 0xf4e8e2 color 0x29333a at (3.6, -1.92)
+TreeZ: box "Z  checksum" width 2.9 height 0.32 fill 0xffffff color 0x29333a at (3.6, -2.24)
+Src: box "src/" "F  main.c  hash" "F  util.c  hash" "Z  checksum" width 2 height 0.9 fill 0xf4e8e2 color 0x29333a at (7.2, 0.1)
+Docs: box "docs/" "F  guide.md  hash" "F  api.md  hash" "Z  checksum" width 2 height 0.9 fill 0xf4e8e2 color 0x29333a at (7.2, -1.2)
+Tests: box "tests/" "F  smoke.test  hash" "F  unit.test  hash" "Z  checksum" width 2 height 0.9 fill 0xf4e8e2 color 0x29333a at (7.2, -2.5)
+Link1: arrow from TreeS1.e to Src.w
+Link2: arrow from TreeS2.e to Docs.w
+Link3: arrow from TreeS3.e to Tests.w

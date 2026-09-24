@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canvas-first layout</title>
+<style>
+:root{--bg:#f6f7f9;--canvas:#fff;--ink:#1f2328;--muted:#656d76;--line:#d0d7de;--chip:#fff;--accent:#0969da;--accent-bg:#ddf4ff;--ok:#1a7f37;--shadow:0 2px 10px rgba(31,35,40,.12),0 0 0 1px rgba(31,35,40,.06);--note:#bf3989}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0d1117;--canvas:#161b22;--ink:#e6edf3;--muted:#9198a1;--line:#30363d;--chip:#1c2128;--accent:#4493f8;--accent-bg:#1f3a5f;--ok:#3fb950;--shadow:0 2px 12px rgba(0,0,0,.5),0 0 0 1px rgba(240,246,252,.08);--note:#f778ba}}
+:root[data-theme=dark]{--bg:#0d1117;--canvas:#161b22;--ink:#e6edf3;--muted:#9198a1;--line:#30363d;--chip:#1c2128;--accent:#4493f8;--accent-bg:#1f3a5f;--ok:#3fb950;--shadow:0 2px 12px rgba(0,0,0,.5),0 0 0 1px rgba(240,246,252,.08);--note:#f778ba}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{font:14px/1.4 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg);overflow:hidden}
+.stage{position:fixed;inset:0;background:var(--canvas);background-image:radial-gradient(var(--line) 1px,transparent 1px);background-size:24px 24px}
+.float{position:absolute;background:var(--chip);border-radius:10px;box-shadow:var(--shadow);display:flex;align-items:center;gap:2px;padding:4px}
+.float button{all:unset;cursor:pointer;min-width:34px;height:34px;display:grid;place-items:center;border-radius:7px;color:var(--ink);padding:0 6px;font-size:13px}
+.float button:hover{background:var(--accent-bg)}.float button[aria-pressed=true]{background:var(--accent-bg);color:var(--accent)}
+.float .sep{width:1px;height:22px;background:var(--line);margin:0 4px}
+.kbd{font-size:10px;color:var(--muted);margin-left:2px}
+.doc{top:12px;left:12px}.doc strong{padding:0 8px}
+.tools{top:12px;left:50%;transform:translateX(-50%)}
+.zoom{bottom:12px;right:12px}.history{bottom:12px;left:12px}
+.state{top:12px;right:12px;padding:4px 10px;font-size:12px;color:var(--muted);gap:8px}
+.state i{width:8px;height:8px;border-radius:50%;background:var(--ok);display:inline-block}
+.scene{position:absolute;inset:0;overflow:hidden}.board{position:absolute;left:50%;top:50%;width:1200px;height:800px;transform:translate(-50%,-50%)}
+@media (min-width:1000px){.scene{right:330px}}
+svg.diagram{position:absolute;inset:0;width:100%;height:100%}
+svg text{fill:var(--ink);font:15px system-ui}svg .shape{fill:var(--canvas);stroke:var(--ink);stroke-width:2}
+svg .edge{stroke:var(--ink);stroke-width:2;fill:none}
+.dot{fill:var(--canvas);stroke:var(--accent);stroke-width:2;opacity:0;transition:opacity .12s}
+g.node:hover .dot,g.node.selected .dot{opacity:1}
+g.node.selected .shape{stroke:var(--accent)}
+.rubber{stroke:var(--accent);stroke-width:2;stroke-dasharray:6 4;fill:none}
+.target .shape{stroke:var(--accent);stroke-width:3}
+.snap{fill:var(--accent)}
+.ctx{gap:0}
+.candidate{padding:6px 8px;gap:8px;font-size:13px}.candidate code{background:var(--accent-bg);color:var(--accent);padding:2px 6px;border-radius:5px}
+.candidate small{color:var(--muted)}
+.drawer{position:absolute;top:60px;bottom:60px;left:12px;width:340px;background:var(--chip);box-shadow:var(--shadow);border-radius:10px;padding:12px;transform:translateX(-360px);transition:transform .18s;display:flex;flex-direction:column;gap:8px}
+.drawer.open{transform:none}.drawer pre{flex:1;margin:0;background:var(--bg);border-radius:6px;padding:10px;font:12px/1.6 ui-monospace,monospace;overflow:auto}
+.drawer mark{background:var(--accent-bg);color:inherit;border-radius:3px}
+.inspect{position:absolute;width:220px;padding:10px 12px;display:block;font-size:12px}
+.inspect dl{display:grid;grid-template-columns:80px 1fr;gap:4px;margin:6px 0 0}.inspect dt{color:var(--muted)}.inspect dd{margin:0}
+.note{position:absolute;background:var(--note);color:#fff;font-size:11px;font-weight:600;border-radius:50%;width:20px;height:20px;display:grid;place-items:center;box-shadow:var(--shadow);cursor:help}
+.legend{position:absolute;right:12px;top:56px;width:300px;max-height:calc(100% - 130px);overflow:auto;font-size:12px;padding:12px 14px;display:block}
+.legend h1{font-size:14px;margin:0 0 6px}.legend ol{padding-left:18px;margin:6px 0}.legend li{margin:5px 0}.legend p{color:var(--muted);margin:6px 0}
+.legend button{all:revert;font-size:12px}
+@media (max-width:700px){.tools{top:auto;bottom:12px}.zoom,.history{bottom:64px}.legend{display:none}.drawer{width:auto;right:12px}.doc strong{display:none}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="stage" role="application" aria-label="Diagram canvas mockup">
+<div class="scene"><div class="board">
+<svg class="diagram" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+  <!-- existing edge Client -> API -->
+  <path class="edge" d="M330 400 H530" marker-end="url(#h)"/>
+  <defs><marker id="h" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0 0L10 4L0 8z" fill="currentColor" style="color:var(--ink)"/></marker>
+  <marker id="ha" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0 0L10 4L0 8z" style="fill:var(--accent)"/></marker></defs>
+  <g class="node"><rect class="shape" x="210" y="360" width="120" height="80"/><text x="270" y="405" text-anchor="middle">Client</text>
+    <circle class="dot" cx="270" cy="360" r="6"/><circle class="dot" cx="330" cy="400" r="6"/><circle class="dot" cx="270" cy="440" r="6"/><circle class="dot" cx="210" cy="400" r="6"/></g>
+  <g class="node selected target"><rect class="shape" x="530" y="360" width="120" height="80"/><text x="590" y="405" text-anchor="middle">API</text>
+    <circle class="dot" cx="590" cy="360" r="6"/><circle class="dot" cx="650" cy="400" r="6"/><circle class="dot snap" cx="590" cy="440" r="7"/><circle class="dot" cx="530" cy="400" r="6"/></g>
+  <g class="node"><path class="shape" d="M850 575 v60 a60 14 0 0 0 120 0 v-60 a60 14 0 0 0 -120 0 a60 14 0 0 0 120 0"/><text x="910" y="625" text-anchor="middle">Database</text>
+    <circle class="dot" cx="910" cy="561" r="6"/><circle class="dot" cx="850" cy="605" r="6"/></g>
+  <!-- rubber-band arrow being drawn from Database.n, snapping to API.s -->
+  <path class="rubber" d="M910 561 V500 H590 V448" marker-end="url(#ha)"/>
+  <rect x="640" y="470" width="150" height="24" rx="6" style="fill:var(--accent)"/><text x="715" y="487" text-anchor="middle" style="fill:#fff;font-size:12px">Database.n → API.s</text>
+</svg>
+<!-- contextual toolbar floating above the selected shape -->
+<div class="float ctx" style="left:420px;top:296px">
+  <button title="Edit label (Enter)">Aa</button><button title="Fill">◧</button><button title="Stroke">▢</button><button title="Size">⤡</button><span class="sep"></span>
+  <button title="Add connected shape (drag a dot)">⊕→</button><button title="Duplicate (⌘D)">⧉</button><button title="Delete (⌫)">🗑</button><button title="More">⋯</button>
+</div>
+<!-- post-drop candidate chip, anchored next to the object it changes -->
+<div class="float candidate" style="left:560px;top:668px">
+  <span>✓</span><code>with .n at 0.6 below API.s</code><small>1 / 4</small><button title="Previous ([)">‹</button><button title="Next (])">›</button><button title="Accept (Enter)">Accept</button><button title="Keep original (Esc)">Esc</button>
+</div>
+<span class="note" style="left:398px;top:290px" title="2">2</span>
+<span class="note" style="left:800px;top:462px" title="3">3</span>
+<span class="note" style="left:538px;top:662px" title="4">4</span>
+</div></div>
+
+<div class="float doc"><button title="Documents">☰</button><strong>Pipeline</strong><span class="sep"></span><button id="toggle-source" aria-pressed="false" title="Source (S)">&lt;/&gt;</button><button title="Export">⤓</button></div>
+
+<div class="float tools" role="toolbar" aria-label="Tools">
+  <button aria-pressed="false" title="Select (V)">➚<span class="kbd">V</span></button>
+  <button title="Pan (H)">✋<span class="kbd">H</span></button><span class="sep"></span>
+  <button title="Box (B)">▭<span class="kbd">B</span></button>
+  <button title="Circle (C)">◯<span class="kbd">C</span></button>
+  <button title="Cylinder (D)">⛁<span class="kbd">D</span></button>
+  <button title="Text (T)">T<span class="kbd">T</span></button><span class="sep"></span>
+  <button aria-pressed="true" title="Arrow (A)">↗<span class="kbd">A</span></button>
+  <button title="Line (L)">╱<span class="kbd">L</span></button>
+</div>
+
+<div class="float state"><span><i></i> Rendered · 2 queued</span><button title="Apply queued changes">Apply</button></div>
+
+
+
+<div class="drawer" id="drawer" aria-label="Source">
+  <strong>Source <small style="color:var(--muted);font-weight:400">· the document</small></strong>
+  <pre>Client: box "Client" at (0,0)
+<mark>API: box "API" at (2,0)</mark>
+Database: cylinder "Database" at (4,-1.5)
+arrow from Client.e to API.w
+<mark>arrow from Database.n up 0.4 then left until even with API then to API.s</mark></pre>
+  <small style="color:var(--muted)">Typing re-renders live. The canvas keeps working on the last valid render and shows a red badge until the source parses again.</small>
+</div>
+
+<div class="float history"><button title="Undo (⌘Z)">↶</button><button title="Redo (⇧⌘Z)">↷</button></div>
+<div class="float zoom"><button title="Zoom out (−)">−</button><button title="Fit (0)">100%</button><button title="Zoom in (+)">+</button><button title="Shortcuts (?)">?</button></div>
+
+<span class="note" style="left:calc(50% + 214px);top:20px" title="1">1</span>
+<span class="note" style="left:254px;top:20px" title="5">5</span>
+<span class="note" style="right:250px;top:22px" title="6">6</span>
+
+<div class="float legend">
+  <h1>Canvas-first mockup</h1>
+  <p>Static sketch for direction only. Hover a shape to see its attach points. Toggle the source drawer with the &lt;/&gt; button.</p>
+  <ol>
+    <li><b>One floating tool palette.</b> Shapes and connectors are one click away with single-key shortcuts. It moves to the bottom on phones.</li>
+    <li><b>Contextual toolbar on the selection.</b> Label, fill, stroke, size, connect, duplicate, delete. Replaces the inspector and the two rows under the canvas.</li>
+    <li><b>Drag-to-connect.</b> Hovering any shape shows four attach dots. Drag from a dot and a live arrow follows the pointer, the target shape and its nearest anchor light up, and the badge names the edit. Dropping on empty space creates a connected shape there.</li>
+    <li><b>Candidates next to the change.</b> The ranked source edit appears beside the object, not in a side panel. Enter accepts, brackets cycle, Escape keeps the original.</li>
+    <li><b>Source is a drawer, not a pane.</b> Selection highlights the matching lines. Typing re-renders live.</li>
+    <li><b>One status chip.</b> Rendered / invalid / queued count, with Apply. The canvas never locks; it keeps working on the last valid render.</li>
+  </ol>
+  <p>Kept off-canvas behind ☰ or ⋯: documents, backup, components, export options, advanced tools.</p>
+  <button onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark'">Toggle theme</button>
+</div>
+</div>
+<script>
+const b=document.getElementById('toggle-source'),d=document.getElementById('drawer');
+b.onclick=()=>{const open=d.classList.toggle('open');b.setAttribute('aria-pressed',String(open));};
+</script>
+</body>
+</html>
