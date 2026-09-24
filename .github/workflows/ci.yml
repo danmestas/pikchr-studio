@@ -35,6 +35,9 @@ jobs:
 
       - name: Browser tests
         run: npm run test:browser
+        env:
+          PIKCHR_STUDIO_DIAG: "1"
+          PIKCHR_STUDIO_TAIL: "80"
 
       - name: Validate Worker config
         run: npx --yes wrangler@4.138.0 deploy --dry-run --outdir dist-dry-run

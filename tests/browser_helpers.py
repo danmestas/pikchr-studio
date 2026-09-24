@@ -168,3 +168,38 @@ def set_auto_apply(page, on):
     box = reveal(page, '#auto-apply')
     box.check() if on else box.uncheck()
     close_popovers(page)
+
+
+# CI diagnostics (PIKCHR_STUDIO_DIAG=1): record recent pointer events in every
+# page and, when a wait times out, print what the pointer hit and the app state.
+import os as _os
+if _os.environ.get("PIKCHR_STUDIO_DIAG") == "1":
+    from playwright.sync_api import Browser as _Browser, Page as _Page
+    _RECORD = """(() => { window.__pointerLog = [];
+      for (const t of ['pointerdown','pointerup']) addEventListener(t, e => {
+        const el = e.target, g = el.closest && el.closest('[data-pikchr-id],[data-resize],.cl-dots,.canvas-overlay');
+        window.__pointerLog.push([t, Math.round(e.clientX), Math.round(e.clientY), el.tagName + '.' + (el.getAttribute('class') || ''),
+          g ? (g.getAttribute('data-pikchr-id') || g.getAttribute('data-resize') || g.getAttribute('class')) : '']);
+        window.__pointerLog = window.__pointerLog.slice(-8); }, true); })()"""
+    _STATE = """JSON.stringify({pointer: ['fine','coarse','none'].find(p => matchMedia('(pointer:' + p + ')').matches),
+      hover: matchMedia('(hover:hover)').matches, zoom: document.body.style.zoom, dpr: devicePixelRatio,
+      previewHidden: document.querySelector('#preview-actions') && document.querySelector('#preview-actions').hidden,
+      autoApply: document.querySelector('#auto-apply') && document.querySelector('#auto-apply').checked,
+      status: [...document.querySelectorAll('[role=status],[role=alert],.cl-toast,.cl-summary')].map(e => e.textContent.trim()).filter(Boolean).slice(-5),
+      state: window.pikchrStudio && (s => ({selected: s.selectedIds, valid: s.valid, queued: s.queued, source: s.source.slice(0, 240)}))(window.pikchrStudio.state()),
+      pointers: window.__pointerLog})"""
+    _new_page = _Browser.new_page
+    def _diag_new_page(self, *a, **k):
+        page = _new_page(self, *a, **k)
+        page.add_init_script(_RECORD)
+        return page
+    _Browser.new_page = _diag_new_page
+    _wait = _Page.wait_for_function
+    def _diag_wait(self, *a, **k):
+        try:
+            return _wait(self, *a, **k)
+        except Exception:
+            try: print("DIAG", self.evaluate(_STATE), flush=True)
+            except Exception as err: print("DIAG failed", err, flush=True)
+            raise
+    _Page.wait_for_function = _diag_wait
