@@ -85,11 +85,24 @@ $('auto-apply').onchange=()=>{try{localStorage.setItem('pikchr-studio.queue-mode
 function startWorker(){
   worker=new Worker('worker.js');
   worker.onmessage=({data})=>{const entry=requests.get(data.id);if(!entry)return;clearTimeout(entry.timer);requests.delete(data.id);entry.resolve(data.result);};
-  worker.onerror=()=>failWorker('Renderer failed to load. Check that the app has been built and reload.');
+  worker.onerror=()=>failWorker('Renderer failed to load. Check that the app has been built and reload.',true);
 }
-function failWorker(message){
+// The WebAssembly renderer could not start (offline, blocked, or a broken
+// deploy). Say so on the canvas instead of calling the source invalid.
+function showRendererDown(){
+  const d=$('diagram');d.classList.add('renderer-down');
+  if(!d.querySelector('.renderer-down-card')){
+    const card=document.createElement('div');card.className='renderer-down-card';card.setAttribute('role','alert');
+    const h=document.createElement('h2');h.textContent='The diagram renderer could not load';
+    const p=document.createElement('p');p.textContent='Pikchr Studio draws diagrams with WebAssembly, and it did not start. Check your connection and reload. Your diagram is saved in this browser.';
+    const b=document.createElement('button');b.type='button';b.textContent='Reload';b.onclick=()=>location.reload();
+    card.append(h,p,b);d.append(card);
+  }
+  status('The diagram renderer could not load. Reload to try again.');
+}
+function failWorker(message,unavailable=false){
   worker.terminate();
-  for(const entry of requests.values()){clearTimeout(entry.timer);entry.resolve({error:message});}
+  for(const entry of requests.values()){clearTimeout(entry.timer);entry.resolve(unavailable?{error:message,unavailable}:{error:message});}
   requests.clear();startWorker();
 }
 // Canvas layout renders with Pikchr's dark-mode flag when the page is dark;
@@ -163,6 +176,8 @@ async function renderSource(preRendered=null){
   if(token!==renderVersion)return;
   rendering=false;updateDraft();
   if(rev!==revision)return;
+  if(result.unavailable){showRendererDown();return;}
+  $('diagram').classList.remove('renderer-down');$('diagram').querySelector('.renderer-down-card')?.remove();
   if(result.error||!result.svg){announceError(result.error||'No diagram returned.');$('diagram').classList.add('stale');status('Invalid source. Last valid diagram retained; editing disabled.');return;}
   scene=result;
   if(manualEditBase!==null){if(manualEditBase!==text){undo.push(manualEditBase);redo.length=0;}manualEditBase=null;historyButtons();}

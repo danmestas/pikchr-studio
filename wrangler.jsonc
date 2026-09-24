@@ -1,0 +1,12 @@
+{
+  // Assets-only Worker: Cloudflare serves public/ directly, no script needed.
+  "name": "pikchr-studio",
+  "compatibility_date": "2026-09-24",
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "404-page"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

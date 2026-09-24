@@ -1,13 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {spawnSync} from 'node:child_process';
-import {fileURLToPath} from 'node:url';
+import {compileSvg} from './pikchr-wasm.mjs';
 import {createShape, createConnector, changeShape, shapeKinds,connectableShapes,repeatPosition,repeatShape} from '../public/creation.js';
 import {applyPatch} from '../public/edits.js';
 
 const bytes = text => new TextEncoder().encode(text).length;
 function compile(source) {
-  const result = spawnSync(fileURLToPath(new URL('../vendor/pikchr', import.meta.url)), ['--svg-only', '-'], {input:source, encoding:'utf8'});
+  const result = compileSvg(source);
   assert.equal(result.status, 0, result.stdout);
 }
 function fixture(statement = 'A: box "café 😀" fill blue at (0, 0)') {

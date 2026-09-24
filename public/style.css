@@ -187,3 +187,8 @@ body:not(.advanced) .component-tools,body:not(.advanced) #backup-workspace,body:
 .align-guides .mirror-pivot{fill:var(--guide)}
 /* Handles belong to the committed position; hide them while a live preview shows. */
 #diagram svg.live-dragging .canvas-overlay{display:none}
+.noscript{position:fixed;inset:auto 16px 16px 16px;z-index:100;padding:14px 16px;border-radius:10px;background:#cf222e;color:#fff;font:600 14px/1.4 system-ui,sans-serif}
+/* Renderer failed to start: explain on the canvas. */
+#diagram .renderer-down-card{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);max-width:420px;width:calc(100% - 32px);padding:20px 22px;border-radius:12px;background:var(--bg);border:1px solid var(--border);box-shadow:0 4px 20px rgba(0,0,0,.2);text-align:left;z-index:5}
+#diagram .renderer-down-card h2{margin:0 0 8px;font-size:17px}
+#diagram .renderer-down-card p{margin:0 0 14px;color:var(--muted);font-size:14px;line-height:1.5}

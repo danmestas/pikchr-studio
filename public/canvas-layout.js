@@ -97,7 +97,13 @@ function install(studio){
   const backup=$('backup-workspace'),restore=$('restore-workspace');
   const advancedSection=section('Advanced',row(backup,restore,$('backup-input')),components);
   advancedSection.classList.add('cl-advanced-only');
-  menu.append(docSection,exampleSection,viewSection,changesSection,toolsSection,advancedSection);
+  // About: where the code lives, and credit for the Pikchr renderer.
+  const link=(href,text)=>{const a=el('a',{href,class:'cl-link'},text);if(/^https?:/.test(href)){a.target='_blank';a.rel='noopener';}return a;};
+  const aboutSection=section('About',
+    el('p',{class:'cl-about'},'Pikchr Studio edits diagrams by editing their Pikchr source.'),
+    row(link('https://github.com/danmestas/pikchr-studio','Source on GitHub'),link('licenses.html','Licenses')),
+    el('p',{class:'cl-about'},'Diagrams are rendered by ',link('https://pikchr.org','Pikchr'),', used under the 0BSD license.'));
+  menu.append(docSection,exampleSection,viewSection,changesSection,toolsSection,advancedSection,aboutSection);
   // Remaining toolbar controls (render, undo, redo, downloads) stay
   // reachable by id but off-stage; the export menu below takes the downloads.
   if(nav){nav.classList.add('cl-offstage');document.body.append(nav);}
@@ -145,8 +151,8 @@ function install(studio){
   function syncStatus(){
     const s=studio.state(),invalid=diagram.classList.contains('stale')&&!!diagnostic?.textContent.trim();
     const queued=s.queued;
-    summary.textContent=invalid?'Invalid':queued?'Rendered · '+queued+' queued':s.valid?'Rendered':'Rendering…';
-    statusChip.dataset.state=invalid?'invalid':queued?'queued':'ok';
+    summary.textContent=diagram.classList.contains('renderer-down')?'Renderer unavailable':invalid?'Invalid':queued?'Rendered · '+queued+' queued':s.valid?'Rendered':'Rendering…';
+    statusChip.dataset.state=invalid||diagram.classList.contains('renderer-down')?'invalid':queued?'queued':'ok';
     apply.disabled=$('accept')?.disabled??true;discard.disabled=$('cancel')?.disabled??true;
     apply.hidden=discard.hidden=!queued;
   }

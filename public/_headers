@@ -1,0 +1,36 @@
+# Cloudflare static-asset headers. Every response revalidates (no-cache + ETag):
+# modules are versioned by query string, and a stale mix of cached modules has
+# broken the app before, so nothing executable is long-cached.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), interest-cohort=()
+  Cross-Origin-Opener-Policy: same-origin
+  X-Frame-Options: DENY
+  Cache-Control: no-cache
+
+# The embed page exists to be framed by other sites. Cloudflare serves it
+# at /embed as well as /embed.html, so both paths carry the rule.
+/embed
+  ! Content-Security-Policy
+  ! X-Frame-Options
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors *
+/embed.html
+  ! Content-Security-Policy
+  ! X-Frame-Options
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors *
+
+# Icons and the social card change rarely; a day of caching is plenty.
+/icons/*
+  ! Cache-Control
+  Cache-Control: public, max-age=86400
+/favicon.ico
+  ! Cache-Control
+  Cache-Control: public, max-age=86400
+/favicon.svg
+  ! Cache-Control
+  Cache-Control: public, max-age=86400
+/og-image.png
+  ! Cache-Control
+  Cache-Control: public, max-age=86400
