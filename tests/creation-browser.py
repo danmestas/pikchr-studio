@@ -144,6 +144,8 @@ with sync_playwright() as pw:
         shape.scroll_into_view_if_needed()
         bounds = shape.locator("path").first.bounding_box()
         x, y = bounds["x"] + bounds["width"] / 2, bounds["y"] + bounds["height"] / 2
+        # The press must land on the shape, not on the source drawer over it.
+        hide_source(page)
         page.mouse.move(x, y)
         page.mouse.down()
         page.mouse.move(x + bounds["width"] * 0.5, y + bounds["height"] * 0.3, steps=8)

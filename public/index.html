@@ -4,10 +4,33 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Pikchr Studio</title>
+<meta name="description" content="Draw and edit Pikchr diagrams on a canvas. Every drag, resize and connection becomes a clean Pikchr source edit you can read, diff and keep.">
+<link rel="canonical" href="https://pikchr-studio.daniel-mestas.workers.dev/">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161b22" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Pikchr Studio">
+<meta property="og:title" content="Pikchr Studio">
+<meta property="og:description" content="Draw and edit Pikchr diagrams on a canvas. Every drag, resize and connection becomes a clean Pikchr source edit you can read, diff and keep.">
+<meta property="og:url" content="https://pikchr-studio.daniel-mestas.workers.dev/">
+<meta property="og:image" content="https://pikchr-studio.daniel-mestas.workers.dev/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Pikchr Studio: a flowchart on the canvas beside its Pikchr source">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Pikchr Studio">
+<meta name="twitter:description" content="Draw and edit Pikchr diagrams on a canvas. Every drag, resize and connection becomes a clean Pikchr source edit you can read, diff and keep.">
+<meta name="twitter:image" content="https://pikchr-studio.daniel-mestas.workers.dev/og-image.png">
 <link rel="stylesheet" href="style.css?v=20260923c">
 <link rel="stylesheet" href="canvas-layout.css?v=20260923c">
 </head>
 <body class="layout-canvas">
+<noscript><div class="noscript">Pikchr Studio needs JavaScript and WebAssembly to render and edit diagrams. Enable JavaScript and reload the page.</div></noscript>
 <header><h1>Pikchr Studio</h1><button id="choose-example">Examples</button><span>Source, geometry, and placement</span><a href="help.html">How it works</a></header>
 <details class="document-menu"><summary>Document &amp; source</summary><nav class="toolbar" aria-label="Editor actions">
 <button id="new-document">New diagram</button><button id="open-document">Open file</button><input id="file-input" type="file" accept=".pikchr,.txt" hidden>

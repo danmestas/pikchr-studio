@@ -96,7 +96,7 @@ def main(argv):
             results.append((script.name, status))
             print(f"{status:5} {script.name}", flush=True)
             if status == "FAIL":
-                tail = (out + "\n" + err).strip().splitlines()[-25:]
+                tail = (out + "\n" + err).strip().splitlines()[-int(os.environ.get("PIKCHR_STUDIO_TAIL", "25")):]
                 for line in tail:
                     print("      " + line)
     finally:

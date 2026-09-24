@@ -1,12 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {spawnSync} from 'node:child_process';
-import {fileURLToPath} from 'node:url';
+import {compileStudio} from './pikchr-wasm.mjs';
 import {attachPoints,nearestAnchor,contains,hitShape,facingSide,targetAnchor,connectionLabel,connectCandidate} from '../public/connect-drag.js';
 
-const binary=fileURLToPath(new URL('../vendor/pikchr',import.meta.url));
 function studio(source){
-  const result=spawnSync(binary,['--studio','-'],{input:source,encoding:'utf8'});
+  const result=compileStudio(source);
   const scene=JSON.parse(result.stdout);
   assert.equal(scene.error,null,scene.error);
   return scene;
