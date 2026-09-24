@@ -38,16 +38,18 @@ self.onmessage=async(event)=>{
     return reject('Flags must be a bitmask of PLAINTEXT_ERRORS (1) and DARK_MODE (2).');
   if(pending.size>=MAX_PENDING_REQUESTS)return reject('Renderer is busy. Try again after pending renders finish.');
   pending.add(id);
-  let module,pointer=0,result;
+  let module,pointer=0,result,startup=false;
   try{
     const initialized=await ready;
-    if(initialized.error)throw new Error(initialized.error);
+    // A renderer that never loaded is not a problem with the source; flag it
+    // so the app can say so instead of calling the diagram invalid.
+    if(initialized.error){startup=true;throw new Error(initialized.error);}
     module=initialized.module;
     pointer=initialized.render(data.source,cls,flags);
     if(!pointer)throw new Error('Could not allocate renderer result.');
     result=JSON.parse(module.UTF8ToString(pointer));
     if(!result || typeof result!=='object' || Array.isArray(result))throw new Error('Renderer returned an invalid result.');
-  }catch(error){result={error:message(error)};}
+  }catch(error){result=startup?{error:message(error),unavailable:true}:{error:message(error)};}
   finally{
     if(pointer){
       try{module._free(pointer);}catch(error){result={error:message(error)};}

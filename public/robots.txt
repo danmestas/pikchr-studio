@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /embed.html
+
+Sitemap: https://pikchr-studio.example/sitemap.xml

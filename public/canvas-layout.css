@@ -316,3 +316,5 @@ body.layout-canvas .cl-textbar .cl-tb.cl-swatch[data-colour=gray]{background:#8c
 @media (max-width:700px){body.layout-canvas .cl-textbar{flex-wrap:wrap;max-width:calc(100vw - 16px)}}
 /* Selected shapes stay highlighted in the live drag preview. */
 body.layout-canvas #diagram .live-drag .cl-live-selected :is(path,polygon,polyline,circle,ellipse,rect,line):not([stroke=transparent]):not([fill=transparent]){stroke:var(--cl-accent)!important}
+/* About section in the document menu */
+body.layout-canvas .cl-about{margin:4px 0;font-size:12px;color:var(--cl-muted);line-height:1.45}
