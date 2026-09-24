@@ -1,0 +1,19 @@
+# Created through Studio's shape/connector controls during the 2026-09-19 UI audit.
+Shape1: box "MANIFEST r41" fit at (0, 0)
+Shape2: box "S A a17" fit at (0, -0.5)
+Shape3: box "S C c36" fit at (0, -1)
+Shape4: box "LEAF A a17" fit at (-1.8, -2.3)
+Shape5: box "Z final" fit at (-1.8, -2.8)
+Shape6: box "LEAF B b28" fit at (0, -2.3)
+Shape7: box "Z final" fit at (0, -2.8)
+Shape8: box "LEAF C c36" fit at (1.8, -2.3)
+Shape9: box "Z final" fit at (1.8, -2.8)
+Shape10: box "D 2026-09-13" fit at (0, -0.2)
+Shape11: box "S B b28" fit at (0, -0.7)
+Shape12: box "Z final" fit at (0, -1.3)
+Shape13: box "F apple h1" fit at (-1.8, -2.6)
+Shape14: box "F banana h2" fit at (0, -2.6)
+Shape15: box "F cherry h3" fit at (1.8, -2.6)
+Link1: arrow from Shape12.sw to Shape4.n
+Link2: arrow from Shape12.s to Shape6.n
+Link3: arrow from Shape12.se to Shape8.n

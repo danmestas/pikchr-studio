@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pikchr Studio — implementation plan</title>
+<style>
+body{margin:auto;padding:24px;max-width:940px;background:white;color:#222;font:17px/1.6 system-ui,sans-serif}h1{font-size:2rem;line-height:1.2}h2{margin-top:2.4rem;font-size:1.45rem}h3{font-size:1.12rem;margin-bottom:.4rem}p,li{max-width:80ch}li{margin:.45rem 0}a{color:#075fa9}a:focus-visible{outline:3px solid #1674bc;outline-offset:3px}nav{display:flex;gap:16px;flex-wrap:wrap}section{border-top:1px solid #ccc;margin-top:24px;padding-top:8px}.note{color:#555}code{font-size:.9em;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;text-align:left;vertical-align:top;padding:10px}th{background:#f5f5f5}.table{overflow-x:auto}dt{font-weight:650;margin-top:1rem}dd{margin:.25rem 0 1rem}footer{border-top:1px solid #ccc;margin-top:40px;padding-top:16px}@media(max-width:600px){body{padding:16px}h1{font-size:1.65rem}th,td{min-width:135px}}
+</style>
+</head>
+<body>
+<header>
+<nav aria-label="Related pages"><a href="/">Studio</a><a href="ux-parity.html">UX parity research</a></nav>
+<h1>Implementation plan: make editing happen on the canvas</h1>
+<p>20 September 2026 · Proposed work, not completed features</p>
+<p><strong>First release:</strong> put a shape where you want it, type a readable label, connect it, and resize it—without leaving the diagram or losing work. Ship slices 0–4 together as the first complete editing loop. Then improve routing and reuse.</p>
+<p>This is an incremental change to the existing JavaScript modules and native Pikchr renderer. No framework migration, replacement drawing engine, account system, or general-purpose SVG editor.</p>
+</header>
+<nav aria-label="Plan sections"><a href="#contract">Editing contract</a><a href="#sequence">Sequence</a><a href="#s0">Foundation</a><a href="#s1">First release</a><a href="#s5">Following releases</a><a href="#verification">Release gates</a></nav>
+
+<h2 id="contract">The editing contract</h2>
+<ol>
+<li><strong>Pikchr source stays authoritative.</strong> Every supported canvas operation produces a source patch and is validated by the existing WASM renderer. The accepted SVG and object geometry come from that same validated source revision. Never save a drawing that only exists as modified SVG.</li>
+<li><strong>One preview, explicit state.</strong> The canvas shows the complete current draft in queue mode, or the applied document in auto-apply mode. Display “Applied,” “Draft: N changes,” or “Invalid input—showing last valid diagram.” A temporary drag outline is visibly a preview, not a saved result.</li>
+<li><strong>One semantic operation, one transaction.</strong> A text session, resize drag, or connected-node insertion is a single edit. Auto-apply gives it one Undo step. Queue mode gives it one draft step; Apply all remains one committed batch that Undo can reverse.</li>
+<li><strong>No silent approximations.</strong> Unsupported expressions, nested groups, macros, and ambiguous mappings remain inspect-only. Show a reason and an explicit source-edit action. Preserve untouched source, comments, and Unicode byte boundaries.</li>
+<li><strong>Exported geometry has no hidden dependencies.</strong> Store optional sizing preferences and gesture settings in versioned local document metadata. Export dimensions and wrapped label lines in Pikchr itself; a clean renderer must reproduce the result without that metadata. If imported source cannot recover an editing preference, show it as unspecified instead of guessing.</li>
+<li><strong>Selection does not steal focus.</strong> No automatic jump to the source editor. Gesture cancellation, failed validation, and Undo restore a coherent selection and viewport. Touch and keyboard alternatives accompany every new direct manipulation.</li>
+</ol>
+
+<h2 id="sequence">Delivery order and relative effort</h2>
+<p>Sizes compare complexity, not calendar commitments. L means substantial geometry or source-model work. Each slice must pass its acceptance gate before the next depends on it.</p>
+<div class="table"><table><thead><tr><th>Slice</th><th>Outcome</th><th>Size</th><th>Dependencies</th></tr></thead><tbody>
+<tr><td>0</td><td>Reliable transactions, preview state, and gesture ownership</td><td>M</td><td>Current implementation</td></tr>
+<tr><td>1</td><td>Direct text editing with Grow / Wrap / Fixed</td><td>L</td><td>0</td></tr>
+<tr><td>2</td><td>Canvas placement and connected neighbors</td><td>M</td><td>0, 1</td></tr>
+<tr><td>3</td><td>Unified connector editing</td><td>M</td><td>0, 2</td></tr>
+<tr><td>4</td><td>Resize handles and useful guides</td><td>L</td><td>1, 3</td></tr>
+<tr><td>5</td><td>Bounded, optional route suggestions</td><td>L</td><td>3, 4</td></tr>
+<tr><td>6</td><td>Subgraph selection, clipboard, and reusable components</td><td>L</td><td>0–4</td></tr>
+<tr><td>7</td><td>Capability-aware examples, teaching, backup, and export</td><td>M–L</td><td>0; component examples additionally need 6</td></tr>
+<tr><td>8</td><td>Source-model extension for native groups and custom composites</td><td>L; design gate</td><td>Evidence from 0–7</td></tr>
+</tbody></table></div>
+<p class="note">Accessibility, focus behavior, regression tests, and truthful save status are requirements in every slice—not polish deferred until slice 7.</p>
+
+<section id="s0"><h2>0. Stabilize the foundation before adding controls</h2>
+<p><strong>Outcome:</strong> a new gesture cannot break existing shape dragging, endpoint dragging, queueing, or Undo.</p>
+<dl>
+<dt>Engineering</dt><dd>Reuse the existing <code>app.js</code> revision, render-version, draft, Undo/Redo, and persistence paths. Introduce a small shared edit-session boundary only where needed: begin, preview, validate, commit, cancel. Centralize the displayed document state instead of allowing transient status messages to imply a different revision. Keep <code>documents.js</code> persistence and <code>worker.js</code> native validation; do not build a second history system.</dd>
+<dt>Render safety</dt><dd>Coalesce superseded live previews; discard late results by document identity, source revision, and edit-session token. Logical cancellation must prevent stale results from reaching history or the canvas even when a WASM job cannot be interrupted. Keep the last valid scene and current invalid input recoverable. Retain worker timeouts and input limits.</dd>
+<dt>Gesture ownership</dt><dd>Define explicit select, pan, place, connect, text, and resize modes. Handles own their pointer gesture; empty-canvas actions follow the active mode. A second touch cancels an uncommitted object manipulation before pinch navigation takes over. Pointer cancellation, lost capture, Escape, and document switching cancel safely. Suppress accidental SVG text selection only on the interaction surface, not in editable text fields.</dd>
+<dt>Acceptance</dt><dd>Rapid edits, delayed renderer responses, mode switches, and failed renders cannot commit stale changes. Queue mode displays all queued changes; auto-apply commits only validated results. Existing Undo/Redo and draft batch behavior remain intact. “Saved on this browser” appears only after successful storage. Selection never focuses code automatically.</dd>
+</dl>
+</section>
+
+<section id="s1"><h2>1. Edit labels directly; make sizing explicit</h2>
+<p><strong>Outcome:</strong> long text no longer unexpectedly overruns a shape, and editing a label does not require scrolling to an inspector.</p>
+<dl>
+<dt>Interaction</dt><dd>Enter or a selected-object “Edit text” button opens a canvas-anchored editor on desktop and a compact keyboard-safe sheet on phone. Double-click remains optional. Use a multiline input: Enter inserts a line break, Ctrl/Cmd+Enter or a visible Done button commits, Escape or Cancel restores the original. IME composition must not accidentally commit. Keep focus in the editor while preview renders; return to the selected object after completion.</dd>
+<dt>Sizing policy</dt><dd><strong>Grow</strong> uses supported native fit behavior. <strong>Wrap</strong> preserves a chosen width and emits valid multiline Pikchr labels while allowing height to grow. <strong>Fixed</strong> preserves both dimensions and explicitly warns about overflow. Explain that wrapping is materialized into source lines; imported documents do not magically recover an original paragraph or hidden editor policy.</dd>
+<dt>Engineering</dt><dd>Extend <code>properties.js</code> and <code>property-ui.js</code>; put the new editor in a focused module rather than expanding every selection handler. Reuse <code>fitText</code>, <code>changeText</code>, and source patches. Prototype wrapping against native-rendered bounds with a bounded number of measurements; account for usable interior width on cylinders, circles, and diamonds. Never “fix” overflow with CSS over the SVG. Initial wrapping may be restricted to boxes until other shapes have tested interior-bound rules.</dd>
+<dt>Acceptance</dt><dd>“The Node of the Day,” multiline labels, CJK, emoji, and long unbroken words are handled predictably. Grow and supported Wrap cases fit; Fixed warns. Quotes and backslashes are currently rejected by the text encoder: add encoding only after renderer round-trip tests prove it, otherwise retain a clear restriction without changing source. Cancel writes nothing; Done creates one transaction, not one per keystroke.</dd>
+</dl>
+</section>
+
+<section id="s2"><h2>2. Place shapes and add connected neighbors</h2>
+<p><strong>Outcome:</strong> creating a small flow starts on the canvas, not in coordinate forms.</p>
+<dl>
+<dt>Interaction</dt><dd>Choose a shape, then click or tap its position. Show a placement preview and visible Cancel; select the result and offer label editing. Default to one-shot placement. “Keep adding” is an explicit toggle. A selected node offers “Add connected shape” with direction choices usable by touch and keyboard—never a hover-only control.</dd>
+<dt>Engineering</dt><dd>Reuse <code>creation.js</code>, <code>creation-ui.js</code>, naming rules, and shape types. Convert screen coordinates using the current SVG transform, including pan and zoom. Insert a neighbor and its connector as one candidate source change, resolving names and source-order dependencies before validation. Use a deterministic default gap; do not imply this performs whole-diagram layout.</dd>
+<dt>Acceptance</dt><dd>Tool selection plus one canvas tap places a node at every supported zoom. Creating a connected neighbor never needs separate node and edge forms. One Undo removes both. Cancel, a missed tap, or a failed render does not leave half an insertion. Keyboard users can place at viewport center and nudge or specify coordinates.</dd>
+</dl>
+</section>
+
+<section id="s3"><h2>3. Make connector editing one coherent mode</h2>
+<p><strong>Outcome:</strong> users can create connections, reattach either end, and change arrowheads without hunting among panels.</p>
+<dl>
+<dt>Interaction</dt><dd>Connect mode supports source-then-target taps and optional handle dragging. Enlarge hit areas without enlarging the visible diagram. Show the target object, anchor name, and attachment cue during targeting. A selected connector exposes From, To, start/end termination, Reverse, label, and route actions nearby. A missed drop restores the original connection.</dd>
+<dt>Engineering</dt><dd>Unify existing <code>arrow-ui.js</code>, <code>route-ui.js</code>, <code>endpointCandidates</code> in <code>edits.js</code>, and <code>changeTermination</code> in <code>properties.js</code>; endpoint editing and termination support already exist. Start with fixed native anchors. Defer automatic-side policy until its source behavior is explicit. Reverse must deliberately exchange endpoints and route order while preserving labels and intended arrowhead semantics.</dd>
+<dt>Acceptance</dt><dd>Both endpoints can be reattached on a phone without precise dragging. None/start/end/both terminations round-trip through native Pikchr. Target validity is conveyed by text or shape cues as well as color. Connector mode, shape dragging, pan, and resize never compete for the same gesture. One finished reattachment is one transaction.</dd>
+</dl>
+</section>
+
+<section id="s4"><h2>4. Resize with handles, guides, and predictable text</h2>
+<p><strong>Outcome:</strong> changing shape dimensions is visual and does not silently damage labels or connections.</p>
+<dl>
+<dt>Interaction</dt><dd>Show handles only for safely resizable shapes; retain numeric controls as a precise alternative. Add alignment and equal-spacing guides with a visible snap toggle. Touch targets should be at least 44 CSS pixels where practical. Keep the opposite edge fixed for edge drags; offer explicit aspect-ratio locking. Circle resizing remains uniform.</dd>
+<dt>Engineering</dt><dd>Reuse numeric property patches and overlay transforms from <code>app.js</code>, <code>properties.js</code>, and <code>property-ui.js</code>. Add geometry helpers rather than altering native SVG as the final result. Resolve sizing-policy conflicts visibly: an explicit width drag on a Grow box proposes Wrap; an explicit height constraint proposes Fixed. Supported anchor references are re-evaluated by the renderer. Do not silently rewrite unrelated coordinates to simulate attachments.</dd>
+<dt>Acceptance</dt><dd>At different zoom levels, handles track the pointer, minimum dimensions remain valid, and snap can be disabled on phone. Text follows the chosen policy; connectors attached by anchors stay attached. The validated SVG matches the accepted preview. Unsupported dimension expressions remain read-only with a reason. One drag is one Undo step.</dd>
+</dl>
+<p><strong>First-release gate:</strong> complete slices 0–4, then run the full editing journey below before adding richer routing or grouping.</p>
+</section>
+
+<section id="s5"><h2>5. Suggest better routes without taking over the drawing</h2>
+<p><strong>Outcome:</strong> “Tidy route” offers a cleaner, inspectable alternative for a selected orthogonal connector.</p>
+<dl>
+<dt>Engineering</dt><dd>Add a separate pure routing module called from <code>route-ui.js</code>. Start with finite rectangular obstacle bounds, clearance, fixed endpoints, and deterministic tie-breaking. Generate a small candidate set using a bounded search grid; rank by collisions, endpoint approach, bend count, then length. Treat explicit retained bends as constraints. Present the candidate before accepting it into the shared transaction path.</dd>
+<dt>Acceptance</dt><dd>Golden fixtures cover close shapes, blocked exits, coincident ports, narrow corridors, pinned bends, and no-solution cases. Search has a fixed node/time budget and does not freeze editing. Failure keeps the existing route. Repeated input produces the same source. Do not promise crossing-free graphs or automatic routing for arbitrary imported expressions.</dd>
+</dl>
+</section>
+
+<section id="s6"><h2>6. Select and reuse a whole section</h2>
+<p><strong>Outcome:</strong> a useful three-node fragment can be copied, moved, or saved for reuse as a unit.</p>
+<dl>
+<dt>Interaction and engineering</dt><dd>Extend existing multiselect and <code>object-actions.js</code> with explicit marquee mode plus a touch-friendly object-list alternative. Add copy/paste for the supported subgraph subset, fresh identifiers, a source-order dependency check, and a preview of omitted external edges. Begin with an app-local clipboard; expose system clipboard only with graceful permission failure. Build reusable components on the same validated insertion operation, not another serializer.</dd>
+<dt>Acceptance</dt><dd>Internal edges and supported labels survive copying; names never collide. External dependencies are reported before insertion, never silently detached. One paste is one transaction. Unsupported partial groups or ambiguous references fail without mutation. Selection collections are described as editor selections—not native Pikchr groups.</dd>
+</dl>
+</section>
+
+<section id="s7"><h2>7. Make examples, source learning, and recovery trustworthy</h2>
+<p><strong>Outcome:</strong> users know what they can edit, understand a suggested change, and can recover their work outside this browser.</p>
+<dl>
+<dt>Examples and teaching</dt><dd>Keep the current <code>example-picker.js</code> native previews and safe opening flow. Add purpose, complexity, and “fully editable / partially editable / source only” labels. Add small learning examples alongside showcases. Build concise explanations from edit metadata and offer an expandable source diff without focusing the code pane. State must already be truthful from slice 0; this adds explanation, not a second preview.</dd>
+<dt>Backup and export</dt><dd>Extend <code>documents.js</code> with a versioned downloadable workspace backup containing documents, draft/history, and explicit editor metadata. Validate restores before creating copies; do not overwrite current documents implicitly. Keep source export distinct from backup. Add selected-region SVG and PNG export using native SVG with bounded raster dimensions; strip editor overlays, preserve padding, and report font or export failures.</dd>
+<dt>Accessibility and acceptance</dt><dd>All new actions are keyboard reachable and have stable accessible names, visible focus, and tap alternatives. Announce committed changes and errors without narrating every pointer movement. Verify object-list navigation and keyboard-only editing. Example previews do not mutate the current document. Storage quota failures remain visible. Backup/restore round-trips drafts and history; exported source re-renders without editor-only geometry.</dd>
+</dl>
+</section>
+
+<section id="s8"><h2>8. Expand the source model before promising native group editing</h2>
+<p><strong>Outcome:</strong> a separate design decision defines which richer Pikchr constructs can be edited safely.</p>
+<p>Investigate stable source-to-object identities, nested scopes, dependency-aware patching, and explicit anchors for triangle/trapezoid composites. Prototype one native group and one composite with source round-trip tests before adding a library. Moving statements to mimic layers can break prior-object references; do not treat source order as an unrestricted z-order list.</p>
+<p><strong>Gate:</strong> choose a supported syntax boundary and migration strategy based on fixtures. If reliable mappings need renderer metadata changes, make those changes narrowly and test existing source compatibility. Keep unsupported constructs inspect-only. This slice is not a commitment to a general bidirectional Pikchr parser.</p>
+<p>Defer collaboration, accounts, AI generation, broad icon catalogs, and general freehand drawing. They do not solve the current editing-loop problems.</p>
+</section>
+
+<h2 id="verification">Verification and release gates</h2>
+<p><strong>Verified baseline, 20 September 2026:</strong> <code>npm test</code> passes 79 tests, with zero failures. That is the Node/native test baseline, not evidence that browser interaction scripts or physical-phone tests passed. <code>npm run build</code> invokes the existing build script; run it when renderer/build assets change.</p>
+<ol>
+<li><strong>Pure source tests:</strong> extend existing creation, edits, properties, documents, navigation, worker, and example-picker tests. Add transaction, wrapping, resize, and routing fixtures as their slices land. Assert unchanged source outside intended patches, correct UTF-8 offsets, valid native output, and atomic rejection of unsupported inputs.</li>
+<li><strong>Browser regression journeys:</strong> reuse the existing <code>drag-interior-browser.py</code>, <code>queue-browser.py</code>, <code>properties-browser.py</code>, <code>fit-browser.py</code>, <code>creation-browser.py</code>, <code>polish-ui-browser.py</code>, and <code>workflow-browser.py</code> where applicable. Inspect each script’s setup before execution; they are not claimed to be one automated test suite. Add interaction assertions for focus, gesture cancellation, and state synchronization.</li>
+<li><strong>Adversarial corpus:</strong> exercise Unicode, escaped text, unbroken words, duplicate names, relative references, groups/macros, imported source, empty diagrams, source-size limits, renderer timeout, delayed responses, storage failure, and reload with a pending draft. Include simple pipeline, long-label decision flow, and detailed Gitflow.</li>
+<li><strong>Real-device acceptance:</strong> iOS Safari and Android Chrome, portrait and landscape, with the on-screen keyboard visible. Test drag versus pan, pinch, both endpoints, visible action reachability, focus restoration, and Undo. Desktop viewport emulation supplements but does not replace this gate. Physical-phone acceptance remains unverified; user or device access may be required to close it.</li>
+</ol>
+<h3>The release journey</h3>
+<p>Open a blank document → place a box → type a long label → wrap it → create a connected neighbor → change both terminations → reattach each endpoint → resize → pan and zoom → Undo and Redo → repeat in queue mode → apply the batch → reload → export and re-render. Later releases append route cleanup, subgraph paste, and backup restoration.</p>
+<p><strong>Pass criteria:</strong> no lost source, stale commits, unexpected code focus, accidental text selection, or diagram/source mismatch; one transaction per completed operation; clear cancellation and error recovery. Record task time, panel changes, wrong actions, and accidental pans before and after. These are proposed acceptance criteria, not invented competitor benchmarks.</p>
+<footer><p><strong>Next implementation action:</strong> start slice 0, then deliver slices 1–4 as the first usable release. The order does not require another approval for every slice once implementation is authorized. Stop for a genuine source-destructive decision, a material scope change, or required device access—not ordinary engineering choices. This turn delivers the plan only; no app behavior changed.</p><p><a href="ux-parity.html">Research and source references</a> · <a href="/">Back to Studio</a></p></footer>
+</body>
+</html>

@@ -1,0 +1,21 @@
+# Pikchr's own sources are not redistributed here: vendor/build.sh copies them
+# from an upstream checkout (PIKCHR_SRC) into vendor/build/.
+vendor/build/
+vendor/pikchr.y
+vendor/pikchr.c
+vendor/pikchr.h
+vendor/pikchr.h.in
+vendor/lemon.c
+vendor/lempar.c
+vendor/VERSION.h
+vendor/lemon
+vendor/pikchr
+vendor/pikchr.out
+*.dSYM/
+__pycache__/
+node_modules/
+.wrangler/
+.agent-config/
+.DS_Store
+# Kept on purpose: public/pikchr.js, public/pikchr.wasm (the prebuilt bundle),
+# vendor/studio.patch, vendor/studio.h, vendor/MANIFEST.json

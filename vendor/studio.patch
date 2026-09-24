@@ -1,0 +1,548 @@
+--- a/pikchr.y
++++ b/pikchr.y
+@@ -260,6 +260,9 @@
+ /* A single token in the parser input stream
+ */
+ struct PToken {
++#ifdef PIKCHR_STUDIO
++  unsigned char studioMacro; /* Token originated in macro expansion */
++#endif
+   const char *z;             /* Pointer to the token text */
+   unsigned int n;            /* Length of the token in bytes */
+   short int eCode;           /* Auxiliary code */
+@@ -312,6 +315,17 @@
+ 
+ /* A single graphics object */
+ struct PObj {
++#ifdef PIKCHR_STUDIO
++  int studioId;              /* Render-local identifier */
++  int studioMacro;           /* Object came from a macro expansion */
++  const char *studioStart;   /* First byte of the defining statement */
++  const char *studioLabel;   /* First STRING literal token, or NULL */
++  unsigned studioLabelLen;   /* Length of that literal including quotes */
++  const char *studioPlace;   /* Start of the last at/with placement clause */
++  const char *studioPlaceEnd;/* Lookahead position after that clause */
++  PObj **aStudioDep;         /* Objects referenced by name or ordinal */
++  int nStudioDep;
++#endif
+   const PClass *type;      /* Object type or class */
+   PToken errTok;           /* Reference token for error messages */
+   PPoint ptAt;             /* Reference point for the object */
+@@ -365,6 +379,13 @@
+ ** object to pass around context to all of its subroutines.
+ */
+ struct Pik {
++#ifdef PIKCHR_STUDIO
++  int studio;                /* Emit studio scene metadata */
++  int studioNextId;
++  char *studioScene;
++  PObj *studioDepTarget;     /* Object whose statement is being parsed */
++  const char *studioTok;     /* Start of the token most recently fed to the parser */
++#endif
+   unsigned nErr;           /* Number of errors seen */
+   unsigned nToken;         /* Number of tokens parsed */
+   PToken sIn;              /* Input Pikchr-language text */
+@@ -478,6 +499,8 @@
+ static short int pik_nth_value(Pik*,PToken*);
+ static PObj *pik_find_nth(Pik*,PObj*,PToken*);
+ static PObj *pik_find_byname(Pik*,PObj*,PToken*);
++static PObj *studio_dep(Pik*,PObj*);
++static void studio_place(Pik*,PToken*);
+ static PPoint pik_place_of_elem(Pik*,PObj*,PToken*);
+ static int pik_bbox_isempty(PBox*);
+ static int pik_bbox_contains_point(PBox*,PPoint*);
+@@ -656,8 +679,9 @@
+                                                 {pik_move_hdg(p,&D,&H,A,0,&E);}
+ attribute ::= GO(E) optrelexpr(D) EDGEPT(C).    {pik_move_hdg(p,&D,0,0,&C,&E);}
+ attribute ::= boolproperty.
+-attribute ::= AT(A) position(P).                    { pik_set_at(p,0,&P,&A); }
+-attribute ::= WITH withclause.
++attribute ::= AT(A) position(P).                    { pik_set_at(p,0,&P,&A);
++                                                      studio_place(p,&A); }
++attribute ::= WITH(W) withclause.                   { studio_place(p,&W); }
+ attribute ::= SAME(E).                          {pik_same(p,0,&E);}
+ attribute ::= SAME(E) AS object(X).             {pik_same(p,X,&E);}
+ attribute ::= STRING(T) textposition(P).        {pik_add_txt(p,&T,P);}
+@@ -755,9 +779,9 @@
+ edge(A) ::= RIGHT(A).
+ edge(A) ::= LEFT(A).
+ 
+-object(A) ::= objectname(A).
+-object(A) ::= nth(N).                     {A = pik_find_nth(p,0,&N);}
+-object(A) ::= nth(N) OF|IN object(B).     {A = pik_find_nth(p,B,&N);}
++object(A) ::= objectname(B).              {A = studio_dep(p,B);}
++object(A) ::= nth(N).                     {A = studio_dep(p,pik_find_nth(p,0,&N));}
++object(A) ::= nth(N) OF|IN object(B).     {A = studio_dep(p,pik_find_nth(p,B,&N));}
+ 
+ objectname(A) ::= THIS.                   {A = p->cur;}
+ objectname(A) ::= PLACENAME(N).           {A = pik_find_byname(p,0,&N);}
+@@ -2739,6 +2763,9 @@
+   free(pObj->zName);
+   pik_elist_free(p, pObj->pSublist);
+   free(pObj->aPath);
++#ifdef PIKCHR_STUDIO
++  free(pObj->aStudioDep);
++#endif
+   free(pObj);
+ }
+ 
+@@ -2938,6 +2965,13 @@
+     return 0;
+   }
+   memset(pNew, 0, sizeof(*pNew));
++#ifdef PIKCHR_STUDIO
++  pNew->studioId = ++p->studioNextId;
++  pNew->studioMacro = pId ? pId->studioMacro : (pStr ? pStr->studioMacro : p->nCtx != 0);
++  pNew->studioStart = pId ? pId->z : (pStr ? pStr->z : 0);
++  if( pStr ){ pNew->studioLabel = pStr->z; pNew->studioLabelLen = pStr->n; }
++  p->studioDepTarget = pNew;
++#endif
+   p->cur = pNew;
+   p->nTPath = 1;
+   p->thenFlag = 0;
+@@ -3543,6 +3577,9 @@
+   pT = &pObj->aTxt[pObj->nTxt++];
+   *pT = *pTxt;
+   pT->eCode = (short)iPos;
++#ifdef PIKCHR_STUDIO
++  if( pObj->studioLabel==0 ){ pObj->studioLabel = pTxt->z; pObj->studioLabelLen = pTxt->n; }
++#endif
+ }
+ 
+ /* Merge "text-position" flags
+@@ -4222,6 +4259,9 @@
+ static void pik_elem_setname(Pik *p, PObj *pObj, PToken *pName){
+   if( pObj==0 ) return;
+   if( pName==0 ) return;
++#ifdef PIKCHR_STUDIO
++  pObj->studioStart = pName->z;
++#endif
+   free(pObj->zName);
+   pObj->zName = malloc(pName->n+1);
+   if( pObj->zName==0 ){
+@@ -4286,6 +4326,9 @@
+   PPoint ofst;
+   PNum dx, dy;
+ 
++#ifdef PIKCHR_STUDIO
++  p->studioDepTarget = 0;
++#endif
+   if( p->nErr ) return;
+ 
+   /* Position block objects */
+@@ -4484,6 +4527,13 @@
+         continue;
+       }
+       if( mDebug & 1 ) pik_elem_render(p, pObj);
++#ifdef PIKCHR_STUDIO
++      if( p->studio ){
++        char zId[80];
++        snprintf(zId,sizeof(zId),"<g data-pikchr-id=\"o%d\">",pObj->studioId);
++        pik_append(p,zId,-1);
++      }
++#endif
+       xRender = pObj->type->xRender;
+       if( xRender ){
+         xRender(p, pObj);
+@@ -4491,6 +4541,9 @@
+       if( pObj->pSublist ){
+         pik_elist_render(p, pObj->pSublist);
+       }
++#ifdef PIKCHR_STUDIO
++      if( p->studio ) pik_append(p,"</g>",-1);
++#endif
+     }
+   }while( bMoreToDo );
+ 
+@@ -4567,6 +4620,223 @@
+ /* Render a list of objects.  Write the SVG into p->zOut.
+ ** Delete the input object_list before returnning.
+ */
++static int pik_token_length(PToken*, int);
++
++/* Studio metadata is opt-in (compile with -DPIKCHR_STUDIO). Offsets refer to
++** UTF-8 bytes in the input. IDs are render-local; consumers must invalidate
++** selections on source edits. Geometry is in Pikchr inches, y increasing up.
++*/
++#ifdef PIKCHR_STUDIO
++/* Record that the statement currently being parsed references pRef. */
++static PObj *studio_dep(Pik *p, PObj *pRef){
++  PObj *pCur = p->studioDepTarget;
++  int i;
++  if( pRef==0 || pCur==0 || pRef==pCur ) return pRef;
++  for(i=0; i<pCur->nStudioDep; i++){
++    if( pCur->aStudioDep[i]==pRef ) return pRef;
++  }
++  if( (pCur->nStudioDep & (pCur->nStudioDep-1))==0 ){
++    int nNew = pCur->nStudioDep ? pCur->nStudioDep*2 : 4;
++    PObj **aNew = realloc(pCur->aStudioDep, nNew*sizeof(PObj*));
++    if( aNew==0 ){ pik_error(p,0,0); return pRef; }
++    pCur->aStudioDep = aNew;
++  }
++  pCur->aStudioDep[pCur->nStudioDep++] = pRef;
++  return pRef;
++}
++/* Record the placement clause that begins at pTok. The clause ends where the
++** parser's lookahead token starts; trailing whitespace and comments are
++** trimmed when the scene is emitted. */
++static void studio_place(Pik *p, PToken *pTok){
++  PObj *pCur = p->studioDepTarget;
++  if( pCur==0 || pTok==0 ) return;
++  pCur->studioPlace = pTok->z;
++  pCur->studioPlaceEnd = p->studioTok;
++}
++static int studio_in_source(Pik *p, const char *z){
++  return z!=0 && z>=p->sIn.z && z<=p->sIn.z+p->sIn.n;
++}
++/* Byte offset of the end of the last non-whitespace, non-comment token in
++** [zStart, zEnd). Returns the start offset when nothing is found. */
++static int studio_trim_end(Pik *p, const char *zStart, const char *zEnd){
++  const char *z = zStart;
++  const char *zLast = zStart;
++  if( zEnd>p->sIn.z+p->sIn.n ) zEnd = p->sIn.z+p->sIn.n;
++  while( z<zEnd ){
++    PToken t; int len;
++    memset(&t,0,sizeof(t)); t.z = z;
++    len = pik_token_length(&t,1);
++    if( len<=0 ) break;
++    if( z+len>zEnd ){ if( t.eType!=T_WHITESPACE ) zLast = zEnd; break; }
++    if( t.eType!=T_WHITESPACE ) zLast = z+len;
++    z += len;
++  }
++  return (int)(zLast - p->sIn.z);
++}
++static int studio_utf8_len(const unsigned char *z){
++  unsigned char c = z[0];
++  int n, i;
++  if( c<0x80 ) return 1;
++  if( c>=0xC2 && c<=0xDF ) n = 2;
++  else if( c>=0xE0 && c<=0xEF ) n = 3;
++  else if( c>=0xF0 && c<=0xF4 ) n = 4;
++  else return 0;
++  for(i=1; i<n; i++){ if( (z[i]&0xC0)!=0x80 ) return 0; }
++  if( n==3 ){
++    if( c==0xE0 && z[1]<0xA0 ) return 0;            /* overlong */
++    if( c==0xED && z[1]>=0xA0 ) return 0;           /* surrogate */
++  }else if( n==4 ){
++    if( c==0xF0 && z[1]<0x90 ) return 0;            /* overlong */
++    if( c==0xF4 && z[1]>=0x90 ) return 0;           /* > U+10FFFF */
++  }
++  return n;
++}
++/* Append s as a JSON string. Invalid UTF-8 bytes become U+FFFD so the
++** result is always valid JSON. */
++static void studio_string(Pik *j, const char *s){
++  const unsigned char *z = (const unsigned char*)(s ? s : "");
++  pik_append(j,"\"",1);
++  while(*z){
++    char b[8];
++    int n;
++    if(*z=='"' || *z=='\\'){
++      b[0]='\\'; b[1]=*z; pik_append(j,b,2); z++;
++    }else if(*z<32){
++      snprintf(b,sizeof(b),"\\u%04x",*z); pik_append(j,b,-1); z++;
++    }else if( (n = studio_utf8_len(z))>0 ){
++      pik_append(j,(const char*)z,n); z += n;
++    }else{
++      pik_append(j,"\xEF\xBF\xBD",3); z++;
++    }
++  }
++  pik_append(j,"\"",1);
++}
++static void studio_number(Pik *j, const char *prefix, double value){
++  char b[100];
++  snprintf(b,sizeof(b),"%s%.12g",prefix,isfinite(value)?value:0.0);
++  pik_append(j,b,-1);
++}
++static void studio_point(Pik *j, const char *prefix, double x, double y){
++  pik_append(j,prefix,-1);
++  studio_number(j,"{\"x\":",x); studio_number(j,",\"y\":",y);
++  pik_append(j,"}",1);
++}
++static void studio_span(Pik *j, const char *prefix, int a, int b){
++  pik_append(j,prefix,-1);
++  if( a<0 || b<a ){ pik_append(j,"null",4); return; }
++  studio_number(j,"{\"start\":",a); studio_number(j,",\"end\":",b);
++  pik_append(j,"}",1);
++}
++static void studio_anchor(Pik *p,Pik *j,PObj *o,const char *prefix,int edge){
++  PToken t; PPoint pt;
++  memset(&t,0,sizeof(t)); t.eType=T_EDGEPT;t.eEdge=edge;
++  pt=pik_place_of_elem(p,o,&t);
++  studio_point(j,prefix,pt.x,pt.y);
++}
++static void studio_objects(Pik *p, Pik *j, PList *list, int depth, int *count){
++  int i;
++  for(i=0;i<list->n;i++){
++    PObj *o=list->a[i];
++    const char *start=o->studioStart;
++    int a=-1,b=-1,editable=0;
++    int labelA=-1,labelB=-1,placeA=-1,placeB=-1;
++    char id[32];
++    if(start && start>=p->sIn.z && start<p->sIn.z+p->sIn.n){
++      PToken t;
++      int nesting=0;
++      const char *zLast;
++      a=(int)(start-p->sIn.z); b=a; zLast=start;
++      while((unsigned)b<p->sIn.n){
++        int len;
++        memset(&t,0,sizeof(t));t.z=p->sIn.z+b;
++        len=pik_token_length(&t,1);
++        if(len<=0 || (t.eType==T_EOL && nesting==0)
++           || (t.eType==T_RB && nesting==0)) break;
++        if(t.eType==T_LB)nesting++;
++        if(t.eType==T_RB)nesting--;
++        b+=len;
++        if(t.eType!=T_WHITESPACE) zLast=p->sIn.z+b;
++      }
++      b=(int)(zLast-p->sIn.z);
++      if( !o->studioMacro && studio_in_source(p,o->studioLabel)
++       && o->studioLabel>=start && o->studioLabel+o->studioLabelLen<=p->sIn.z+b ){
++        labelA=(int)(o->studioLabel-p->sIn.z); labelB=labelA+(int)o->studioLabelLen;
++      }
++      if( !o->studioMacro && studio_in_source(p,o->studioPlace)
++       && studio_in_source(p,o->studioPlaceEnd)
++       && o->studioPlace>=start && o->studioPlace<p->sIn.z+b ){
++        const char *zEnd=o->studioPlaceEnd;
++        if( zEnd>p->sIn.z+b ) zEnd=p->sIn.z+b;
++        placeA=(int)(o->studioPlace-p->sIn.z);
++        placeB=studio_trim_end(p,o->studioPlace,zEnd);
++        if( placeB<=placeA ){ placeA=placeB=-1; }
++      }
++    }
++    editable=depth==0 && !o->studioMacro && o->zName && a>=0 && b>a
++      && (!strcmp(o->type->zName,"box") || !strcmp(o->type->zName,"cylinder")
++       || !strcmp(o->type->zName,"circle") || !strcmp(o->type->zName,"ellipse")
++       || !strcmp(o->type->zName,"oval") || !strcmp(o->type->zName,"diamond")
++       || !strcmp(o->type->zName,"text"));
++    if((*count)++) pik_append(j,",",1);
++    snprintf(id,sizeof(id),"o%d",o->studioId);
++    pik_append(j,"{\"id\":",-1);studio_string(j,id);
++    pik_append(j,",\"name\":",-1);studio_string(j,o->zName);
++    pik_append(j,",\"kind\":",-1);studio_string(j,o->type->zName);
++    studio_number(j,",\"span\":{\"start\":",a);studio_number(j,",\"end\":",b);
++    pik_append(j,"}",-1);
++    studio_span(j,",\"spans\":{\"statement\":",a,b);
++    studio_span(j,",\"label\":",labelA,labelB);
++    studio_span(j,",\"placement\":",placeA,placeB);
++    pik_append(j,"}",-1);
++    studio_point(j,",\"center\":",o->ptAt.x,o->ptAt.y);
++    studio_number(j,",\"bbox\":{\"x\":",o->bbox.sw.x);
++    studio_number(j,",\"y\":",o->bbox.sw.y);
++    studio_number(j,",\"width\":",o->bbox.ne.x-o->bbox.sw.x);
++    studio_number(j,",\"height\":",o->bbox.ne.y-o->bbox.sw.y);
++    pik_append(j,"},\"anchors\":{",-1);
++    studio_point(j,"\"c\":",o->ptAt.x,o->ptAt.y);
++    studio_anchor(p,j,o,",\"n\":",CP_N);
++    studio_anchor(p,j,o,",\"s\":",CP_S);
++    studio_anchor(p,j,o,",\"e\":",CP_E);
++    studio_anchor(p,j,o,",\"w\":",CP_W);
++    studio_anchor(p,j,o,",\"ne\":",CP_NE);
++    studio_anchor(p,j,o,",\"nw\":",CP_NW);
++    studio_anchor(p,j,o,",\"se\":",CP_SE);
++    studio_anchor(p,j,o,",\"sw\":",CP_SW);
++    pik_append(j,"},\"editable\":",-1);pik_append(j,editable?"true":"false",-1);
++    pik_append(j,",\"reason\":",-1);
++    studio_string(j,editable?"":o->studioMacro?"Macro-expanded object":depth?"Nested object":"Only supported named native shapes have movement suggestions");
++    pik_append(j,",\"path\":[",-1);
++    {
++      int vertex;
++      for(vertex=0;vertex<o->nPath;vertex++){
++        studio_point(j,vertex?",":"",o->aPath[vertex].x,o->aPath[vertex].y);
++      }
++    }
++    pik_append(j,"],\"dependenciesComplete\":true,\"dependencies\":[",-1);
++    {
++      int k, n=0;
++      PObj *aExtra[2]; int nExtra=0;
++      if( o->pFrom ) aExtra[nExtra++]=o->pFrom;
++      if( o->pTo && o->pTo!=o->pFrom ) aExtra[nExtra++]=o->pTo;
++      for(k=0;k<o->nStudioDep+nExtra;k++){
++        PObj *d = k<o->nStudioDep ? o->aStudioDep[k] : aExtra[k-o->nStudioDep];
++        int m, dup=0;
++        if( d==o ) continue;
++        for(m=0;m<o->nStudioDep && m<k;m++){ if(o->aStudioDep[m]==d){dup=1;break;} }
++        if( dup ) continue;
++        if( n++ ) pik_append(j,",",1);
++        snprintf(id,sizeof(id),"o%d",d->studioId);studio_string(j,id);
++      }
++    }
++    pik_append(j,"]}",-1);
++    if(o->pSublist)studio_objects(p,j,o->pSublist,depth+1,count);
++  }
++}
++#else
++static PObj *studio_dep(Pik *p, PObj *pRef){ (void)p; return pRef; }
++static void studio_place(Pik *p, PToken *pTok){ (void)p; (void)pTok; }
++#endif /* PIKCHR_STUDIO */
+ static void pik_render(Pik *p, PList *pList){
+   if( pList==0 ) return;
+   if( p->nErr==0 ){
+@@ -4640,6 +4910,14 @@
+     pik_append(p, " data-pikchr-date=\"" MANIFEST_ISODATE "\">\n", -1);
+     pik_elist_render(p, pList);
+     pik_append(p,"</svg>\n", -1);
++#ifdef PIKCHR_STUDIO
++    if(p->studio){
++      Pik j; int count=0; memset(&j,0,sizeof(j));
++      pik_append(&j,"[",1);studio_objects(p,&j,pList,0,&count);pik_append(&j,"]",1);
++      if(j.zOut)j.zOut[j.nOut]=0;
++      p->studioScene=j.zOut;
++    }
++#endif
+   }else{
+     p->wSVG = -1;
+     p->hSVG = -1;
+@@ -5250,6 +5528,9 @@
+   PToken token;
+   PMacro *pMac;
+   for(i=0; i<pIn->n && pIn->z[i] && p->nErr==0; i+=sz){
++#ifdef PIKCHR_STUDIO
++    token.studioMacro = p->nCtx != 0;
++#endif
+     token.eCode = 0;
+     token.eEdge = 0;
+     token.z = pIn->z + i;
+@@ -5319,6 +5600,9 @@
+         token.n = sizeof(MANIFEST_ISODATE)+1;
+         token.eType = T_STRING;
+       }
++#ifdef PIKCHR_STUDIO
++      if( p->nCtx==0 ) p->studioTok = token.z;
++#endif
+       pik_parser(pParser, token.eType, token);
+     }
+   }
+@@ -5350,17 +5634,23 @@
+ ** The returned string is contained in memory obtained from malloc()
+ ** and should be released by the caller.
+ */
+-char *pikchr(
++static char *pikchr_internal(
+   const char *zText,     /* Input PIKCHR source text.  zero-terminated */
+   const char *zClass,    /* Add class="%s" to <svg> markup */
+   unsigned int mFlags,   /* Flags used to influence rendering behavior */
+   int *pnWidth,          /* Write width of <svg> here, if not NULL */
+-  int *pnHeight          /* Write height here, if not NULL */
++  int *pnHeight,         /* Write height here, if not NULL */
++  int studio
+ ){
+   Pik s;
+   yyParser sParse;
+ 
+   memset(&s, 0, sizeof(s));
++#ifdef PIKCHR_STUDIO
++  s.studio = studio;
++#else
++  (void)studio;
++#endif
+   s.sIn.z = zText;
+   s.sIn.n = (unsigned int)strlen(zText);
+   s.eDir = DIR_RIGHT;
+@@ -5376,6 +5666,9 @@
+     memset(&token,0,sizeof(token));
+     token.z = zText + (s.sIn.n>0 ? s.sIn.n-1 : 0);
+     token.n = 1;
++#ifdef PIKCHR_STUDIO
++    s.studioTok = zText + s.sIn.n;
++#endif
+     pik_parser(&sParse, 0, token);
+   }
+   pik_parserFinalize(&sParse);
+@@ -5397,10 +5690,40 @@
+   if( s.zOut ){
+     s.zOut[s.nOut] = 0;
+     s.zOut = realloc(s.zOut, s.nOut+1);
++  }
++#ifdef PIKCHR_STUDIO
++  if(studio){
++    Pik j; memset(&j,0,sizeof(j));
++    pik_append(&j,"{\"version\":2,\"svg\":",-1);
++    studio_string(&j,s.nErr?"":s.zOut);
++    pik_append(&j,",\"error\":",-1);
++    if(s.nErr)studio_string(&j,s.zOut);else pik_append(&j,"null",-1);
++    pik_append(&j,",\"objects\":",-1);
++    pik_append(&j,s.nErr || !s.studioScene?"[]":s.studioScene,-1);
++    studio_number(&j,",\"transform\":{\"a\":",s.rScale);
++    pik_append(&j,",\"b\":0,\"c\":0",-1);
++    studio_number(&j,",\"d\":",-s.rScale);
++    studio_number(&j,",\"e\":",-s.rScale*s.bbox.sw.x);
++    studio_number(&j,",\"f\":",s.rScale*s.bbox.ne.y);
++    pik_append(&j,"}}",-1);
++    if(j.zOut)j.zOut[j.nOut]=0;
++    free(s.zOut);free(s.studioScene);return j.zOut;
+   }
++#endif
+   return s.zOut;
+ }
+ 
++char *pikchr(const char *source,const char *cls,unsigned flags,int *w,int *h){
++  return pikchr_internal(source,cls,flags,w,h,0);
++}
++#ifdef PIKCHR_STUDIO
++/* Render source and return a malloc()ed JSON scene description. zClass and
++** mFlags behave exactly as for pikchr(). The caller must free() the result. */
++char *pikchr_studio(const char *source,const char *cls,unsigned flags){
++  return pikchr_internal(source,cls,flags,0,0,1);
++}
++#endif
++
+ #if defined(PIKCHR_FUZZ)
+ #include <stdint.h>
+ int LLVMFuzzerTestOneInput(const uint8_t *aData, size_t nByte){
+@@ -5429,6 +5752,9 @@
+     "   --dark-mode      Generate \"dark mode\" output\n"
+     "   --dont-stop      Process all files even if earlier files have errors\n"
+     "   --svg-only       Emit raw SVG without the HTML wrapper\n"
++#ifdef PIKCHR_STUDIO
++    "   --studio         Emit the studio JSON scene (implies --svg-only)\n"
++#endif
+   );
+   exit(1);
+ }
+@@ -5507,6 +5833,9 @@
+   int bDontStop = 0;           /* Continue in spite of errors */
+   int exitCode = 0;            /* What to return */
+   int mFlags = 0;              /* mFlags argument to pikchr() */
++#ifdef PIKCHR_STUDIO
++  int bStudio = 0;             /* Emit the studio JSON scene instead of SVG */
++#endif
+   const char *zStyle = "";     /* Extra styling */
+   const char *zHtmlHdr = 
+     "<!DOCTYPE html>\n"
+@@ -5560,6 +5889,13 @@
+         printf("pikchr %s\n", pikchr_version());
+         return 0;
+       }else
++#ifdef PIKCHR_STUDIO
++      if( strcmp(z,"studio")==0 ){
++        bStudio = 1;
++        bSvgOnly = 1;
++        mFlags |= PIKCHR_PLAINTEXT_ERRORS;
++      }else
++#endif
+       {
+         fprintf(stderr,"unknown option: \"%s\"\n", argv[i]);
+         usage(argv[0]);
+@@ -5568,6 +5904,21 @@
+     }
+     zIn = readFile(argv[i]);
+     if( zIn==0 ) continue;
++#ifdef PIKCHR_STUDIO
++    if( bStudio ){
++      zOut = pikchr_studio(zIn, "pikchr", mFlags);
++      if( zOut==0 ){
++        fprintf(stderr, "pikchr_studio() returns NULL.  Out of memory?\n");
++        if( !bDontStop ) exit(1);
++      }else{
++        printf("%s\n", zOut);
++        if( strstr(zOut,"\"error\":null")==0 && !bDontStop ) exitCode = 1;
++      }
++      free(zOut);
++      free(zIn);
++      continue;
++    }
++#endif
+     zOut = pikchr(zIn, "pikchr", mFlags, &w, &h);
+     if( w<0 && !bDontStop ) exitCode = 1;
+     if( zOut==0 ){

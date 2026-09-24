@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pikchr Studio</title>
+<link rel="stylesheet" href="style.css?v=20260923c">
+<link rel="stylesheet" href="canvas-layout.css?v=20260923c">
+</head>
+<body class="layout-canvas">
+<header><h1>Pikchr Studio</h1><button id="choose-example">Examples</button><span>Source, geometry, and placement</span><a href="help.html">How it works</a></header>
+<details class="document-menu"><summary>Document &amp; source</summary><nav class="toolbar" aria-label="Editor actions">
+<button id="new-document">New diagram</button><button id="open-document">Open file</button><input id="file-input" type="file" accept=".pikchr,.txt" hidden>
+<label>Saved documents <select id="documents" aria-label="Saved documents"><option>Current diagram</option></select></label>
+<button id="render" title="Source renders automatically as you type; use this if a render was interrupted">Render</button><button id="undo" disabled>Undo</button><button id="redo" disabled>Redo</button>
+<button id="download">Download source</button>
+<button id="export-svg">Download SVG</button><span id="save-state" role="status">Not saved yet</span>
+<button id="export-png">Download PNG</button><button id="export-selection">Download selection region SVG</button>
+<button id="backup-workspace">Backup documents</button><button id="restore-workspace">Restore document copies</button><input id="backup-input" type="file" accept=".json" hidden>
+<span id="state">Loading Pikchr…</span>
+</nav></details>
+<main>
+<section class="source-pane"><div class="pane-heading"><h2 id="source-label">Source</h2><span>The source is the document. Edits render as you type.</span></div>
+<textarea id="source" aria-label="Pikchr source" spellcheck="false"></textarea>
+</section>
+<section class="diagram-pane"><div class="pane-heading"><h2>Diagram</h2></div>
+<div class="canvas-workspace">
+<div id="direct-tools" class="direct-tools" aria-label="Draw on canvas"></div>
+<div id="diagram" tabindex="0" aria-label="Rendered diagram"></div>
+<div class="selection-toolbar" aria-label="Selection actions">
+<span id="selection-count">No selection</span>
+<button id="edit-selected" disabled>Edit label</button>
+<button id="fit-text" disabled title="Select an editable shape to fit its label">Fit to text</button>
+<button id="appearance-selected" disabled>Style</button>
+<button id="route-selected" disabled>Route</button>
+<button id="tidy-route" disabled>Suggest tidy route</button>
+<button id="copy-selection" disabled>Copy</button><button id="paste-selection" disabled>Paste</button>
+<button id="duplicate-selected" disabled>Duplicate</button>
+<button id="delete-selected" disabled>Delete</button>
+<button id="show-source-selected" disabled>Show source</button>
+<button id="multi-select" aria-pressed="false">Select multiple</button><button id="clear-selection">Clear</button>
+<span class="move-selection" aria-label="Move selected objects"><button id="move-left" aria-label="Move selection left">←</button><button id="move-right" aria-label="Move selection right">→</button><button id="move-up" aria-label="Move selection up">↑</button><button id="move-down" aria-label="Move selection down">↓</button></span>
+<label class="arrange-selection">Arrange <select id="layout-mode" aria-label="Arrange selected objects"><option value="align-x">Align centers vertically</option><option value="align-y">Align centers horizontally</option><option value="equal-width">Equal width</option><option value="equal-height">Equal height</option><option value="distribute-x">Distribute horizontally</option><option value="distribute-y">Distribute vertically</option></select></label><button id="arrange" disabled>Arrange</button>
+</div>
+<div class="view-toolbar" aria-label="Canvas view">
+<div class="canvas-history" aria-label="Edit history">
+<button id="canvas-undo" aria-label="Undo" title="Undo" disabled><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 4 9l5 5M4 9h9a5 5 0 0 1 0 10h-3"/></svg></button><button id="canvas-redo" aria-label="Redo" title="Redo" disabled><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 4 5 5-5 5M20 9h-9a5 5 0 0 0 0 10h3"/></svg></button>
+</div>
+<div class="canvas-navigation" aria-label="Canvas zoom"><button id="zoom-out" aria-label="Zoom out">−</button><output id="zoom-level">Fit</output><button id="zoom-in" aria-label="Zoom in">+</button><button id="fit-view">Fit</button></div>
+<details class="canvas-view-options"><summary>View</summary><div><label><input id="anchors" type="checkbox"> Show anchors</label><button id="mobile-add">Add by coordinates</button><button id="mobile-objects">Objects</button><button id="pan-mode" aria-pressed="false" hidden>Pan</button><button id="focus-selection" disabled>Focus selection</button><label><input id="advanced-mode" type="checkbox"> Advanced tools</label></div></details>
+</div>
+</div>
+<div id="canvas-feedback" role="status" aria-live="polite"></div>
+<div id="diagnostic" role="alert"></div>
+<div id="preview-actions" class="preview-actions" hidden><span id="preview-label"></span><button id="preview-prev" type="button" aria-label="Previous candidate">‹</button><button id="preview-next" type="button" aria-label="Next candidate">›</button><button id="preview-accept" type="button">Accept</button><button id="preview-discard" type="button">Discard</button><span class="hint">Enter accepts · Escape discards · [ ] cycle</span></div>
+<details class="draft-toolbar"><summary><span id="queue-status" role="status">No queued changes</span></summary>
+<label><input id="auto-apply" type="checkbox" checked> Auto-apply accepted changes</label>
+<div class="actions"><button id="undo-draft" disabled>Undo last change</button><button id="accept" disabled>Apply all</button><button id="cancel" disabled>Discard all</button></div>
+</details>
+<div id="creation-tools" aria-label="Add objects"></div>
+<details class="component-tools"><summary>Reusable components</summary><p>Stored on this browser, separately from document backups.</p><label>Name <input id="component-name" maxlength="80" placeholder="Three-step flow"></label><button id="save-component" disabled>Save selection</button><label>Components <select id="components"></select></label><button id="insert-component" disabled>Insert component</button></details>
+<p class="navigation-hint">Drag empty canvas to pan · Pinch with two fingers to zoom · Space-drag to pan over shapes</p>
+<details class="canvas-help"><summary>Canvas gestures &amp; shortcuts</summary><p>Drag empty canvas to pan. Two fingers pan and pinch to zoom. Mouse wheel/trackpad scroll pans; Ctrl/⌘ + scroll zooms at the pointer. Hold Space or use the middle mouse button to pan over shapes.</p><p>Ctrl/⌘ Z: Undo · Ctrl/⌘ Shift Z (or Ctrl Y): Redo · Ctrl/⌘ D: Duplicate · Ctrl/⌘ A: Select movable shapes · Delete: Remove selection · Escape: Cancel drag / clear selection.</p><p>When the canvas is focused: + / − zoom · 0 / 1 fit diagram · F focus selection · Arrow keys move 0.1 inch, Shift moves 1 inch, Alt moves 0.01 inch. Text fields keep their normal shortcuts. Navigation does not change your source or undo history.</p></details>
+<p class="hint">Drag a shape to preview ranked source edits. Accepted changes queue here; Apply all commits them, Discard all restores the original.</p>
+<p id="impact"></p>
+</section>
+<aside>
+<section><h2>Inspector</h2><div id="inspector"><p>Select an object in the diagram or object list.</p></div></section>
+<section><details><summary>Objects <span class="hint">Use Select multiple or Shift-click</span></summary><div id="objects" aria-label="Diagram objects"></div></details></section>
+<section class="queue-panel"><h2>Queued changes</h2><ol id="queue-list" aria-label="Queued changes"></ol>
+<h3>Latest change</h3><div id="suggestions" role="listbox" aria-label="Ranked source edits"><p>Drag a shape or reconnect an endpoint to see ranked source edits.</p></div><pre id="diff" aria-label="Latest source change"></pre><details><summary>Compare whole batch</summary><pre id="batch-diff" aria-label="Whole batch comparison"></pre></details></section>
+</aside>
+</main>
+<dialog id="example-picker" aria-labelledby="examples-title" aria-describedby="examples-note">
+<div class="example-heading"><h2 id="examples-title">Choose an example</h2><button data-close>Close</button></div>
+<p id="examples-note">Open an editable copy in a separate local document. Your current diagram and queued changes are kept under Saved documents.</p>
+<div data-list aria-label="Available examples"></div><p data-description></p>
+<div data-preview role="img" aria-label="Example preview"></div>
+<p data-message role="status" aria-live="polite"></p>
+<div class="example-actions"><a data-guide hidden>Read the Gitflow guide</a><button data-use disabled>Open a copy</button></div>
+</dialog>
+<footer>Ordinary Pikchr source stays editable. Geometry comes from the local WebAssembly renderer.</footer>
+<script type="module" src="app.js?v=20260923c"></script>
+<script type="module" src="canvas-layout.js?v=20260923c"></script>
+</body></html>

@@ -1,0 +1,36 @@
+"""Visible mode transitions; no hidden control clicks."""
+from playwright.sync_api import sync_playwright, expect
+from browser_helpers import open_more
+
+with sync_playwright() as pw:
+    browser = pw.chromium.launch(channel="chrome")
+    page = browser.new_page(viewport={"width": 1280, "height": 900})
+    page.goto("http://127.0.0.1:8790/")
+    palette = page.get_by_role("toolbar", name="Tools")
+    page.wait_for_selector("#diagram svg")
+    def mode(name):
+        return palette.get_by_role("button", name=name, exact=True)
+    mode("Pan").click()
+    expect(mode("Pan")).to_have_attribute("aria-pressed", "true")
+    expect(mode("Select")).to_have_attribute("aria-pressed", "false")
+    page.keyboard.press("Escape")
+    expect(mode("Select")).to_have_attribute("aria-pressed", "true")
+    mode("Text").click()
+    expect(mode("Text")).to_have_attribute("aria-pressed", "true")
+    mode("Box").click()
+    expect(mode("Box")).to_have_attribute("aria-pressed", "true")
+    expect(mode("Text")).to_have_attribute("aria-pressed", "false")
+    mode("Arrow").click()
+    expect(mode("Arrow")).to_have_attribute("aria-pressed", "true")
+    expect(mode("Box")).to_have_attribute("aria-pressed", "false")
+    mode("Select").click()
+    page.locator('#diagram [data-pikchr-id="o1"]').click()
+    open_more(page)
+    expect(page.get_by_label("Shape width", exact=True)).to_be_visible()
+    expect(page.get_by_label("Fit shape to text", exact=True)).to_have_count(0)
+    expect(page.locator('#inspector').get_by_role("button", name="Edit label", exact=True)).to_be_visible()
+    page.set_viewport_size({"width": 390, "height": 844})
+    expect(palette).to_be_visible()
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    browser.close()
+print("PASS: exclusive mode indicators, Escape to Select, Text-to-Shape transition, unified sizing, mobile width")

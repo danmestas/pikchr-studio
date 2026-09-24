@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gitflow — mobile-width Studio authoring audit</title>
+<style>
+body{max-width:960px;margin:28px auto;padding:0 18px;font:16px/1.55 system-ui,sans-serif;color:#24292f;background:#fff}h1{font-size:27px;line-height:1.2}h2{font-size:22px;margin-top:32px}h3{font-size:18px}a{color:#0969da}nav{display:flex;gap:14px;flex-wrap:wrap}.meta,figcaption{color:#57606a;font-size:14px}figure{margin:22px 0}#diagram{border:1px solid #d0d7de;padding:12px;overflow:auto}#diagram svg{display:block;width:100%;height:auto;max-height:none}section.issue{border-top:1px solid #d0d7de;padding:12px 0}dt{font-weight:600;margin-top:9px}dd{margin-left:0}li{margin:7px 0}code{font:14px ui-monospace,monospace;background:#f6f8fa;padding:1px 3px}.note{border-left:3px solid #d0d7de;padding-left:14px}button{font:inherit}
+</style>
+</head>
+<body>
+<nav><a href="index.html">All UX audits</a><a href="../?sample=gitflow-mobile">Open editable diagram in Studio</a><a href="gitflow-mobile.pikchr" download>Download Pikchr source</a></nav>
+<h1>Gitflow: authoring on a phone-sized screen</h1>
+<p class="note"><a href="../examples/gitflow.html">Open the new annotated Gitflow guide</a>. This page preserves the original mobile audit and its test specimen; the guide replaces that sparse specimen as the teaching example.</p>
+<p class="meta">Computer-use audit · 19 September 2026 · Confirmed browser viewport: 390 × 844 CSS pixels</p>
+<p>The branching-strategy suggestion is now a concrete Gitflow example: 13 commit circles, 9 independent labels, and 17 arrows. All 39 objects were created through Studio’s visible controls. No source editing was used during construction.</p>
+<p class="note">This was a desktop-pointer exercise at a mobile viewport, not a physical-phone test. Touch accuracy, the on-screen keyboard, and pinch gestures remain unverified. No horizontal page overflow was observed.</p>
+<figure><div id="diagram" role="img" aria-label="Gitflow branching diagram showing main, develop, feature, release and hotfix lanes">Loading native Pikchr diagram…</div><figcaption>Live native Pikchr WASM rendering of the UI-produced source—not a screenshot. <a href="../?sample=gitflow-mobile">Open it for editing</a>.</figcaption></figure>
+
+<h2>What the diagram means</h2>
+<p>This depicts the classic model described in <a href="https://nvie.com/posts/a-successful-git-branching-model/">Vincent Driessen’s original Gitflow article</a>, using <em>main</em> for the original <em>master</em> name. A feature branches from and returns to develop. A release branches from develop and merges into both main and develop. After that release, a hotfix branches from main and returns to both main and develop. Main carries the v1.0, v1.1, and v1.1.1 tags. Arrows indicate progression or merge direction; they are not Git commit-parent pointers. This is a teaching example, not a claim that Gitflow is the best strategy for every project.</p>
+<p>The earlier branching example was a proposed category, not an existing template: this is its first concrete specimen.</p>
+
+<h2>What was exercised</h2>
+<p>Persona: a technical-documentation author arranging and revising a branching diagram on a phone-sized browser. The session covered creating repeated commits and text, selecting and navigating a dense canvas, updating labels, adding connectors, changing a route, recovering with Undo, and attempting multi-selection for arrangement.</p>
+<p>Creation, labeling, routing, and Undo produced valid rendered source. Undo restored label and route edits. The principal limitations were visibility and interaction cost—not an inability to render this diagram. The mobile first screen showed controls but no canvas, and edit results repeatedly ended up outside the visible screen.</p>
+<p><strong>Evidence convention:</strong> “Observed” records an action or measured viewport result. “Risk” is an inference about likely touch or authoring impact. “No exposed control found” is limited to the inspected UI, not a statement about the underlying engine. No overall usability score is assigned from this single exercise.</p>
+
+<h2>Implementation follow-up — 19 September 2026</h2>
+<p class="note">Changes have been implemented for all eight findings below. These issues are <strong>not marked closed</strong>: browser checks at a phone-sized viewport do not substitute for physical-phone touch, keyboard, and gesture acceptance. The original observations are retained as the baseline.</p>
+<ol>
+<li><a href="#PKUX-020">020 — Canvas-first workspace.</a> Compact mobile actions and collapsed document controls now leave the canvas visible on initial load. At 390 × 844, the measured canvas occupied Y 129–772.</li>
+<li><a href="#PKUX-021">021 — Visible editing feedback.</a> A bottom inspector keeps the canvas, Undo, and state feedback on screen. During a text edit, the canvas occupied Y 129–396 and Undo Y 81–125. Focus was preserved after Update text, and Undo restored the exact original source.</li>
+<li><a href="#PKUX-022">022 — Small-target assistance.</a> Nearby selection within a 44-pixel target area and an overlap-choice control have been added. A desktop-pointer click 12 pixels outside D1 selected it successfully. Physical-finger accuracy and crowded-target behavior remain acceptance checks; no touch-success claim is made.</li>
+<li><a href="#PKUX-023">023 — Keyboard-free multi-selection.</a> Visible Select multiple, clear-selection, and group-movement controls are implemented. Browser testing selected two objects, moved them, and verified exact-source Undo without requiring Shift.</li>
+<li><a href="#PKUX-024">024 — Contextual focus.</a> Automatic selection focus is capped at 300%, while manual zoom can still reach 1200%. Opening D1’s inspector kept D1 inside the canvas at 300%, with neighboring F2 and R1 visible. Visibility across short screens, keyboard-open states, and different diagram sizes still needs acceptance testing.</li>
+<li><a href="#PKUX-025">025 — Repeat construction.</a> Repeat last shape preserves text, size, and style, with configurable X/Y offsets and optional preparation of the next position. Browser testing created four shapes at the same X and Y 0, −1, −2, −3. A follow-up naming fix now uses stable sequential IDs instead of accumulating digits; focused regression tests cover it. Tap-to-place has not been implemented.</li>
+<li><a href="#PKUX-026">026 — Meaningful connector choices.</a> Connector object labels now include endpoint summaries; Link12 displayed R2 → M1 in the browser. New-connector menus omit standalone text by default and expose an explicit text-endpoint option. Existing text connections remain supported.</li>
+<li><a href="#PKUX-027">027 — Route editing and state guidance.</a> Add bend, delete bend, and reset-route controls are implemented, with guidance reflecting automatic versus queued application. Browser checks exercised addition, deletion, reset, and exact-source Undo. A queued bend showed one queued change and Undo restored its source. Real-phone handle manipulation remains an acceptance check.</li>
+</ol>
+
+<h2>Prioritized mobile backlog — original findings</h2>
+<p>P1 means the issue interrupts a frequent core authoring task. P2 means the task remains possible but incurs substantial navigation or repetition. Address 020–023 first: together they determine whether an author can see, select, edit, and arrange work without repeatedly losing context. The remaining findings improve efficiency and precision.</p>
+
+<section class="issue" id="PKUX-020"><h3>PKUX-020 · P1 · Controls consume the initial mobile screen</h3><dl>
+<dt>Observed / reproduce</dt><dd>Open a new diagram at 390 × 844. The first screen contains toolbars before the canvas; the canvas is not visible. Disabled selection actions remain visible even with an empty document.</dd>
+<dt>Impact</dt><dd>The author must discover and scroll to the primary workspace before drawing. Frequently used actions compete with document-management and unavailable actions.</dd>
+<dt>Recommendation</dt><dd>Collapse document controls into a menu, show selection actions only when relevant, and budget the initial viewport around a visible canvas with a compact action bar.</dd>
+<dt>Acceptance check</dt><dd>At 390 × 844 and comparable short viewports, a new and a populated document both show a usable canvas and an obvious Add action without scrolling. Selection-only actions do not occupy empty-document space.</dd>
+</dl></section>
+
+<section class="issue" id="PKUX-021"><h3>PKUX-021 · P1 · Editing separates the controls from their result</h3><dl>
+<dt>Observed / reproduce</dt><dd>Select D1 at fit zoom and choose Edit selected object. The canvas occupied viewport Y −341 to 99 while the text field began at Y 282.5. Updating the text moved focus to the page body and left selected content offscreen. Applying Horizontal first to Link12 produced a valid route, but the canvas bottom was then Y −342.5. Undo was at Y −349.5 and status at Y −1348.5—also offscreen.</dd>
+<dt>Impact</dt><dd>Even a successful operation requires searching for the result, confirmation, and recovery control. This is a mobile follow-up to <a href="index.html#PKUX-005">PKUX-005</a>.</dd>
+<dt>Recommendation</dt><dd>Keep the canvas visible above a compact bottom-sheet inspector, preserve focus and scroll context after submitting edits, and keep Undo plus applied/saved feedback visible.</dd>
+<dt>Acceptance check</dt><dd>Edit D1’s text, route Link12, then Undo at 390 × 844. The selected object or changed route, operation feedback, and Undo remain visible without a page-scroll search; focus stays on a useful control.</dd>
+</dl></section>
+
+<section class="issue" id="PKUX-022"><h3>PKUX-022 · P1 · Fit zoom produces tiny commit targets</h3><dl>
+<dt>Observed / reproduce</dt><dd>Fit the complete 39-object diagram. D1, F2, and H2 circles each measured approximately 14.19 CSS pixels across at 100% fit. Precise desktop-pointer selection worked; labels were very small.</dd>
+<dt>Risk</dt><dd>Small visible shapes are likely difficult to select with a finger. Actual touch misses were not measured and must not be inferred as a reproduced failure.</dd>
+<dt>Recommendation</dt><dd>Inflate interaction targets without changing diagram geometry. For crowded targets, provide disambiguation or a selection sheet and a readable zoom-to-edit affordance.</dd>
+<dt>Acceptance check</dt><dd>On a physical phone, select D1, F2, and H2 without unintended neighbors. Ensure minimum practical touch targets and an alternative when enlarged hit areas overlap; verify readable editing zoom.</dd>
+</dl></section>
+
+<section class="issue" id="PKUX-023"><h3>PKUX-023 · P1 · Multi-selection has no exposed touch workflow</h3><dl>
+<dt>Observed / reproduce</dt><dd>The UI instructs Shift-click. Ordinary selection of M0 followed by M1 leaves one object selected and Arrange disabled. No selection mode, checkboxes, or lasso was found in the inspected controls.</dd>
+<dt>Impact</dt><dd>Alignment and multi-object movement exist but lack a discoverable keyboard-free entry point. This extends <a href="index.html#PKUX-007">PKUX-007</a> and <a href="index.html#PKUX-016">PKUX-016</a>.</dd>
+<dt>Recommendation</dt><dd>Add a visible Select multiple mode with a selected count, clear selection, and selection-aware arrange/move actions. Preserve ordinary single-tap selection outside that mode.</dd>
+<dt>Acceptance check</dt><dd>Without a hardware keyboard, select M0 and M1, align them, move both, then exit multi-select. Each step is discoverable through visible controls and reversible with Undo.</dd>
+</dl></section>
+
+<section class="issue" id="PKUX-024"><h3>PKUX-024 · P2 · Focus selection loses branch context</h3><dl>
+<dt>Observed / reproduce</dt><dd>Select D1 and choose Focus selection. Zoom jumped to 1200%. The canvas top was approximately Y −21.5 under a sticky toolbar around 140 pixels tall, obscuring the upper node area.</dd>
+<dt>Impact</dt><dd>Focusing a small commit removes neighboring branch context and does not account for the actually visible canvas. This refines <a href="index.html#PKUX-004">PKUX-004</a>.</dd>
+<dt>Recommendation</dt><dd>Fit to the unobscured viewport, add contextual padding or neighboring commits, and cap automatic zoom separately from manual zoom.</dd>
+<dt>Acceptance check</dt><dd>Focus D1 from both the initial and scrolled layouts. D1 is fully visible below overlays, remains readable, and retains useful neighboring context; Fit restores the full diagram.</dd>
+</dl></section>
+
+<section class="issue" id="PKUX-025"><h3>PKUX-025 · P2 · Repeated commits require repeated coordinate entry</h3><dl>
+<dt>Observed / reproduce</dt><dd>Building 13 commits repeatedly required Label, ID, X/Y, fill, and Add operations. Dimensions persisted, but Y reset to 0 and X used an automatic value. Completing all 39 objects was possible through the forms.</dd>
+<dt>Impact</dt><dd>The author repeatedly translates a visual lane layout into numerical positions. Single-object duplication alone does not provide a fluent repeated-lane workflow; see <a href="index.html#PKUX-010">PKUX-010</a>.</dd>
+<dt>Recommendation</dt><dd>Offer duplicate-and-place, repeat last offset, and click/tap-to-place. Preserve lane and style choices when explicitly repeating a commit.</dd>
+<dt>Acceptance check</dt><dd>Create four evenly spaced same-style commits in one lane without re-entering their shared X coordinate and dimensions. Give each a distinct label and undo the last addition.</dd>
+</dl></section>
+
+<section class="issue" id="PKUX-026"><h3>PKUX-026 · P2 · Connector choices do not expose their meaning</h3><dl>
+<dt>Observed / reproduce</dt><dd>The created connectors appear as Link1 through Link17 without endpoint summaries. From/To choices include nine title/tag text objects alongside the 13 commits, increasing the number of choices and dropdown steps.</dd>
+<dt>Impact</dt><dd>Finding the intended merge route requires remembering generic IDs and filtering irrelevant text mentally. This is a remaining identity gap from <a href="index.html#PKUX-011">PKUX-011</a>.</dd>
+<dt>Recommendation</dt><dd>Show endpoint labels such as “D0 → F1” in connector lists. Default endpoint pickers to connectable shapes, with text endpoints available explicitly, and support direct endpoint picking.</dd>
+<dt>Acceptance check</dt><dd>Locate a feature-merge arrow and create a hotfix-merge arrow without memorizing Link numbers. Ordinary endpoint selection omits headings and tags while still offering an explicit way to connect text if desired.</dd>
+</dl></section>
+
+<section class="issue" id="PKUX-027"><h3>PKUX-027 · P2 · Routing guidance and route controls remain incomplete</h3><dl>
+<dt>Observed / reproduce</dt><dd>With automatic application enabled, routing guidance still says to release to review valid code. A Horizontal first route applied successfully, but its result was offscreen. No arbitrary bend insertion/deletion controls were exposed.</dd>
+<dt>Impact</dt><dd>The author cannot reliably tell whether an edit is pending or committed, and cannot freely shape longer merge paths. This follows up <a href="index.html#PKUX-005">PKUX-005</a> and the existing open <a href="index.html#PKUX-014">PKUX-014</a>; it is not a new claim that basic routing fails.</dd>
+<dt>Recommendation</dt><dd>Make guidance reflect the active apply mode and show local committed/pending feedback. Add discoverable bend insertion, deletion, and route reset after the visibility issues are fixed.</dd>
+<dt>Acceptance check</dt><dd>In both auto-apply and queued modes, reroute a merge arrow and identify its state without scrolling. Insert and remove a bend, reset the route, and Undo each operation while endpoints stay attached.</dd>
+</dl></section>
+
+<h2>Next test pass</h2>
+<ol><li>On a physical phone, edit a commit label with the keyboard open, change a merge route, and Undo while keeping the result and state feedback visible.</li><li>Select small or overlapping commits, enter multi-select, align and move a lane, then clear selection without a hardware keyboard.</li><li>Verify contextual focus in portrait, landscape, and short screens. Repeat a four-commit lane, assign distinct labels, and Undo the final addition.</li><li>Create and reconnect a hotfix merge, including an existing text endpoint. Insert, delete, and reset bends in both auto-apply and queued modes, then verify recovery.</li><li>Verify two-finger pan/pinch, gesture cancellation, and keyboard resize behavior. This audit supplies no physical-phone pass/fail evidence for those behaviors. Consider tap-to-place separately after testing the new repeat workflow.</li></ol>
+<script>
+(() => {
+  const target = document.getElementById('diagram');
+  let worker, timer;
+  const fail = () => { clearTimeout(timer); worker?.terminate(); target.textContent = 'The diagram could not be rendered. Download the Pikchr source or open it in Studio using the links above.'; };
+  try {
+    worker = new Worker('../worker.js');
+    timer = setTimeout(fail, 30000);
+    worker.onerror = fail;
+    worker.onmessage = event => {
+      if (event.data.id !== 1) return;
+      const svg = event.data.result?.svg;
+      if (!svg || !svg.includes('<svg')) return fail();
+      clearTimeout(timer); target.innerHTML = svg; worker.terminate();
+    };
+    fetch('gitflow-mobile.pikchr').then(response => { if (!response.ok) throw new Error('Source unavailable'); return response.text(); }).then(source => worker.postMessage({id:1,source})).catch(fail);
+  } catch { fail(); }
+})();
+</script>
+</body>
+</html>
