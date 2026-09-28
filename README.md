@@ -8,6 +8,25 @@ and every drag, resize, or property change becomes a proposed edit to that
 source. Each proposal is rendered by Pikchr before it can be applied, so the
 diagram never shows geometry the source cannot reproduce.
 
+## Get it running
+
+The repository lives in Fossil at
+[zeitforge.app/r/dmestas/pikchr-studio](https://zeitforge.app/r/dmestas/pikchr-studio),
+and on GitHub at
+[github.com/danmestas/pikchr-studio](https://github.com/danmestas/pikchr-studio).
+The WebAssembly renderer is committed, so running the studio needs nothing
+but Python 3: no Node, no Emscripten, no build step.
+
+```sh
+fossil clone https://zeitforge.app/r/pikchr-studio pikchr-studio.fossil
+mkdir pikchr-studio && cd pikchr-studio
+fossil open ../pikchr-studio.fossil
+python3 serve.py            # then open http://127.0.0.1:8790
+```
+
+`npm start` runs the same server. The tests, rebuilding the wasm, and the
+Cloudflare deploy need more; each has its own section below.
+
 ## Layout
 
 | Path | Purpose |
