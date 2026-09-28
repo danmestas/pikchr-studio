@@ -12,8 +12,9 @@ diagram never shows geometry the source cannot reproduce.
 
 The repository lives in Fossil at
 [zeitforge.app/r/dmestas/pikchr-studio](https://zeitforge.app/r/dmestas/pikchr-studio),
-and on GitHub at
-[github.com/danmestas/pikchr-studio](https://github.com/danmestas/pikchr-studio).
+which is the copy to clone and send changes to. GitHub,
+[github.com/danmestas/pikchr-studio](https://github.com/danmestas/pikchr-studio),
+is a read-only mirror of its trunk, updated every few minutes.
 The WebAssembly renderer is committed, so running the studio needs nothing
 but Python 3: no Node, no Emscripten, no build step.
 
