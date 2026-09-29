@@ -116,7 +116,9 @@ npm run dev:worker   # the same Worker locally, with its headers and 404 handlin
 - Absolute URLs (canonical links, Open Graph, `robots.txt`, `sitemap.xml`) use the
   live origin `https://pikchr-studio.daniel-mestas.workers.dev`. If the site moves to
   a custom domain, replace that origin in those files.
-- CI runs `wrangler deploy --dry-run` to validate the config without credentials.
+- CI (`ci/test.json`, on every check-in and every landing's merge) runs `npm test`
+  and `wrangler deploy --dry-run`, which validates the config without credentials.
+  `ci/runner.json` names the command behind each task.
 
 ## Design rules
 

@@ -7,6 +7,7 @@ import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20260923c';
 import {propertyEditor} from './property-ui.js?v=20260923c';
 import {fitText,canFitText,inspectProperties,readProperties} from './properties.js?v=20260923c';
 import {duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove} from './object-actions.js?v=20260923c';
+import {decodeLinkSource,linkPayload} from './link-import.js?v=20260923c';
 import {createDocumentStore} from './documents.js?v=20260923c';
 import {canvasNavigation,clampZoom} from './canvas-navigation.js?v=20260923c';
 import {examplePicker} from './example-picker.js?v=20260923c';
@@ -1015,6 +1016,20 @@ const catalog=[
 ].map(item=>({...item,load:async()=>{if(examples[item.key])return examples[item.key];const response=await fetch(samplePaths[item.key]);if(!response.ok)throw Error('Could not load '+item.title+'.');return response.text();}}));
 $('choose-example').onclick=examplePicker({dialog:$('example-picker'),items:catalog,render,open:async(text,result,title)=>{const success=await newDocument(text,result,title);if(success)status('Opened a copy of '+title+'. Previous work is in Saved documents.');return success;}});
 if(samplePaths[sample])loadSample(sample);
+// A #z= link opens its diagram as a new document (the current one is saved first) and
+// then clears the fragment so a reload or re-share does not import it again.
+let linkImport=Promise.resolve();
+function importLink(){
+  const payload=linkPayload(location.hash);if(payload===null)return;
+  history.replaceState(null,'',location.pathname+location.search);
+  linkImport=linkImport.then(async()=>{
+    let text;
+    try{text=await decodeLinkSource(payload);}catch{status("This link's diagram could not be read. Your current document is unchanged.");return;}
+    if(await newDocument(text))status('Opened the linked diagram as a new document. Previous work is in Saved documents.');
+  });
+}
+window.addEventListener('hashchange',importLink);
+importLink();
 source.addEventListener('mouseup',()=>{
   if(!scene||source.value!==renderedSource)return;
   const offset=new TextEncoder().encode(source.value.slice(0,source.selectionStart)).length;
