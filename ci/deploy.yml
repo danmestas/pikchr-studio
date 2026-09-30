@@ -1,0 +1,25 @@
+# Accepting a landing publishes the site: on a push to trunk, the tests
+# run again (an accept onto a trunk that moved since its merge was tested
+# puts an untested tree there), then wrangler deploys. The Cloudflare
+# token lives in the production environment in repository settings, and
+# zeitforge gives it only to a check-in on a protected branch, never to a
+# landing's merge (quarry RFC 0019). A Re-run of an older trunk
+# check-in's deploy puts that check-in back live.
+on:
+  push:
+    branches: [trunk]
+jobs:
+  test:
+    timeout-minutes: 30
+    steps:
+      - run: npm test
+  deploy:
+    needs: [test]
+    environment: production
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_ACCOUNT_ID: a8d3b022875aef5e907b1cc9404376ad
+    steps:
+      - run: npx --yes wrangler@4.138.0 deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

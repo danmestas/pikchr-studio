@@ -103,10 +103,12 @@ reported `FLAKY`; the run only fails on a repeat failure.
 The site is an assets-only Cloudflare Worker named `pikchr-studio`
 (`wrangler.jsonc`): Cloudflare serves `public/` directly, with no Worker script.
 
-Accepting a landing deploys it. zeitforge's CI runs `ci/deploy.json` on every
-trunk check-in: the tests again, then `wrangler deploy`, on a runner that holds
-the Cloudflare token and runs trunk check-ins only. A Re-run of an older trunk
-check-in's deploy puts that check-in back live.
+Accepting a landing deploys it. zeitforge's CI runs `ci/deploy.yml` on every
+push to trunk: the tests again, then `wrangler deploy`. The Cloudflare token is
+the `production` environment's secret in repository settings, and zeitforge
+gives it only to a check-in on a protected branch (trunk is), never to a
+landing's merge. A Re-run of an older trunk check-in's deploy puts that
+check-in back live.
 
 ```sh
 npm run deploy       # by hand: npx wrangler@4.138.0 deploy (needs a logged-in Wrangler)
@@ -121,9 +123,9 @@ npm run dev:worker   # the same Worker locally, with its headers and 404 handlin
 - Absolute URLs (canonical links, Open Graph, `robots.txt`, `sitemap.xml`) use the
   live origin `https://pikchr-studio.daniel-mestas.workers.dev`. If the site moves to
   a custom domain, replace that origin in those files.
-- CI (`ci/test.json`, on every check-in and every landing's merge) runs `npm test`
+- CI (`ci/test.yml`, on every check-in and every landing's merge) runs `npm test`
   and `wrangler deploy --dry-run`, which validates the config without credentials.
-  `ci/runner.json` names the command behind each task.
+  The workflows are GitHub-Actions-shaped YAML, read by zeitforge (quarry RFC 0019).
 
 ## Design rules
 
