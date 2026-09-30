@@ -1,3 +1,5 @@
+import os
+import tempfile
 from playwright.sync_api import sync_playwright
 from browser_helpers import prepare_legacy, object_button, open_example, open_document_menu, show_source
 
@@ -130,7 +132,7 @@ with sync_playwright() as pw:
     open_document_menu(page)
     assert page.locator('.arrow-editor').count() == 1
     page.get_by_role("button", name="Routing", exact=True).click()
-    page.screenshot(path="/tmp/pikchr-routing.png", full_page=True)
+    page.screenshot(path=os.path.join(tempfile.gettempdir(), "pikchr-routing.png"), full_page=True)
     # Moving one literal bend preserves every other route clause.
     literal_route = 'A: box "A" at (0,0)\nB: box "B" at (3,-2)\narrow from A.e to (1, 0) then to (1, -2) then to B.w\n'
     show_source(page)
