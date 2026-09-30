@@ -1,8 +1,10 @@
 """Canvas-first layout: floating chrome, contextual toolbar, drag-to-connect,
 source drawer, no refusal right after typing, and a phone viewport."""
 from playwright.sync_api import sync_playwright, expect
+import os
+STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 
-URL = "http://127.0.0.1:8790/index.html"
+URL = STUDIO + "/index.html"
 CENTER = """name=>{const s=pikchrStudio.state(),o=s.scene.objects.find(o=>o.name===name);const p=pikchrStudio.modelToScreen(o.center);return {x:p.x,y:p.y}}"""
 TOP = """name=>{const s=pikchrStudio.state(),o=s.scene.objects.find(o=>o.name===name);const p=pikchrStudio.modelToScreen({x:o.center.x,y:o.bbox.y+o.bbox.height});return p.y}"""
 DOT = """([name,anchor])=>{const s=pikchrStudio.state(),o=s.scene.objects.find(o=>o.name===name);const d=document.querySelector(`.cl-dots .cl-dot[data-id="${o.id}"][data-anchor="${anchor}"]`);if(!d)return null;const r=d.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}}"""

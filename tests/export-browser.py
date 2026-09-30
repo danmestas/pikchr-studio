@@ -2,11 +2,13 @@
 from pathlib import Path
 import struct
 from playwright.sync_api import sync_playwright
+import os
+STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 
 with sync_playwright() as pw:
     browser = pw.chromium.launch(channel="chrome")
     page = browser.new_page(viewport={"width": 1440, "height": 1100}, accept_downloads=True)
-    page.goto("http://127.0.0.1:8790/")
+    page.goto(STUDIO + "/")
     page.wait_for_function("document.querySelectorAll('#objects button').length === 5")
     page.locator('#diagram [data-pikchr-id="o1"]').click()
     result = page.evaluate("""async()=>{

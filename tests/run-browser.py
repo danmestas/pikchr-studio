@@ -2,10 +2,13 @@
 
 Usage: python3 tests/run-browser.py [pattern ...]
 
-The browser scripts hard-code http://127.0.0.1:8790, so the server binds that
-port. If something already listens there and serves this public/ directory
-byte-for-byte, the runner reuses it and never stops it; any other listener is
-an error. A server the runner starts carries its own
+The browser scripts read the studio's address from PIKCHR_STUDIO_URL, which
+this runner sets. Locally the server binds http://127.0.0.1:8790 (or
+PIKCHR_STUDIO_PORT): if something already listens there and serves this
+public/ directory byte-for-byte, the runner reuses it and never stops it; any
+other listener is an error. Under CI (CI=true, as zeitforge's runner sets) it
+always starts its own server on a free port, since two jobs may run at once
+and a server another job started may serve a different tree. A server the runner starts carries its own
 deadline (SERVER_DEADLINE seconds) so it cannot outlive a killed runner, and
 is terminated in a finally block on every exit path. A failing script is
 retried once and reported FLAKY if the retry passes.
@@ -19,7 +22,16 @@ import urllib.request
 from pathlib import Path
 
 HOST = "127.0.0.1"
-PORT = int(os.environ.get("PIKCHR_STUDIO_PORT", "8790"))
+
+
+def free_port():
+    with socket.socket() as s:
+        s.bind((HOST, 0))
+        return s.getsockname()[1]
+
+
+IN_CI = os.environ.get("CI", "").lower() in ("1", "true") and "PIKCHR_STUDIO_PORT" not in os.environ
+PORT = free_port() if IN_CI else int(os.environ.get("PIKCHR_STUDIO_PORT", "8790"))
 BASE = f"http://{HOST}:{PORT}"
 SERVER_DEADLINE = int(os.environ.get("PIKCHR_STUDIO_SERVER_DEADLINE", "1800"))
 SCRIPT_TIMEOUT = int(os.environ.get("PIKCHR_STUDIO_SCRIPT_TIMEOUT", "180"))

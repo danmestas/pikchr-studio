@@ -1,11 +1,13 @@
 """Regression: drag unpainted shape interiors, not just SVG text or strokes."""
 from playwright.sync_api import sync_playwright
 from browser_helpers import prepare_legacy, open_example, set_source, reveal, menu_click
+import os
+STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 
 with sync_playwright() as pw:
     browser = pw.chromium.launch(channel="chrome")
     page = browser.new_page(viewport={"width":1440,"height":1000})
-    page.goto("http://127.0.0.1:8790/")
+    page.goto(STUDIO + "/")
     prepare_legacy(page)
     source = page.locator('#source')
     for kind in ['box','circle','ellipse','oval','cylinder','diamond']:

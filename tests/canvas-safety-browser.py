@@ -1,6 +1,8 @@
 """Selection, sizing metadata, overflow feedback and cancellation regressions."""
 from playwright.sync_api import sync_playwright, expect
 from browser_helpers import open_document_menu, show_source, hide_source, open_label_dialog, open_more, reveal, close_popovers
+import os
+STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 
 with sync_playwright() as pw:
     browser=pw.chromium.launch(channel='chrome')
@@ -15,7 +17,7 @@ with sync_playwright() as pw:
       };
     })();""")
     errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
-    page.goto('http://127.0.0.1:8790/')
+    page.goto(STUDIO + '/')
     page.wait_for_function("document.querySelectorAll('#objects button').length===5")
     source=page.locator('#source');initial=source.input_value()
     diagram=page.locator('#diagram')

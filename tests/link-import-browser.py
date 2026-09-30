@@ -3,8 +3,10 @@ import base64
 import zlib
 from browser_helpers import wait_rendered, set_source
 from playwright.sync_api import sync_playwright
+import os
+STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 
-BASE = "http://127.0.0.1:8790/"
+BASE = STUDIO + "/"
 
 
 def payload(text):

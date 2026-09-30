@@ -1,11 +1,13 @@
 """Visible mode transitions; no hidden control clicks."""
 from playwright.sync_api import sync_playwright, expect
 from browser_helpers import open_more
+import os
+STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 
 with sync_playwright() as pw:
     browser = pw.chromium.launch(channel="chrome")
     page = browser.new_page(viewport={"width": 1280, "height": 900})
-    page.goto("http://127.0.0.1:8790/")
+    page.goto(STUDIO + "/")
     palette = page.get_by_role("toolbar", name="Tools")
     page.wait_for_selector("#diagram svg")
     def mode(name):
