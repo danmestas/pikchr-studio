@@ -2,13 +2,15 @@
 from playwright.sync_api import sync_playwright, expect
 import re
 from browser_helpers import open_document_menu, edit_label, reveal, show_source, set_source, set_auto_apply, open_label_dialog, open_more, close_popovers, open_menu_details
+import os
+STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 
 with sync_playwright() as pw:
     browser = pw.chromium.launch(channel="chrome")
     page = browser.new_page(viewport={"width": 1440, "height": 1000})
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
-    page.goto("http://127.0.0.1:8790/")
+    page.goto(STUDIO + "/")
     open_document_menu(page)
     page.wait_for_function("document.querySelectorAll('#objects button').length >= 5")
     set_auto_apply(page, True)

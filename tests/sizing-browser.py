@@ -2,6 +2,8 @@
 import re
 from playwright.sync_api import sync_playwright, expect
 from browser_helpers import reveal, show_source, set_source, open_label_dialog, set_auto_apply, object_button, close_popovers, open_more, open_document_menu
+import os
+STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 
 
 with sync_playwright() as pw:
@@ -12,7 +14,7 @@ with sync_playwright() as pw:
     page.on("pageerror",lambda error:errors.append(str(error)))
 
     def setup(p):
-        p.goto("http://127.0.0.1:8790/")
+        p.goto(STUDIO + "/")
         p.wait_for_function("document.querySelector('#diagram svg') && !document.querySelector('#diagram').classList.contains('stale')")
 
     def load(p,text):

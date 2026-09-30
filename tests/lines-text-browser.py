@@ -3,8 +3,10 @@ Shift on the connect gesture, and on-canvas text (create, multi-line, drag,
 style, double-click edit)."""
 import re
 from playwright.sync_api import sync_playwright
+import os
+STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 
-URL = "http://127.0.0.1:8790/index.html"
+URL = STUDIO + "/index.html"
 SOURCE = 'Client: box "Client" at (0,0)\nAPI: box "API" at (2,0)\n'
 SCREEN = """p=>{const q=pikchrStudio.modelToScreen(p);return {x:q.x,y:q.y}}"""
 CENTER = """name=>{const o=pikchrStudio.state().scene.objects.find(o=>o.name===name);const q=pikchrStudio.modelToScreen(o.center);return {x:q.x,y:q.y}}"""

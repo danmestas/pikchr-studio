@@ -6,6 +6,8 @@ import tempfile
 from pathlib import Path
 from browser_helpers import show_source, reveal, set_source, set_auto_apply, open_document_menu, object_button
 from playwright.sync_api import sync_playwright, expect
+import os
+STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 
 
 with sync_playwright() as pw, tempfile.TemporaryDirectory(prefix="pikchr-reuse-test-") as directory:
@@ -14,7 +16,7 @@ with sync_playwright() as pw, tempfile.TemporaryDirectory(prefix="pikchr-reuse-t
     page = context.new_page()
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
-    page.goto("http://127.0.0.1:8790/?advanced=1")
+    page.goto(STUDIO + "/?advanced=1")
     page.wait_for_function("document.querySelector('#diagram svg') && !document.querySelector('#diagram').classList.contains('stale')")
 
     def open_details(selector):

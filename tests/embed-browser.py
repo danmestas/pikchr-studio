@@ -1,11 +1,13 @@
 from playwright.sync_api import sync_playwright
+import os
+STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 
 with sync_playwright() as pw:
     browser = pw.chromium.launch(channel="chrome")
     page = browser.new_page(viewport={"width": 1100, "height": 800})
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
-    page.goto("http://127.0.0.1:8790/embed.html")
+    page.goto(STUDIO + "/embed.html")
     page.wait_for_function("document.querySelector('#embed-state').textContent === 'Rendered 3 objects.'")
     source = page.get_by_label("Pikchr source", exact=True)
     source.fill('A: diamond "Café ☕" at (-2,1)')

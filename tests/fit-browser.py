@@ -1,6 +1,8 @@
 """Browser/WASM regressions for fitting labels and preserving draft semantics."""
 from playwright.sync_api import sync_playwright, expect
 from browser_helpers import prepare_legacy, object_button, open_document_menu, edit_label, reveal, show_source, set_source, menu_click, set_auto_apply
+import os
+STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 
 
 with sync_playwright() as pw:
@@ -8,7 +10,7 @@ with sync_playwright() as pw:
     page = browser.new_page(viewport={"width": 1440, "height": 1000})
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
-    page.goto("http://127.0.0.1:8790/")
+    page.goto(STUDIO + "/")
     prepare_legacy(page)
     page.wait_for_function("document.querySelectorAll('#objects button').length === 5")
     source = page.locator("#source")

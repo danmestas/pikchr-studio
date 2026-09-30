@@ -2,13 +2,15 @@
 import re
 from browser_helpers import object_button, open_document_menu, show_source, reveal, set_source, menu_click, set_auto_apply
 from playwright.sync_api import sync_playwright
+import os
+STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 
 with sync_playwright() as pw:
     browser = pw.chromium.launch(channel="chrome")
     page = browser.new_page(viewport={"width": 1440, "height": 1100})
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
-    page.goto("http://127.0.0.1:8790/?advanced=1")
+    page.goto(STUDIO + "/?advanced=1")
     open_document_menu(page)
     source = page.locator("#source")
 
