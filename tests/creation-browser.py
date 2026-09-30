@@ -1,3 +1,5 @@
+import os
+import tempfile
 import re
 from browser_helpers import open_more, prepare_legacy, object_button, shape_option, open_document_menu, show_source, hide_source, reveal, set_source, render_source, open_menu_details, close_popovers, menu_click
 from playwright.sync_api import sync_playwright
@@ -111,7 +113,7 @@ with sync_playwright() as pw:
     page.set_viewport_size({"width": 390, "height": 844})
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth"), "Mobile horizontal overflow"
     page.set_viewport_size({"width": 1440, "height": 1000})
-    page.screenshot(path="/tmp/pikchr-creation.png", full_page=True)
+    page.screenshot(path=os.path.join(tempfile.gettempdir(), "pikchr-creation.png"), full_page=True)
 
     # Stale and invalid source must never create a proposal from old geometry.
     show_source(page)

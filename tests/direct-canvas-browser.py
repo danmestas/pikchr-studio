@@ -1,4 +1,6 @@
 """Direct-canvas regression tests using real browser events and native WASM."""
+import os
+import tempfile
 from playwright.sync_api import sync_playwright, expect
 from browser_helpers import open_document_menu, reveal, show_source, hide_source, open_label_dialog, render_source, close_popovers, menu_click, set_auto_apply
 
@@ -138,7 +140,7 @@ with sync_playwright() as pw:
     center.click()
     changed(stale)
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
-    page.screenshot(path="/tmp/pikchr-direct-canvas-mobile.png", full_page=True)
+    page.screenshot(path=os.path.join(tempfile.gettempdir(), "pikchr-direct-canvas-mobile.png"), full_page=True)
     assert not errors, errors
     browser.close()
     print("PASS: label cancel/wrap/Undo, place, connected neighbor, connect, pointer resize, two-edit queue/discard, stale guard, mobile controls")
