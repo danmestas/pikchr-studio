@@ -18,6 +18,12 @@
       "--dry-run",
       "--outdir",
       "dist-dry-run"
+    ],
+    "pikchr-studio.deploy": [
+      "npx",
+      "--yes",
+      "wrangler@4.138.0",
+      "deploy"
     ]
   }
 }

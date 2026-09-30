@@ -103,8 +103,13 @@ reported `FLAKY`; the run only fails on a repeat failure.
 The site is an assets-only Cloudflare Worker named `pikchr-studio`
 (`wrangler.jsonc`): Cloudflare serves `public/` directly, with no Worker script.
 
+Accepting a landing deploys it. zeitforge's CI runs `ci/deploy.json` on every
+trunk check-in: the tests again, then `wrangler deploy`, on a runner that holds
+the Cloudflare token and runs trunk check-ins only. A Re-run of an older trunk
+check-in's deploy puts that check-in back live.
+
 ```sh
-npm run deploy       # npx wrangler@4.138.0 deploy (needs a logged-in Wrangler)
+npm run deploy       # by hand: npx wrangler@4.138.0 deploy (needs a logged-in Wrangler)
 npm run dev:worker   # the same Worker locally, with its headers and 404 handling
 ```
 
