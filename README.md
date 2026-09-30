@@ -123,8 +123,9 @@ npm run dev:worker   # the same Worker locally, with its headers and 404 handlin
 - Absolute URLs (canonical links, Open Graph, `robots.txt`, `sitemap.xml`) use the
   live origin `https://pikchr-studio.daniel-mestas.workers.dev`. If the site moves to
   a custom domain, replace that origin in those files.
-- CI (`ci/test.yml`, on every check-in and every landing's merge) runs `npm test`
-  and `wrangler deploy --dry-run`, which validates the config without credentials.
+- CI (`ci/test.yml`, on every check-in off trunk and every landing's merge) runs
+  `npm test` and `wrangler deploy --dry-run`, which validates the config without
+  credentials. A push to trunk runs its tests once, in `ci/deploy.yml`.
   The workflows are GitHub-Actions-shaped YAML, read by zeitforge (quarry RFC 0019).
 
 ## Design rules

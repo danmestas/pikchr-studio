@@ -1,7 +1,12 @@
-# Every check-in and every landing's merge: the tests, and wrangler's dry
-# run of the Worker config. Each job runs on zeitforge's pikchr-studio
-# runner as one of its pool users (quarry RFC 0019).
-on: [push, landing]
+# Every check-in off trunk and every landing's merge: the tests, and
+# wrangler's dry run of the Worker config. A push to trunk runs its tests
+# in deploy.yml, before the deploy, so they run once there. Each job runs
+# on zeitforge's pikchr-studio runner as one of its pool users (quarry
+# RFC 0019).
+on:
+  push:
+    branches-ignore: [trunk]
+  landing:
 jobs:
   test:
     timeout-minutes: 30
