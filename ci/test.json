@@ -1,9 +1,0 @@
-{
-  "name": "test",
-  "version": "1.0",
-  "_comment": "Every check-in and every landing's merge: the unit, native and browser tests (npm test), and wrangler's dry run of the Worker config. Steps run once (max_attempts 0): the browser runner already retries a script once and reports FLAKY. Tasks are claimed by the studio runner on zeitforge's box, which runs what ci/runner.json names at the check-in under test.",
-  "steps": [
-    {"id": "test", "task": "pikchr-studio.test", "timeout": 1800000000000, "retry": {"max_attempts": 0}, "worker_group": "pikchr-studio"},
-    {"id": "worker", "task": "pikchr-studio.worker", "timeout": 600000000000, "retry": {"max_attempts": 0}, "worker_group": "pikchr-studio"}
-  ]
-}

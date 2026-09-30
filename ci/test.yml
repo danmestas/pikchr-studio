@@ -1,0 +1,16 @@
+# Every check-in and every landing's merge: the tests, and wrangler's dry
+# run of the Worker config. Each job runs on zeitforge's pikchr-studio
+# runner as one of its pool users (quarry RFC 0019).
+on: [push, landing]
+jobs:
+  test:
+    timeout-minutes: 30
+    env:
+      PIKCHR_STUDIO_DIAG: "1"
+      PIKCHR_STUDIO_TAIL: "80"
+    steps:
+      - run: npm test
+  worker:
+    timeout-minutes: 10
+    steps:
+      - run: npx --yes wrangler@4.138.0 deploy --dry-run --outdir dist-dry-run
