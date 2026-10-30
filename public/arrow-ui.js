@@ -1,13 +1,37 @@
-import {endpointCandidates,moveVertexCandidates} from './edits.js?v=20260923c';
+import {endpointCandidates,moveVertexCandidates,routeCandidates} from './edits.js?v=20260923c';
 import {routeEditor,routeStyleGallery} from './route-ui.js?v=20260923c';
+import {connectorState,routeStyleCandidates} from './route-styles.js?v=20260923c';
 const ns='http://www.w3.org/2000/svg';
 let preferredMode='endpoints';
 const names={n:'North',ne:'Northeast',e:'East',se:'Southeast',s:'South',sw:'Southwest',w:'West',nw:'Northwest',c:'Center'};
 const element=(tag,attrs)=>{const e=document.createElementNS(ns,tag);for(const[k,v]of Object.entries(attrs))e.setAttribute(k,v);return e;};
+// What this connector can actually do, from the same predicates the editors
+// use. Labels and status text read this, so they never promise an operation
+// that the source expression cannot express.
+export function connectorCapabilities({object,scene,source}){
+  if(!object||!['arrow','line','spline','arc'].includes(object.kind))return null;
+  const routable=['arrow','line'].includes(object.kind);
+  const targets=scene.objects.filter(o=>o.name&&o.id!==object.id&&o.anchors&&!['arrow','line','spline','arc','move'].includes(o.kind));
+  const endpoints=routable&&targets.some(t=>endpointCandidates(source,object,scene,'to',t,'n').length);
+  const path=object.path||[];
+  const route=routable&&(routeCandidates(source,object,scene,'straight').length>0
+    ||path.some((p,i)=>i>0&&i<path.length-1&&moveVertexCandidates(source,object,scene,i,p).length>0));
+  let styles=false;
+  try{styles=connectorState(source,object,scene)!==null&&routeStyleCandidates(source,object,scene).options.length>0;}catch{}
+  return {endpoints,route,styles};
+}
+export function connectorLabel(capabilities){
+  if(!capabilities)return 'inspect only';
+  const parts=[];
+  if(capabilities.endpoints)parts.push('endpoints editable');
+  if(capabilities.route)parts.push('route editable');
+  if(capabilities.styles)parts.push('styles editable');
+  return parts.join(', ')||'inspect only';
+}
 export function arrowEditor({object,scene,source,svg,inspector,propose,status,valid,clear,autoApply,render,preview,accept,discard}){
   if(!['arrow','line','spline','arc'].includes(object.kind))return false;
   const routable=['arrow','line'].includes(object.kind);
-  const targets=scene.objects.filter(o=>o.name&&o.id!==object.id&&o.span.start<object.span.start&&o.anchors&&!['arrow','line','spline','arc','move'].includes(o.kind));
+  const targets=scene.objects.filter(o=>o.name&&o.id!==object.id&&o.anchors&&!['arrow','line','spline','arc','move'].includes(o.kind));
   const available=routable?targets.filter(t=>endpointCandidates(source,object,scene,'to',t,'n').length):[];
   const vertexEditable=routable&&(object.path||[]).some((p,i)=>moveVertexCandidates(source,object,scene,i,p).length);
   const styles=render&&preview?routeStyleGallery({object,scene,source,render,preview,accept,discard,status,valid}):null;

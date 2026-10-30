@@ -5,6 +5,7 @@ import {buildTextEdit} from './text-sizing.js?v=20260923c';
 import {createConnectedNeighbor,resizeShape} from './canvas-operations.js?v=20260923c';
 import {snapResize,resizeBox} from './resize-guides.js?v=20260923c';
 import {reverseConnector} from './reverse-connector.js?v=20260923c';
+import {connectorCapabilities} from './arrow-ui.js?v=20260923c';
 
 const ns='http://www.w3.org/2000/svg';
 const element=(tag,attrs={})=>{const node=document.createElement(tag);for(const[k,v]of Object.entries(attrs))node.setAttribute(k,v);return node;};
@@ -43,8 +44,12 @@ export function canvasTools({host,toolbar,getState,render,propose,select,selectM
   toolbar.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();cancel();selectTool.focus();}});
   const quick=element('div',{'class':'canvas-context','aria-label':'Selected connector actions'});
   const ends=pick('Arrowheads',[['none','None'],['start','Start'],['end','End'],['both','Both']]);
-  const reconnectFrom=button('Reconnect start',()=>setMode('from'));
-  const reconnectTo=button('Reconnect end',()=>setMode('to'));
+  // A direct reconnect is a canvas gesture: close the inspector so the
+  // destination shapes are reachable, and say what is being picked.
+  const closeInspector=()=>{for(const panel of document.querySelectorAll('.cl-popover:not([hidden])'))panel.opener?.click();host.focus({preventScroll:true});};
+  const reconnect=which=>button('Reconnect '+which,()=>reconnectStart(which==='start'?'from':'to'));
+  const reconnectFrom=reconnect('start');
+  const reconnectTo=reconnect('end');
   const dock=element('div',{class:'canvas-context-dock'}),emptyContext=element('span',{class:'context-hint'});emptyContext.textContent='Select a shape to size it, or a line to edit its connections.';
   const contextToggle=button('Size',()=>{const expanded=dock.classList.toggle('context-expanded');contextToggle.setAttribute('aria-expanded',String(expanded));});contextToggle.className='context-toggle';contextToggle.setAttribute('aria-expanded','false');dock.append(contextToggle);
   dock.addEventListener('keydown',event=>{if(event.key==='Escape'){dock.classList.remove('context-expanded');contextToggle.setAttribute('aria-expanded','false');contextToggle.focus();}});
@@ -98,7 +103,8 @@ export function canvasTools({host,toolbar,getState,render,propose,select,selectM
   }
   const horizontalOnly=handle=>handle==='e'||handle==='w';
   const dragPolicy=(s,handle)=>s.sizing?.mode==='grow'?(horizontalOnly(handle)&&s.object.kind==='box'?'wrap':'fixed'):s.sizing?.mode==='wrap'&&!horizontalOnly(handle)?'fixed':s.sizing?.mode||'fixed';
-  function setMode(next){cancel(false);if(next!=='select'&&!getState().valid){status('Render valid source before using canvas tools.');return;}mode=next;modeKey=getState().key;stopPan();sync();status(next==='marquee'?'Drag a rectangle around shapes. Escape cancels; the object list is a tap/keyboard alternative.':next==='place'?'Tap the canvas to place a '+kinds.select.value+'. Escape cancels.':next==='connect'?'Choose the first shape, then the destination.':next==='from'||next==='to'?'Choose a destination shape near the anchor you want.':'Select and drag shapes.');}
+  function reconnectStart(which){closeInspector();setMode(which);}
+  function setMode(next){cancel(false);if(next!=='select'&&!getState().valid){status('Render valid source before using canvas tools.');return;}mode=next;modeKey=getState().key;stopPan();sync();status(next==='marquee'?'Drag a rectangle around shapes. Escape cancels; the object list is a tap/keyboard alternative.':next==='place'?'Tap the canvas to place a '+kinds.select.value+'. Escape cancels.':next==='connect'?'Choose the first shape, then the destination.':next==='from'?'Reconnecting the start. Choose the destination shape; Escape cancels.':next==='to'?'Reconnecting the arrowhead. Choose the destination shape; Escape cancels.':'Select and drag shapes.');}
   function cancel(announce=true){if(dialogSession)closeText();++epoch;invalidate?.();pending=null;if(resize)liveClear?.();resize=null;startShape=null;mode='select';modeKey=null;if(announce)stopPan();host.querySelectorAll('.canvas-preview').forEach(n=>n.remove());sync();if(announce)status('Cancelled. No change applied.');}
   function point(event){const s=getState(),svg=host.querySelector('svg');if(!svg?.getScreenCTM())return {x:0,y:0};const t=s.scene.transform;return new DOMPoint(event.clientX,event.clientY).matrixTransform(svg.getScreenCTM().inverse()).matrixTransform(new DOMMatrix([t.a,t.b,t.c,t.d,t.e,t.f]).inverse());}
   function drawPoint(p){const t=getState().scene.transform;return new DOMPoint(p.x,p.y).matrixTransform(new DOMMatrix([t.a,t.b,t.c,t.d,t.e,t.f]));}
@@ -118,6 +124,11 @@ export function canvasTools({host,toolbar,getState,render,propose,select,selectM
     neighbor.disabled=!s.valid||!o||arrow||!o.name;place.disabled=connect.disabled=!s.valid;
     quick.hidden=!arrow;reconnectFrom.disabled=reconnectTo.disabled=!s.valid;
     if(arrow){try{ends.select.value=inspectProperties(s.source,o,s.scene).termination;ends.select.disabled=false;}catch{ends.select.disabled=true;}}
+    // Reconnecting needs an endpoint expression that can reference a shape;
+    // say so on the buttons instead of starting a pick that must be refused.
+    const endpoints=arrow&&!!connectorCapabilities({object:o,scene:s.scene,source:s.source})?.endpoints;
+    reconnectFrom.disabled=reconnectTo.disabled=!s.valid||!endpoints;
+    for(const b of [reconnectFrom,reconnectTo])b.title=endpoints?'':'This connector has no shape endpoint to reconnect. Edit it in source.';
     let resizable=false;if(s.valid&&o&&!s.multiple){try{resizeShape(s.source,s.scene,o,{width:o.bbox.width,height:o.bbox.height});resizable=true;}catch{}}
     sizingBar.hidden=!resizable;
     contextToggle.hidden=!resizable&&!arrow;contextToggle.textContent=resizable?'Size · '+Number(o.bbox.width.toFixed(2))+' × '+Number(o.bbox.height.toFixed(2))+' in':'Connector options';
@@ -199,17 +210,26 @@ export function canvasTools({host,toolbar,getState,render,propose,select,selectM
     if(mode==='marquee'){const z=p.end||p.p,x1=Math.min(z.x,p.p.x),x2=Math.max(z.x,p.p.x),y1=Math.min(z.y,p.p.y),y2=Math.max(z.y,p.p.y);const ids=p.s.scene.objects.filter(o=>!['line','arrow'].includes(o.kind)&&o.bbox.x>=x1&&o.bbox.y>=y1&&o.bbox.x+o.bbox.width<=x2&&o.bbox.y+o.bbox.height<=y2).map(o=>o.id);setMode('select');selectMany(ids);status(ids.length+' shapes selected. Copy selection includes their internal connectors.');return;}
     if(Math.hypot(p.x-e.clientX,p.y-e.clientY)>8)return;
     if(mode==='place'){await placeAt(e);return;}
-    const target=p.s.scene.objects.find(o=>o.id===p.target);if(!target){status('Choose a named shape, not empty canvas.');return;}
-    const available=connectableShapes(p.s.source,p.s.scene);if(!available.includes(target)){status('This object cannot be used as a connection target.');return;}
+    const target=p.s.scene.objects.find(o=>o.id===p.target);if(!target){setMode('select');status('Choose a named shape, not empty canvas.');return;}
+    const available=connectableShapes(p.s.source,p.s.scene);
+    if(!available.includes(target)){setMode('select');status((mode==='from'||mode==='to'?'Reconnecting cancelled. ':'')+'This object cannot be used as a connection target. Choose a named top-level shape.');return;}
     try{
       if(mode==='connect'){
         if(!startShape){startShape=target;select(target.id);sync();status('Start: '+target.name+'. Choose the destination.');return;}
         const start=startShape;const option=createConnector(p.s.source,p.s.scene,{fromId:start.id,fromAnchor:nearestAnchor(start,target.center),toId:target.id,toAnchor:nearestAnchor(target,start.center)});
-        await submit(option,p.s);setMode('select');
+        const connected=await submit(option,p.s);setMode('select');
+        if(connected)status('Connected '+(start.name||start.kind)+' to '+(target.name||target.kind)+'. Select the connector to restyle or reconnect it.');
       }else if(mode==='from'||mode==='to'){
-        const options=endpointCandidates(p.s.source,p.s.object,p.s.scene,mode,target,nearestAnchor(target,p.p));
-        if(!options.length)throw Error('This endpoint cannot reference that target safely. Choose an earlier shape or edit source.');
-        await propose(p.s.object,options.slice(0,1));setMode('select');
+        const which=mode;
+        const options=endpointCandidates(p.s.source,p.s.object,p.s.scene,which,target,nearestAnchor(target,p.p));
+        setMode('select');
+        if(!options.length){
+          const later=target.span?.start>=p.s.object.span?.end;
+          status('Reconnecting cancelled. '+(target.name||target.kind)+(later?' is defined later in the source and this route cannot be moved past it.':' cannot be used as an endpoint target here.')+' Edit the connector in source.');
+          return;
+        }
+        // The status names the change, not the tool it returned to.
+        if(await propose(p.s.object,options.slice(0,1)))status('Reconnected the '+(which==='from'?'start':'arrowhead')+' to '+(target.name||target.kind)+'.');
       }
     }catch(error){status(error.message);}
   },true);
@@ -253,5 +273,5 @@ export function canvasTools({host,toolbar,getState,render,propose,select,selectM
   function closeText(){clearTimeout(timer);const session=dialogSession;if(!session)return;dialogSession=null;dialog.close();if(validSnapshot(session.s))host.innerHTML=session.original;host.focus({preventScroll:true});getState().rebind?.();sync();}
   async function finishText(){const session=dialogSession;if(!session?.candidate||done.disabled)return;const candidate=session.candidate;closeText();await submit(candidate,session.s);host.focus({preventScroll:true});}
   sync();
-  return {sync,cancel,editText,ownsPointer:()=>mode!=='select'||!!dialogSession,busy:()=>!!dialogSession};
+  return {sync,cancel,editText,reconnect:which=>{closeInspector();setMode(which==='start'?'from':'to');},ownsPointer:()=>mode!=='select'||!!dialogSession,busy:()=>!!dialogSession};
 }
