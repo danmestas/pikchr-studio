@@ -117,15 +117,26 @@ with sync_playwright() as pw:
     page.screenshot(path=os.path.join(tempfile.gettempdir(), "pikchr-creation.png"), full_page=True)
 
     # Stale and invalid source must never create a proposal from old geometry.
-    show_source(page)
-    source.fill(connected + "# unrendered change\n")
-    stale = source.input_value()
-    hide_source(page)
     open_details("Add shape")
-    page.get_by_role("button", name="Add shape", exact=True).click()
-    assert page.locator("#accept").is_disabled()
+    stale = connected + "# unrendered change\n"
+    # Submit and snapshot in one task, before the legitimate auto-render debounce.
+    rejected = page.get_by_role("button", name="Add shape", exact=True).evaluate("""(button, text) => {
+      const source = document.querySelector('#source');
+      source.value = text;
+      source.dispatchEvent(new Event('input', {bubbles:true}));
+      button.click();
+      return {source:source.value, acceptDisabled:document.querySelector('#accept').disabled,
+        error:document.querySelector('.creation-error').textContent,
+        queued:document.querySelectorAll('#queue-list li').length};
+    }""", stale)
+    assert rejected["acceptDisabled"]
+    assert rejected["source"] == stale
+    assert rejected["queued"] == 0
+    assert "Render the current source" in rejected["error"]
+    # A valid edit subsequently recovers through the normal automatic render.
+    page.wait_for_function("text => pikchrStudio.state().valid && pikchrStudio.state().source === text", arg=stale)
     assert source.input_value() == stale
-    assert "Render the current source" in page.locator(".creation-error").inner_text()
+    assert page.locator("#queue-list li").count() == 0
     set_source(page, "invalid syntax here")
     page.wait_for_function("document.querySelector('#diagnostic').textContent.length > 0")
     open_details("Add shape")
