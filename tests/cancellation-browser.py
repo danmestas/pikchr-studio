@@ -1,14 +1,14 @@
-"""Escape cancels whichever canvas gesture is live, in every route that owns one.
+"""Escape cancels a live route-bend drag and leaves the source and queue alone.
 
-The same rule everywhere: Escape before a target is chosen, Escape while a
-preview is showing, and an empty-canvas drop each leave the source, the undo
-history and the queued changes exactly as they were; releasing the pointer
-afterwards cannot apply the gesture either; and the next supported operation
-still works. Covered here for a route-bend drag (the connector Routing tab),
-the connect-drag gesture, and the drag-to-preview gesture, in both auto-apply
-and queue review. Shape resize, marquee, endpoint and bend cancellation are
-already covered by canvas-safety, endpoint-ownership, canvas-layout and
-browser.py; this script asserts only the gaps those leave.
+The route-bend drag is the regression pinned here: before this change Escape
+left the drag live, so the release that followed applied the abandoned bend.
+The connect-drag, empty-canvas reconnect and drag-to-preview cases are
+companion checks of the same rule along the other routes that own a gesture;
+canvas-layout, endpoint-ownership and preview already cover their basic
+cancellation, so this script adds no claims about those beyond what it runs.
+Every case finishes with a real follow-up operation and an exact history or
+queue count, which is what proves a cancelled gesture never landed even
+though validation is asynchronous.
 """
 import os
 import re
@@ -50,24 +50,22 @@ def show_routing(page, name="L"):
     page.get_by_role("button", name="Routing", exact=True).click()
 
 
-def bend_drag(page, dx=40, dy=30, steps=6, release=True, escape=False, expect_change=False):
+def undo_once(page, expected):
+    page.locator("#canvas-undo").click()
+    page.wait_for_function("o=>document.querySelector('#source').value===o", arg=expected)
+
+
+def bend_drag(page, dx=40, dy=30, steps=6, escape=False):
+    """Drag the first bend handle. With escape, wait for the cancel itself to
+    show (the guide clears) instead of sleeping; the release then follows."""
     handle = handle_center(page, "Drag bend 1")
     page.mouse.move(handle["x"], handle["y"])
     page.mouse.down()
     page.mouse.move(handle["x"] + dx, handle["y"] + dy, steps=steps)
     if escape:
         page.keyboard.press("Escape")
-        page.wait_for_timeout(150)
-    if release:
-        before = page.locator("#source").input_value()
-        page.mouse.up()
-        # A release validates asynchronously; wait for the outcome rather than
-        # for the canvas, which can be valid before the gesture is applied.
-        if expect_change:
-            page.wait_for_function("v=>document.querySelector('#source').value!==v", arg=before)
-            page.wait_for_function("!document.querySelector('#auto-apply').disabled")
-        else:
-            page.wait_for_function("pikchrStudio.state().valid")
+        page.wait_for_function("!(document.querySelector('.route-ghost')?.getAttribute('points'))")
+    page.mouse.up()
 
 
 with sync_playwright() as pw:
@@ -91,7 +89,7 @@ with sync_playwright() as pw:
     page.mouse.move(handle["x"] + 40, handle["y"] + 30, steps=6)
     assert page.locator(".route-ghost").get_attribute("points"), "a live route drag shows its guide"
     page.keyboard.press("Escape")
-    page.wait_for_timeout(150)
+    page.wait_for_function("!(document.querySelector('.route-ghost')?.getAttribute('points'))")
     assert not page.locator(".route-ghost").get_attribute("points"), "Escape removes the route guide"
     page.mouse.up()
     page.wait_for_function("pikchrStudio.state().valid")
@@ -100,22 +98,34 @@ with sync_playwright() as pw:
     assert page.get_by_role("button", name="Drag bend 1", exact=True).is_visible(), \
         "the connector stays selected with its handles after the cancel"
 
-    # The next supported operation works: the same drag, finished normally,
-    # still moves the bend, and Undo restores the cancelled original.
-    bend_drag(page, expect_change=True)
-    assert source.input_value() != before, "a completed bend drag still applies"
+    # The next supported operation works, and exactly one undo returns the
+    # original: had the cancelled drag landed, undo would stop at its result.
+    bend_drag(page)
+    page.wait_for_function("o=>document.querySelector('#source').value!==o", arg=before)
     assert re.search(r"L: arrow from A\.e to \(\d+\.\d+, -?\d+\.\d+\)", source.input_value()), source.input_value()
-    page.locator("#canvas-undo").click()
-    page.wait_for_function("o=>document.querySelector('#source').value===o", arg=before)
+    undo_once(page, before)
     assert source.input_value() == before
 
-    # --- 2. Movement and release after Escape cannot revive the gesture -----
+    # --- 2. Escape reaches every listener that is waiting for it -------------
+    # The route handles listen on the window, so several live gestures share
+    # one key event. A test-owned observer registered after the drag started
+    # stands in for the other listeners: it must still see the Escape. The
+    # connector must also stay selected, so the key cannot travel on to the
+    # diagram's own Escape (which would deselect).
     show_routing(page)
     handle = handle_center(page, "Drag bend 1")
     page.mouse.move(handle["x"], handle["y"])
     page.mouse.down()
     page.mouse.move(handle["x"] + 25, handle["y"] - 20, steps=5)
+    page.evaluate("()=>{window.__sawEscape=false;addEventListener('keydown',e=>{if(e.key==='Escape')window.__sawEscape=true;},true);}")
     page.keyboard.press("Escape")
+    page.wait_for_function("!(document.querySelector('.route-ghost')?.getAttribute('points'))")
+    assert page.evaluate("window.__sawEscape"), \
+        "Escape must reach every live route listener, not just the first"
+    assert page.evaluate("!!document.querySelector('.arrow-editor')"), \
+        "cancelling a route drag must not deselect the connector"
+    # A second Escape after the drag ended is a plain deselect; moving and
+    # releasing afterwards still cannot revive the cancelled gesture.
     page.keyboard.press("Escape")
     page.mouse.move(handle["x"] + 60, handle["y"] - 50, steps=5)
     page.mouse.up()
@@ -129,8 +139,10 @@ with sync_playwright() as pw:
     close_popovers(page)
     show_routing(page)
     bend_drag(page, escape=True)
+    page.wait_for_function("pikchrStudio.state().valid")
     assert source.input_value() == before, "a cancelled bend drag queues nothing in review"
     assert page.locator("#queue-list li").count() == 0
+    # One queue entry, not two, is what proves the cancelled drag never queued.
     bend_drag(page)
     page.wait_for_function("document.querySelectorAll('#queue-list li').length===1")
     menu_click(page, "#cancel")
@@ -155,7 +167,12 @@ with sync_playwright() as pw:
     assert source.input_value() == PIPELINE, "Escape before choosing a target creates no connector"
     assert page.evaluate("pikchrStudio.state().scene.objects.length") == 5
 
-    # --- 5. Reconnect on empty canvas: the drop creates nothing -------------
+    # --- 5. Reconnect on empty canvas: the drop creates nothing, and the
+    #        next reconnect to a real anchor is the only change ------------
+    # Put the still-armed Arrow tool away first, or the press would start a
+    # new connector instead of moving the endpoint.
+    close_popovers(page)
+    page.get_by_role("toolbar", name="Tools").get_by_role("button", name="Select", exact=True).click()
     close_popovers(page)
     object_button(page, "arrow o4").click()
     page.get_by_role("button", name="Endpoints", exact=True).click()
@@ -164,10 +181,22 @@ with sync_playwright() as pw:
     page.mouse.down()
     page.mouse.move(300, 800, steps=6)
     page.mouse.up()
-    page.wait_for_timeout(300)
+    # The drop's observable result is the restored endpoint and its message;
+    # wait for that rather than for a fixed interval.
+    page.wait_for_function("document.querySelector('#state').textContent.includes('Connection unchanged')")
+    assert page.locator(".arrow-overlay .endpoint-handle").count() == 2
     assert source.input_value() == PIPELINE, "an empty-canvas reconnect drop changes nothing"
     assert page.evaluate("pikchrStudio.state().scene.objects.length") == 5, \
         "an empty-canvas reconnect drop creates nothing"
+    # A real reconnect still works, and one undo returns the original.
+    handle = handle_center(page, "Drag arrowhead endpoint")
+    page.mouse.move(handle["x"], handle["y"])
+    page.mouse.down()
+    north = origin(page, "Database", "n")
+    page.mouse.move(north["x"], north["y"], steps=6)
+    page.mouse.up()
+    page.wait_for_function("document.querySelector('#source').value.includes('to Database.n')")
+    undo_once(page, PIPELINE)
 
     # --- 6. Drag-to-preview: Escape keeps the original; the next drag works --
     # The Arrow tool stays armed after a cancelled connect, so put it away the
@@ -188,7 +217,7 @@ with sync_playwright() as pw:
     page.wait_for_function("document.querySelector('#preview-actions').hidden")
     assert source.input_value() == previewed, "Escape discards the preview and keeps the original"
     assert page.locator("#queue-list li").count() == 0
-    # The next drag still previews; accepting it is what queues.
+    # The next drag still previews; accepting it queues exactly one change.
     db = origin(page, "Database")
     page.mouse.move(db["x"], db["y"])
     page.mouse.down()
@@ -202,4 +231,4 @@ with sync_playwright() as pw:
 
     assert not errors, errors
     browser.close()
-    print("PASS: Escape cancels route-bend, connect and preview gestures and their release, empty-canvas reconnect drops create nothing, and the next gesture still works in auto-apply and review")
+    print("PASS: Escape cancels a live route-bend drag (and the other canvas gestures), reaches every live route listener without deselecting, and the following release, movement or drop applies nothing, in auto-apply and review")

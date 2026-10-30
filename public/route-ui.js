@@ -87,9 +87,12 @@ export function routeEditor({object,scene,source,svg,layer,propose,status,valid,
     // handle and guide, and leave the source alone. `last` goes back to the
     // starting point so a release after Escape cannot apply the abandoned one.
     // The listener lives on the window because a drag does not move focus to
-    // the handle, so the key arrives at the diagram, not here.
+    // the handle, so the key arrives at the diagram, not here. It uses
+    // stopPropagation, not stopImmediatePropagation: every other live handle
+    // drag must still see the same Escape, while the event goes no further
+    // and so cannot deselect the connector.
     const cancel=()=>{removeEventListener('keydown',onEscape,true);if(!dragging)return;dragging=false;last=p;reset();status('Route drag cancelled. Source unchanged.');};
-    const onEscape=e=>{if(e.key!=='Escape')return;if(!h.isConnected){removeEventListener('keydown',onEscape,true);return;}e.preventDefault();e.stopImmediatePropagation();cancel();};
+    const onEscape=e=>{if(e.key!=='Escape')return;if(!h.isConnected){removeEventListener('keydown',onEscape,true);return;}e.preventDefault();e.stopPropagation();cancel();};
     h.onpointerdown=e=>{
       if(!valid())return;e.preventDefault();e.stopPropagation();clear();dragging=true;last=p;h.setPointerCapture(e.pointerId);
       addEventListener('keydown',onEscape,true);
