@@ -119,7 +119,11 @@ with sync_playwright() as pw:
         expect(page.get_by_role("button", name="More options", exact=True)).to_be_focused()
 
         choose_object(page, "E")
+        # The inspector helper must leave Objects through its visible Back action.
+        open_objects(page)
         open_more(page)
+        expect(page.locator(".cl-view-properties")).to_be_visible()
+        assert page.evaluate("pikchrStudio.state().object?.name") == "E"
         routes = more.locator(".cl-route-choices")
         for label in ("Straight", "Elbow", "Curve", "Arc", "Waypoints"):
             expect(routes.get_by_role("button", name=label, exact=True)).to_be_visible()
