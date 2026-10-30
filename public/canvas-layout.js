@@ -246,12 +246,36 @@ function install(studio){
   // ---- contextual toolbar ----------------------------------------------------
   const context=el('div',{class:'cl-float cl-context',role:'toolbar','aria-label':'Selection actions'});
   const selection=q('.selection-toolbar');
-  const icons={'edit-selected':'Aa','fit-text':'⇔','appearance-selected':'◧','route-selected':'↝','tidy-route':'⌗','copy-selection':'⧉','paste-selection':'⎘','duplicate-selected':'❐','delete-selected':'🗑','show-source-selected':'</>'};
+  // One icon language for the toolbar: 24-unit line art drawn in currentColor.
+  // Each button keeps its accessible name and tooltip; the SVG is decorative.
+  const ICONS={
+    'edit-selected':[['path',{d:'M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z'}],['path',{d:'m14 6 4 4'}]],
+    'fit-text':[['rect',{x:'3',y:'4',width:'18',height:'16',rx:'2'}],['path',{d:'M7 12h10'}],['path',{d:'m10 9-3 3 3 3'}],['path',{d:'m14 9 3 3-3 3'}]],
+    'appearance-selected':[['path',{d:'M20 4 9.5 14.5'}],['path',{d:'m14.5 4.5 5 5'}],['path',{d:'M8.5 13.5a3 3 0 0 0-3 3c0 1.5-.5 2.5-1.5 3 1 .6 2 .9 3 .9a3 3 0 0 0 3-3 3 3 0 0 0-1.5-3.9z'}]],
+    'route-selected':[['path',{d:'M5 18c0-7 4-11 14-11'}],['circle',{cx:'5',cy:'18',r:'2',fill:'currentColor',stroke:'none'}],['circle',{cx:'19',cy:'7',r:'2',fill:'currentColor',stroke:'none'}]],
+    'tidy-route':[['path',{d:'M5 18h6a2 2 0 0 0 2-2V8a2 2 0 0 1 2-2h4'}],['circle',{cx:'5',cy:'18',r:'2',fill:'currentColor',stroke:'none'}],['circle',{cx:'19',cy:'6',r:'2',fill:'currentColor',stroke:'none'}]],
+    'copy-selection':[['rect',{x:'8',y:'8',width:'12',height:'12',rx:'2'}],['path',{d:'M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2'}]],
+    'paste-selection':[['path',{d:'M9 4h6v3H9z'}],['path',{d:'M15 5h2a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2'}],['path',{d:'M9 12h6M9 16h4'}]],
+    'duplicate-selected':[['rect',{x:'4',y:'4',width:'11',height:'11',rx:'2'}],['rect',{x:'9',y:'9',width:'11',height:'11',rx:'2'}],['path',{d:'M14.5 12v5M12 14.5h5'}]],
+    'delete-selected':[['path',{d:'M4 7h16'}],['path',{d:'M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2'}],['path',{d:'M6.5 7l.8 12.1a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4L17.5 7'}],['path',{d:'M10 11v6M14 11v6'}]],
+    'show-source-selected':[['path',{d:'m8 8-4 4 4 4'}],['path',{d:'m16 8 4 4-4 4'}],['path',{d:'m13.5 5-3 14'}]],
+  };
+  const MORE_ICON=[['circle',{cx:'5',cy:'12',r:'1.7',fill:'currentColor',stroke:'none'}],['circle',{cx:'12',cy:'12',r:'1.7',fill:'currentColor',stroke:'none'}],['circle',{cx:'19',cy:'12',r:'1.7',fill:'currentColor',stroke:'none'}]];
+  function iconMarkup(marks){
+    const svg=svgEl('svg',{viewBox:'0 0 24 24',width:'20',height:'20','aria-hidden':'true',focusable:'false',fill:'none',stroke:'currentColor','stroke-width':'1.7','stroke-linecap':'round','stroke-linejoin':'round'});
+    for(const [tag,attrs] of marks)svg.append(svgEl(tag,attrs));
+    return svg;
+  }
   if(selection){
-    for(const [id,icon] of Object.entries(icons)){const b=$(id);if(b){b.dataset.icon=icon;b.title=b.textContent.trim()+(b.title&&b.title!==b.textContent.trim()?' — '+b.title:'');}}
+    for(const [id,marks] of Object.entries(ICONS)){
+      const b=$(id);if(!b)continue;
+      const name=b.textContent.trim();
+      if(name){b.setAttribute('aria-label',name);b.title=name+(b.title&&b.title!==name?' — '+b.title:'');}
+      b.replaceChildren(iconMarkup(marks));
+    }
     context.append(selection);
   }
-  const moreButton=el('button',{type:'button',class:'cl-more-button','aria-label':'More options',title:'Inspector and more','aria-expanded':'false'},'⋯');
+  const moreButton=el('button',{type:'button',class:'cl-more-button','aria-label':'More options',title:'Inspector and more','aria-expanded':'false'},iconMarkup(MORE_ICON));
   // Direct reconnect actions for a selected connector: they arm the same
   // canvas anchors the inspector offers, without opening it over the target.
   const changeStart=el('button',{type:'button',class:'cl-endpoint-action',title:'Reconnect the connector start'},'Change start');
