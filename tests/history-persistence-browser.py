@@ -30,7 +30,7 @@ with sync_playwright() as pw:
     page = context.new_page()
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
-    page.goto(STUDIO + "/?advanced=1")
+    page.goto(STUDIO + "/")
     source = page.locator("#source")
 
     def rendered():
