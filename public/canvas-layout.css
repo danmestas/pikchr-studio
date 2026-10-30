@@ -137,6 +137,13 @@ body.layout-canvas .cl-dot{fill:var(--cl-canvas);stroke:var(--cl-accent);stroke-
 body.layout-canvas .cl-dot-hit{cursor:crosshair;pointer-events:all}
 body.layout-canvas .cl-dots .cl-dot{pointer-events:none}
 body.layout-canvas .cl-dots .cl-dot-hit:hover+.cl-dot{fill:var(--cl-accent)}
+/* Endpoint handles outrank creation dots: they own the anchor they sit on. */
+body.layout-canvas .arrow-overlay .endpoint-handle{pointer-events:all}
+/* While a reconnect is targeting, chrome over the shapes steps aside. A drag
+   also clears the inspector; armed anchors opened from the inspector keep it
+   so its own Cancel reconnect stays reachable. Escape restores everything. */
+body.layout-canvas.cl-targeting :is(.cl-context,.cl-textbar,.cl-menu,.cl-export,.cl-help){display:none!important}
+body.layout-canvas.cl-targeting-drag :is(.cl-more){display:none!important}
 body.layout-canvas .cl-rubber-line{fill:none;stroke:var(--cl-accent);stroke-width:2;stroke-dasharray:6 4}
 body.layout-canvas .cl-head{fill:var(--cl-accent)}
 body.layout-canvas .cl-dot.cl-snap{fill:var(--cl-accent)}

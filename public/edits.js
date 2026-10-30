@@ -251,16 +251,81 @@ export function moveVertexCandidates(source, object, scene, index, target) {
   },`(${pathCoordinate(target.x)}, ${pathCoordinate(target.y)})`,`Move bend ${index}`,target)];
 }
 
-// Change one explicit endpoint of a straight path. The compiler remains the
-// authority on validity; unsupported expressions never receive a guessed edit.
+// Relocation is deliberately bounded: every statement from the connector on
+// must have explicit placement and named dependencies. Unknown syntax, aliases,
+// ordinal references and implicit placement could observe the changed order.
+function laterEndpointCandidates(source, object, scene, endpoint, targetObject, anchor) {
+  if (!movableKinds.includes(targetObject.kind)) return [];
+  let start, end, targetEnd;
+  try {
+    start = byteOffsetToIndex(source,object.span.start);
+    end = byteOffsetToIndex(source,object.span.end);
+    targetEnd = byteOffsetToIndex(source,targetObject.span.end);
+  } catch { return []; }
+  const tail = scene.objects.filter(o=>o.span?.start >= object.span.start).sort((a,b)=>a.span.start-b.span.start);
+  const trivia = text => /^(?:\s|#[^\r\n]*(?:\r?\n|$))*$/.test(text);
+  let cursor = start;
+  for (const other of tail) {
+    if (!topLevel(other,scene)) return [];
+    let a,b;
+    try { a=byteOffsetToIndex(source,other.span.start); b=byteOffsetToIndex(source,other.span.end); }
+    catch { return []; }
+    if (a < cursor || !trivia(source.slice(cursor,a))) return [];
+    cursor = b;
+    if (['arrow','line'].includes(other.kind)) {
+      const route = readRoute(source,other,scene);
+      if (!route || [route.from,route.to].some(ref=>!movableKinds.includes(scene.objects.find(o=>o.name===ref.split('.')[0])?.kind))) return [];
+    } else {
+      const statement = source.slice(a,b), placement = placementRange(statement,other);
+      if (!placement || !parsePlacement(maskedText(statement))) return [];
+      if (placement.referenceName) {
+        const refs = scene.objects.filter(o=>o.name===placement.referenceName && topLevel(o,scene));
+        if (refs.length!==1 || !movableKinds.includes(refs[0].kind)
+            || refs[0].span.end > other.span.start) return [];
+      }
+    }
+  }
+  if (!tail.includes(targetObject) || !trivia(source.slice(cursor))) return [];
+  // Move only the edited connector, including its indentation and trailing
+  // comment. Every unrelated object's source and painter order stay intact.
+  const lineStart = source.lastIndexOf('\n',start-1)+1;
+  const afterLine = index => {const next=source.indexOf('\n',index);return next<0 ? source.length : next+1;};
+  const lineEnd = afterLine(end), insertAt = afterLine(targetEnd);
+  if (!/^[ \t]*$/.test(source.slice(lineStart,start))
+      || !/^[ \t]*(?:#[^\r\n]*)?\r?\n?$/.test(source.slice(end,lineEnd))
+      || !/^[ \t]*(?:#[^\r\n]*)?\r?\n?$/.test(source.slice(targetEnd,insertAt))) return [];
+  const line = source.slice(lineStart,lineEnd), newline = source.includes('\r\n') ? '\r\n' : '\n';
+  const separator = source[insertAt-1]==='\n' ? '' : newline;
+  const relocated = source.slice(0,lineStart)+source.slice(lineEnd,insertAt)+separator+line+source.slice(insertAt);
+  // Rebase spans, then reuse the ordinary endpoint rewrite and route grammar.
+  const removed = encoder.encode(line).length, added = encoder.encode(separator).length;
+  const lineByteStart = encoder.encode(source.slice(0,lineStart)).length;
+  const insertByte = encoder.encode(source.slice(0,insertAt)).length;
+  const movedStart = insertByte-removed+added+object.span.start-lineByteStart;
+  const objects = scene.objects.map(other=>{
+    const shift = other===object ? movedStart-object.span.start : other.span.start<object.span.start ? 0
+      : other.span.start<insertByte ? -removed : added;
+    return {...other,span:{start:other.span.start+shift,end:other.span.end+shift}};
+  });
+  const nextScene = {...scene,objects};
+  const options = endpointCandidates(relocated,objects[scene.objects.indexOf(object)],nextScene,endpoint,objects[scene.objects.indexOf(targetObject)],anchor);
+  return options.map(option=>{
+    const patch = {base:source,start:lineByteStart,end:insertByte,expected:source.slice(lineStart,insertAt),
+      text:option.source.slice(lineStart,option.source.length-(source.length-insertAt))};
+    return {...option,patch,source:applyPatch(source,patch),selectId:targetObject.id};
+  });
+}
+
+// The compiler remains the authority on validity; unsupported expressions never
+// receive a guessed edit. Earlier targets retain their minimal local patch.
 export function endpointCandidates(source, object, scene, endpoint, targetObject, anchor) {
   if (!['arrow', 'line'].includes(object?.kind) || !['from', 'to'].includes(endpoint)
       || !endpointAnchor.test(anchor || '') || !objectName.test(targetObject?.name || '')
       || !topLevel(object, scene) || !topLevel(targetObject, scene)
-      || targetObject.span.end > object.span.start
       || !(scene?.objects || []).some(other => other.id === targetObject.id
         && other.name === targetObject.name && other.span?.start === targetObject.span.start)
       ) return [];
+  if (targetObject.span.start >= object.span.end) return laterEndpointCandidates(source,object,scene,endpoint,targetObject,anchor);
   // A repeated name may resolve to another object. Offer no ambiguous targets.
   if ((scene.objects || []).filter(other => other.name === targetObject.name
       && other.span?.start < object.span.start && topLevel(other, scene)).length !== 1) return [];

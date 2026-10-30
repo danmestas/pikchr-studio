@@ -1,8 +1,9 @@
 import {candidates,snap,applyPatch,byteOffsetToIndex} from './edits.js?v=20260923c';
+import {correspondingObject} from './candidate-target.js?v=20260923c';
 import {alignmentGuides,gapMarks} from './guides.js?v=20260923c';
 import {constrainDrag,smartSnap} from './constrain.js?v=20260923c';
 const params=new URL(location.href).searchParams;
-import {arrowEditor} from './arrow-ui.js?v=20260923c';
+import {arrowEditor,connectorCapabilities,connectorLabel} from './arrow-ui.js?v=20260923c';
 import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20260923c';
 import {propertyEditor} from './property-ui.js?v=20260923c';
 import {fitText,canFitText,inspectProperties,readProperties} from './properties.js?v=20260923c';
@@ -286,6 +287,9 @@ function select(id,highlight=false,additive=false,preserve=false){
 $('edit-selected').onclick=()=>directTools?.editText();
 $('appearance-selected').onclick=()=>{openInspector();const section=$('inspector').querySelector('.appearance-editor');if(section){section.open=true;section.scrollIntoView({block:'nearest'});section.querySelector('input')?.focus({preventScroll:true});}};
 $('route-selected').onclick=()=>{openInspector();const button=[...$('inspector').querySelectorAll('button')].find(b=>b.textContent==='Routing');button?.click();$('inspector').querySelector('.arrow-editor')?.scrollIntoView({block:'nearest'});};
+// Direct reconnect for a selected connector. canvas-layout's contextual
+// toolbar and any other chrome call this instead of open-coding the mode.
+const reconnectSelected=which=>{const o=current();if(!o||!['arrow','line','spline','arc'].includes(o.kind))return;directTools?.reconnect(which);};
 $('show-source-selected').onclick=()=>{const o=current();if(!o?.span)return;source.focus();source.setSelectionRange(byteOffsetToIndex(source.value,o.span.start),byteOffsetToIndex(source.value,o.span.end));};
 function action(fn){if(rendering||source.value!==renderedSource){status('Render the current source before editing.');return;}try{return validateSuggestions(current(),[fn()]);}catch(error){status(error.message);}}
 $('duplicate-selected').onclick=()=>action(()=>duplicateObject(source.value,current(),scene));
@@ -307,8 +311,11 @@ function installArrowEditor(){
     preview:(options,index,hooks)=>previewValidated(o,options,index,hooks),accept:acceptPreview,discard:discardPreview,
     valid:()=>source.value===renderedSource&&!$('diagram').classList.contains('stale'),clear:clearProposal});
   const routable=!!$('inspector').querySelector('.arrow-editor .connector-tabs');
-  if(supported)for(const dt of $('inspector').querySelectorAll('dt'))if(dt.textContent==='Editing')dt.nextElementSibling.textContent=routable?'Use Route styles to restyle, Routing for paths and bends, or Endpoints to reconnect shape anchors.':'Use Route styles to restyle this connector.';
-  if(!supported&&['arrow','line','spline','arc'].includes(o.kind))for(const dt of $('inspector').querySelectorAll('dt'))if(dt.textContent==='Editing')dt.nextElementSibling.textContent='Inspect only: connector editing requires explicit object references and a supported straight or Studio-generated route.';
+  const capabilities=connectorCapabilities({object:o,scene,source:source.value});
+  const description=capabilities&&(capabilities.endpoints||capabilities.route||capabilities.styles)
+    ?'Editable here: '+[capabilities.endpoints&&'endpoint reconnection (Endpoints)',capabilities.route&&'routing',capabilities.styles&&'styles'].filter(Boolean).join(', ')+'.'
+    :'Inspect only: this connector expression cannot be safely rewritten. Edit it in source.';
+  for(const dt of $('inspector').querySelectorAll('dt'))if(dt.textContent==='Editing')dt.nextElementSibling.textContent=description;
 }
 const matrix=()=>{const t=scene.transform;return new DOMMatrix([t.a,t.b,t.c,t.d,t.e,t.f]);};
 const svgPoint=p=>new DOMPoint(p.x,p.y).matrixTransform(matrix());
@@ -404,7 +411,12 @@ function bindDiagram(svg){
   };
   for(const group of svg.querySelectorAll('[data-pikchr-id]')){
     const object=scene.objects.find(o=>o.id===group.getAttribute('data-pikchr-id'));
-    if(object){group.setAttribute('tabindex','0');group.setAttribute('role','button');group.setAttribute('aria-label',(object.name||object.kind)+(object.editable?', movable':', inspect only'));}
+    if(object){
+      const connector=['arrow','line','spline','arc'].includes(object.kind)
+        ?connectorLabel(connectorCapabilities({object,scene,source:renderedSource})):null;
+      group.setAttribute('tabindex','0');group.setAttribute('role','button');
+      group.setAttribute('aria-label',(object.name||object.kind)+', '+(connector||(object.editable?'movable':'inspect only')));
+    }
     if(['box','circle','ellipse','oval','cylinder','diamond'].includes(object?.kind)){
       // Pikchr's unfilled shapes otherwise only receive events on ink (the
       // stroke and label). Use the real outline, not a rectangular hit box, so
@@ -459,10 +471,14 @@ function bindDiagram(svg){
       status('Source changed. Render to update the diagram before dragging.');return;
     }
     if(!o?.editable){
+      const capabilities=connectorCapabilities({object:o,scene,source:renderedSource});
+      const connector=capabilities&&['arrow','line','spline','arc'].includes(o.kind);
       const message=/nested/i.test(o?.reason||'')
         ?'This shape is inside a group and is inspect-only. Choose Pipeline and Load example to try dragging editable shapes.'
-        :['arrow','line'].includes(o?.kind)
-          ?'Use the connector handles in Routing or Endpoints; dragging the connector body only selects it.'
+        :connector&&(capabilities.endpoints||capabilities.route)
+          ?'Use the connector handles in '+(capabilities.endpoints?'Endpoints':'Routing')+'; dragging the connector body only selects it.'
+          :connector&&capabilities.styles?'Use Route styles in the inspector; dragging the connector body only selects it.'
+          :connector?'This connector is inspect-only here: edit its endpoints or route in source.'
           :'This object is inspect-only: '+(o?.reason||'its source cannot be safely rewritten.');
       status(message);document.querySelector('.diagram-pane .hint').textContent=message;return;
     }
@@ -724,7 +740,7 @@ async function previewSuggestions(o,options){
     const result=await render(option.source);
     if(g!==gesture||rev!==revision)return false;
     if(result.error||!result.svg){failure??=result.error||'Renderer returned no diagram.';continue;}
-    if(result.objects.filter(n=>n.kind===o.kind&&n.name===o.name).length!==1)continue;
+    if(!correspondingObject(result.objects,o,option))continue;
     valid.push({...option,result,base,rev,subject:o.name||o.kind});
   }
   if(g!==gesture)return false;
@@ -782,7 +798,7 @@ function mountPreview(option){
   svg.style.maxWidth='100%';svg.setAttribute('preserveAspectRatio','xMidYMid meet');Object.assign(svg.dataset,data);
   svg.setAttribute('viewBox',[Math.min(p.x,q.x),Math.min(p.y,q.y),Math.abs(q.x-p.x),Math.abs(q.y-p.y)].join(' '));
   $('diagram').classList.add('previewing');
-  const moved=option.selectId?option.result.objects.find(n=>n.id===option.selectId):option.result.objects.find(n=>n.kind===preview.object.kind&&n.name===preview.object.name);
+  const moved=correspondingObject(option.result.objects,preview.object,option);
   if(moved){const layer=svgElement('g',{class:'studio-overlay preview-overlay'});const to=pt=>new DOMPoint(pt.x,pt.y).matrixTransform(M);
     const a=to({x:moved.bbox.x,y:moved.bbox.y+moved.bbox.height}),b=to({x:moved.bbox.x+moved.bbox.width,y:moved.bbox.y});
     layer.append(svgElement('rect',{x:a.x-3,y:a.y-3,width:Math.max(6,b.x-a.x+6),height:Math.max(6,b.y-a.y+6),fill:'none',stroke:'var(--accent,#0969da)','stroke-width':2,'vector-effect':'non-scaling-stroke','stroke-dasharray':'6 3'}));svg.append(layer);}
@@ -815,8 +831,7 @@ async function validateSuggestions(o,options){
     const result=await render(option.source);
     if(g!==gesture||rev!==revision)return false;
     if(result.error||!result.svg){failures.push(result.error||'Renderer returned no diagram.');continue;}
-    const matches=result.objects.filter(n=>option.selectName?n.name===option.selectName:option.selectId?n.id===option.selectId&&n.kind===option.targetKind:o&&n.kind===o.kind&&(o.name?n.name===o.name:n.id===o.id));
-    if(!option.clearSelection&&matches.length!==1)continue;
+    if(!option.clearSelection&&!correspondingObject(result.objects,o,option))continue;
     valid.push({...option,result,base,rev,subject:o?.name||o?.kind||option.selectName});
   }
   if(g!==gesture)return false;
@@ -929,6 +944,7 @@ window.pikchrStudio={
   refit:()=>{const svg=$('diagram').querySelector('svg');const box=svg?.dataset.exportViewBox;if(!box)return;const [x,y,w,h]=box.split(/[ ,]+/).map(Number);svg.dataset.fitViewBox=fitBox(x,y,w,h);if(zoom===1&&pan.x===0&&pan.y===0){svg.dataset.baseViewBox=svg.dataset.fitViewBox;applyViewport();refreshHandles();}},
   title:()=>activeDocumentTitle,
   editLabelDialog:()=>directTools?.editText(),
+  reconnect:which=>reconnectSelected(which),
   preview:()=>{if(!preview)return null;const o=preview.options[preview.index];return {index:preview.index,count:preview.options.length,label:o.label,before:o.base.slice(byteOffsetToIndex(o.base,o.patch.start),byteOffsetToIndex(o.base,o.patch.end)),after:o.patch.text};},
   screenToModel:(x,y)=>{const svg=$('diagram').querySelector('svg');if(!scene||!svg?.getScreenCTM())return null;return new DOMPoint(x,y).matrixTransform(svg.getScreenCTM().inverse()).matrixTransform(matrix().inverse());},
 };

@@ -4,6 +4,7 @@
 // ordinary candidate edits.
 import {attachPoints,nearestAnchor,targetAnchor,hitShape,connectCandidate,connectionLabel,elbowRoute} from './connect-drag.js?v=20260923c';
 import {connectableShapes} from './creation.js?v=20260923c';
+import {connectorCapabilities} from './arrow-ui.js?v=20260923c';
 import {freeLineCandidate,pointText,snapToGrid,literalRoute,lineEnds,translateLineCandidate,moveEndpointCandidate} from './free-lines.js?v=20260923c';
 import {lockDirection} from './constrain.js?v=20260923c';
 import {inspectProperties} from './properties.js?v=20260923c';
@@ -244,7 +245,13 @@ function install(studio){
     context.append(selection);
   }
   const moreButton=el('button',{type:'button',class:'cl-more-button','aria-label':'More options',title:'Inspector and more','aria-expanded':'false'},'⋯');
-  context.append(moreButton);document.body.append(context);
+  // Direct reconnect actions for a selected connector: they arm the same
+  // canvas anchors the inspector offers, without opening it over the target.
+  const changeStart=el('button',{type:'button',class:'cl-endpoint-action',title:'Reconnect the connector start'},'Change start');
+  const changeEnd=el('button',{type:'button',class:'cl-endpoint-action',title:'Reconnect the connector end'},'Change end');
+  changeStart.onclick=()=>changeEndpoint('from');
+  changeEnd.onclick=()=>changeEndpoint('to');
+  context.append(changeStart,changeEnd,moreButton);document.body.append(context);
   const more=popover('cl-more','Inspector');
   const moreTitle=el('strong',{class:'cl-more-title'},'Selection');
   const moreKind=el('span',{class:'cl-muted'});
@@ -324,9 +331,14 @@ function install(studio){
     syncStatus();syncTitle();markSelection();syncCandidate();
     const s=studio.state(),object=s.object;
     const previewing=!!previewActions&&!previewActions.hidden;
-    const dragging=stage.classList.contains('cl-pressing')||!!connect||previewing;
+    const dragging=stage.classList.contains('cl-pressing')||!!connect||targeting||previewing;
     const box=object&&!dragging?boxOnScreen(object):null;
-    const visible=!inline&&!!box&&box.right>0&&box.left<innerWidth&&box.bottom>0&&box.top<innerHeight;
+    const visible=!inline&&!targeting&&!!box&&box.right>0&&box.left<innerWidth&&box.bottom>0&&box.top<innerHeight;
+    const connector=!!selectedLine();
+    const endpoints=connector&&s.valid&&connectorCapabilities(s)?.endpoints;
+    changeStart.hidden=changeEnd.hidden=!connector;
+    changeStart.disabled=changeEnd.disabled=!endpoints;
+    changeStart.title=changeEnd.title=endpoints?'':'This connector has no editable shape endpoint.';
     context.hidden=!visible;
     if(visible)place(context,box,30);
     syncTextBar(visible&&!inline);
@@ -349,7 +361,50 @@ function install(studio){
   addEventListener('pointerup',()=>{if(stage.classList.contains('cl-pressing')){stage.classList.remove('cl-pressing');schedule();}},true);
 
   // ---- drag to connect -------------------------------------------------------
-  let hovered=null,connect=null,cache={scene:null,source:null,list:[]};
+  let hovered=null,connect=null,targeting=false,armedObserver=null,cache={scene:null,source:null,list:[]};
+  // While an endpoint is being dragged or its anchors are armed, chrome that
+  // could cover the intended target (selection toolbar, inspector, text bar)
+  // steps out of the way. This is the layout's own layer to hide.
+  let targetingDrag=false;
+  function setTargeting(on,dragging=false){
+    if(targeting===on&&targetingDrag===dragging)return;
+    targeting=on;targetingDrag=dragging;
+    document.body.classList.toggle('cl-targeting',on);
+    document.body.classList.toggle('cl-targeting-drag',on&&dragging);
+    schedule();
+    // A drag from the canvas may have left a popover open where the pointer
+    // now needs to go; an armed reconnect started inside the inspector keeps
+    // it open so its own Cancel reconnect stays usable.
+    if(on&&dragging)for(const panel of popovers)if(!panel.hidden)toggle(panel,panel.opener,false);
+  }
+  function noteReconnectArmed(){
+    const armed=[...document.querySelectorAll('.arrow-overlay .anchor-target')].some(d=>d.style.pointerEvents==='all');
+    setTargeting(armed||!!endpointDrag,!!endpointDrag);
+  }
+  function watchReconnect(){
+    if(armedObserver)return;
+    armedObserver=new MutationObserver(noteReconnectArmed);
+    armedObserver.observe(diagram,{subtree:true,attributes:true,attributeFilter:['style','class']});
+  }
+  let endpointDrag=null;
+  watchReconnect();
+  // An endpoint drag is a targeting gesture too. The arrow editor owns the
+  // drag; the layout only observes it so chrome clears, and relays Escape as a
+  // pointercancel so the cancel path is the editor's own.
+  diagram.addEventListener('pointerdown',e=>{
+    const handle=endpointHandle(e);if(!handle)return;
+    endpointDrag={handle,pointerId:e.pointerId};setTargeting(true,true);
+  },true);
+  const endEndpointDrag=()=>{endpointDrag=null;noteReconnectArmed();};
+  addEventListener('pointerup',e=>{if(endpointDrag&&e.pointerId===endpointDrag.pointerId)endEndpointDrag();},true);
+  addEventListener('pointercancel',endEndpointDrag,true);
+  addEventListener('keydown',e=>{
+    if(e.key!=='Escape'||!endpointDrag)return;
+    e.preventDefault();e.stopImmediatePropagation();
+    const {handle,pointerId}=endpointDrag;endpointDrag=null;
+    handle.dispatchEvent(new PointerEvent('pointercancel',{pointerId,bubbles:true}));
+    noteReconnectArmed();
+  },true);
   const svgNow=()=>diagram.querySelector('svg');
   const sceneMatrix=scene=>{const t=scene.transform;return new DOMMatrix([t.a,t.b,t.c,t.d,t.e,t.f]);};
   const toSvg=(scene,p)=>new DOMPoint(p.x,p.y).matrixTransform(sceneMatrix(scene));
@@ -359,16 +414,38 @@ function install(studio){
     return cache.list;
   }
   const connectMode=()=>connectTool?.getAttribute('aria-pressed')==='true';
+  // The arrow editor draws the connector endpoint handles. They are drawn by
+  // another module, so recognise them by their own attribute and let the
+  // endpoint gesture own the press: no creation dot or shape drag may start.
+  const endpointHandle=e=>e.target.closest?.('.arrow-overlay .endpoint-handle')||null;
+  function changeEndpoint(which){
+    const s=studio.state();if(!s.valid||!selectedLine())return;
+    for(const panel of popovers)if(!panel.hidden)toggle(panel,panel.opener,false);
+    const editor=document.querySelector('.arrow-overlay');
+    if(!editor)return;
+    const tab=[...document.querySelectorAll('.arrow-editor .endpoint-tabs button')][which==='from'?0:1];
+    tab?.click();
+    const reconnect=[...document.querySelectorAll('.arrow-editor button')].find(b=>b.textContent==='Reconnect on canvas');
+    if(reconnect&&reconnect.getAttribute('aria-pressed')!=='true')reconnect.click();
+    toggle(more,moreButton,false);setTargeting(true);
+  }
   let dotsKey=null;
   function drawDots(){
     const svg=svgNow();
     const previewing=!!previewActions&&!previewActions.hidden;
-    const s=studio.state(),list=svg&&!connect&&!previewing&&s.valid?connectable():[];
+    const s=studio.state();
+    // A selected connector's endpoint handles own the anchors they sit on, and
+    // an armed reconnect owns the canvas: never put a creation dot over them.
+    const line=!targeting&&!previewing?selectedLine():null;
+    const ends=line?lineEnds(s.source,s.scene,line):null;
+    const owned=ends?['from','to'].map(w=>ends[w].point).filter(p=>Number.isFinite(p?.x)&&Number.isFinite(p?.y)):[];
+    const list=svg&&!connect&&!previewing&&!targeting&&s.valid?connectable():[];
     const targets=[hovered,s.object].filter((o,i,all)=>o&&all.indexOf(o)===i&&list.includes(o));
     const scale=svg?Math.hypot(svg.getScreenCTM()?.a||1,svg.getScreenCTM()?.b||0)||1:1;
+    const pointsOf=object=>attachPoints(object).filter(point=>!owned.some(p=>Math.hypot(p.x-point.x,p.y-point.y)<1e-6));
     // Redraw only when something visible changed; the layer itself is inside
     // the observed diagram, so an unconditional redraw would loop.
-    const key=targets.length?[targets.map(o=>o.id).join(','),svg.getAttribute('viewBox'),scale.toFixed(4),s.source.length].join('|'):null;
+    const key=targets.length?[targets.map(o=>o.id+':'+pointsOf(o).map(p=>p.anchor).join(',')).join(';'),svg.getAttribute('viewBox'),scale.toFixed(4),s.source.length].join('|'):null;
     const existing=svg?.querySelector('.cl-dots');
     if(key===dotsKey&&(!key||existing))return;
     dotsKey=key;existing?.remove();
@@ -379,17 +456,21 @@ function install(studio){
       // side, so a tap on a small shape (phones, zoomed out) still hits it.
       const lo=toSvg(s.scene,{x:object.bbox.x,y:object.bbox.y}),hi=toSvg(s.scene,{x:object.bbox.x+object.bbox.width,y:object.bbox.y+object.bbox.height});
       const hitR=Math.min(10/scale,.3*Math.min(Math.abs(hi.x-lo.x),Math.abs(hi.y-lo.y)));
-      for(const point of attachPoints(object)){
+      for(const point of pointsOf(object)){
       // On the edge midpoint, as in the mockup; resize handles sit on corners.
       const p=toSvg(s.scene,point),attrs={'data-id':object.id,'data-anchor':point.anchor};
       layer.append(svgEl('circle',{...attrs,class:'cl-dot-hit',cx:p.x,cy:p.y,r:hitR,fill:'transparent'}),
         svgEl('circle',{...attrs,class:'cl-dot',cx:p.x,cy:p.y,r:5/scale,'vector-effect':'non-scaling-stroke'}));
     }
     }
-    svg.append(layer);
+    // The endpoint handles are the older, more specific affordance: keep them
+    // above creation dots so a press there always drags the endpoint.
+    const overlay=svg.querySelector('.arrow-overlay');
+    if(overlay)svg.insertBefore(layer,overlay);else svg.append(layer);
   }
   diagram.addEventListener('pointermove',e=>{
     if(connect||e.buttons)return;
+    if(endpointHandle(e)){if(hovered){hovered=null;drawDots();}return;}
     const s=studio.state();if(!s.valid){if(hovered){hovered=null;drawDots();}return;}
     const onDot=e.target.closest?.('.cl-dots');if(onDot)return;
     const p=studio.screenToModel(e.clientX,e.clientY);if(!p)return;
@@ -407,6 +488,7 @@ function install(studio){
   diagram.addEventListener('pointerdown',e=>{
     if(e.button!==0||connect)return;
     const s=studio.state();if(!s.valid)return;
+    if(endpointHandle(e))return;
     const handle=e.target.closest?.('.cl-dots [data-anchor]');
     let from=null,anchor=null,startPoint=null;
     if(handle){from=s.scene.objects.find(o=>o.id===handle.dataset.id);anchor=handle.dataset.anchor;}
