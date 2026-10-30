@@ -16,7 +16,7 @@ const TEXT_ATTRS = new Set(['above','below','aligned','ljust','rjust','center','
 const PLACEMENTS = ['above','below','aligned','center'];
 const ANCHOR_ORDER = ['c','n','s','e','w','ne','nw','se','sw'];
 export const routeColours = ['black','white','red','blue','green','yellow','gray'];
-const COLOUR_WORDS = new Set([...routeColours, 'grey']);
+const COLOUR_WORDS = new Set([...routeColours, 'grey', 'none']);
 const LOCKED = 'Another object refers to this connector, so changing its type could move that object.';
 const MARGIN = 0.2, LOOP = 0.25, TIE = 0.05, EPS = 1e-6;
 
@@ -118,9 +118,9 @@ function compose(model, { kind = model.kind, set = {}, path = null }) {
   return out.replace(/[ \t]+$/, '');
 }
 
-function makeOption(model, spec, meta) {
+function makeOption(model, spec, meta, allowUnchanged = false) {
   const text = compose(model, spec);
-  if (text === null || text === model.statement) return null;
+  if (text === null || !allowUnchanged && text === model.statement) return null;
   const { source, object, statement } = model;
   const patch = { start:object.span.start, end:object.span.end, text, expected:statement, base:source };
   return { ...meta, patch, source:applyPatch(source, patch), selectId:object.id,
@@ -163,6 +163,29 @@ export function connectorState(source, object, scene) {
     turn:model.kind === 'arc' ? (styleOf(model, 'turn').at(-1)?.text || 'ccw') : null,
     label, labelEditable:labels.length <= 1,
   };
+}
+
+// Stroke colour and line thickness written through the same guarded connector
+// parser the Route styles use. Tokens this module cannot account for (an
+// expression that continues past a style group, a comment, a block) return
+// null rather than being rewritten around.
+export function connectorStyleCandidate(source, object, scene, { color, thickness } = {}) {
+  if (typeof source !== 'string' || !object?.span || !scene?.objects?.includes(object)
+      || (scene.source !== undefined && scene.source !== source)) return null;
+  if (scene.objects.some(other => other !== object && other.span?.start === object.span.start && other.span?.end === object.span.end)) return null;
+  const model = parseConnector(source, object, scene);
+  if (!model) return null;
+  for (const group of model.styles) {
+    const next = model.tokens[group.to + 1];
+    if (next && /^[+\-*/^]$/.test(next.text)) return null;
+  }
+  const set = {};
+  if (color !== undefined && color !== '') set.color = 'color ' + color;
+  if (thickness !== undefined && thickness !== '') set.weight = 'thickness ' + thickness;
+  if (!Object.keys(set).length) return null;
+  // An unchanged member is valid in an atomic group edit; other members may
+  // still need the same style. Interactive preset lists keep omitting no-ops.
+  return makeOption(model, { set }, { id:'style', group:'Style', label:'Change style' }, true);
 }
 
 export function strokeCandidates(source, object, scene, dash) {

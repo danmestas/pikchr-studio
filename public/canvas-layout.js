@@ -49,11 +49,14 @@ function install(studio){
     const open=force??panel.hidden;
     for(const other of popovers)if(other!==panel&&open){other.hidden=true;other.opener?.setAttribute('aria-expanded','false');}
     panel.hidden=!open;panel.opener=button;button?.setAttribute('aria-expanded',String(open));
-    if(open)layout();
+    if(open){panel.returnFocus=button;layout();}
   }
   document.addEventListener('pointerdown',e=>{
     for(const panel of popovers)if(!panel.hidden&&!panel.contains(e.target)&&!panel.opener?.contains(e.target)&&!e.target.closest?.('dialog'))toggle(panel,panel.opener,false);
   },true);
+  // Every popover shares one head shape: a title, an optional kind and a Close
+  // that returns focus to whatever opened it. In the inspector it is sticky,
+  // so the panel scrolls under a heading that never leaves the screen.
 
   // ---- document chip + menu --------------------------------------------------
   const menuButton=el('button',{type:'button',class:'cl-icon','aria-label':'Menu',title:'Menu','aria-expanded':'false'},'☰');
@@ -78,11 +81,10 @@ function install(studio){
   if(newDoc)newDoc.textContent='New';if(openDoc)openDoc.textContent='Open file…';
   const examples=$('choose-example');if(examples)examples.textContent='Browse examples…';
   if(help){help.textContent='How it works';help.classList.add('cl-link');}
-  const docSection=section('Document',row(newDoc,openDoc,$('file-input')),docLabel,saveState);
-  const exampleSection=section('Examples',row(examples,help));
+  const docSection=section('Document',row(newDoc,openDoc,$('file-input')),docLabel,saveState,row(examples,help));
+  const addSection=section('Add',row($('mobile-add')),$('creation-tools'));
   const view=q('.canvas-view-options');
-  const viewSection=section('View',labelled('anchors','Show anchors'),labelled('advanced-mode','Advanced tools'),
-    row($('mobile-objects'),$('focus-selection'),$('mobile-add')),$('pan-mode'),$('creation-tools'));
+  const viewSection=section('View',labelled('anchors','Show anchors'),$('pan-mode'),labelled('advanced-mode','Advanced tools'));
   if(view)view.hidden=true;
   // Changes: one status line, one row of actions, the auto-apply switch, then
   // the queue and the latest diff (moved out of the inspector).
@@ -93,7 +95,6 @@ function install(studio){
   if(queuePanel){for(const h of queuePanel.querySelectorAll(':scope>h2,:scope>h3'))h.remove();const latest=$('diff');if(latest)latest.before(el('div',{class:'cl-field-name'},'Latest change'));}
   const changesSection=section('Changes',row(queueStatus&&el('span',{class:'cl-queue-text'},queueStatus),applyAll,discardAll,undoDraft),labelled('auto-apply','Auto-apply accepted changes'),queuePanel);
   if(draft)draft.hidden=true;
-  const toolsSection=section('Tools');
   const components=q('.component-tools');if(components){components.open=true;components.classList.add('cl-components');}
   const backup=$('backup-workspace'),restore=$('restore-workspace');
   const advancedSection=section('Advanced',row(backup,restore,$('backup-input')),components);
@@ -104,14 +105,15 @@ function install(studio){
     el('p',{class:'cl-about'},'Pikchr Studio edits diagrams by editing their Pikchr source.'),
     row(link('https://github.com/danmestas/pikchr-studio','Source on GitHub'),link('licenses.html','Licenses')),
     el('p',{class:'cl-about'},'Diagrams are rendered by ',link('https://pikchr.org','Pikchr'),', used under the 0BSD license.'));
-  menu.append(docSection,exampleSection,viewSection,changesSection,toolsSection,advancedSection,aboutSection);
+  menu.append(docSection,addSection,viewSection,changesSection,advancedSection,aboutSection);
   // Selecting more than one object has to be discoverable without a keyboard:
   // the toggle and Clear sit in the menu, where they are reachable even with
   // nothing selected yet.
   const selectionSection=section('Selection',
+    row($('mobile-objects'),$('focus-selection')),
     row($('multi-select'),$('clear-selection')),
     el('p',{class:'cl-muted'},'Turn on Select multiple, then tap shapes to add or remove them.'));
-  menu.insertBefore(selectionSection,changesSection);
+  menu.insertBefore(selectionSection,viewSection);
   // Remaining toolbar controls (render, undo, redo, downloads) stay
   // reachable by id but off-stage; the export menu below takes the downloads.
   if(nav){nav.classList.add('cl-offstage');document.body.append(nav);}
@@ -205,9 +207,9 @@ function install(studio){
   // canvas with the Select tool also selects an area. Picking a tool here
   // closes the menu so the next gesture reaches the canvas.
   const extras=el('div',{class:'cl-menu-tools'});
-  if(marquee){marquee.textContent='Select area';marquee.dataset.key='';marquee.addEventListener('click',()=>toggle(menu,menuButton,false));extras.append(marquee);}
+  if(marquee){marquee.textContent='Select area';marquee.dataset.key='';marquee.addEventListener('click',()=>toggle(menu,menuButton,false));selectionSection.append(marquee);}
   if(options)extras.append(options);
-  toolsSection.append(extras);
+  viewSection.append(extras);
   // The canvas-tools status text and shape select stay available but off-stage.
   const toolsHost=$('direct-tools');if(toolsHost){toolsHost.classList.add('cl-offstage');palette.append(toolsHost);}
   if(placeTool)placeTool.classList.add('cl-offstage');
@@ -284,51 +286,101 @@ function install(studio){
   changeEnd.onclick=()=>changeEndpoint('to');
   context.append(changeStart,changeEnd,moreButton);document.body.append(context);
   const more=popover('cl-more','Inspector');
-  const moreTitle=el('strong',{class:'cl-more-title'},'Selection');
-  const moreKind=el('span',{class:'cl-muted'});
+  const moreTitle=el('strong',{class:'cl-more-title','aria-live':'polite','aria-atomic':'true'},'Selection');
+  const moreKind=el('span',{class:'cl-muted cl-popover-kind'});
   const closeMore=el('button',{type:'button',class:'cl-icon cl-close','aria-label':'Close inspector',title:'Close (Esc)'},'×');
-  closeMore.onclick=()=>{toggle(more,moreButton,false);moreButton.focus();};
+  function restoreFocus(panel){
+    const button=panel.returnFocus||panel.opener;
+    const fallback=moreButton.getClientRects().length?moreButton:menuButton;
+    (button?.isConnected&&button.getClientRects().length?button:fallback).focus();
+  }
+  closeMore.onclick=()=>{toggle(more,more.opener,false);restoreFocus(more);};
   more.append(el('div',{class:'cl-popover-head'},moreTitle,moreKind,closeMore));
+  // Two views, one bounded panel: properties for the selection, and an
+  // outline for finding objects. The panel never stacks both at once.
+  const propertiesView=el('div',{class:'cl-view cl-view-properties'});
+  const objectsView=el('div',{class:'cl-view cl-view-objects',hidden:''});
+  more.append(propertiesView,objectsView);
+  const backButton=el('button',{type:'button',class:'cl-back'},'Back to properties');
+  const objectSearch=el('input',{type:'search',id:'object-search','aria-label':'Find an object',placeholder:'Name, label or type',autocomplete:'off'});
+  const objectCount=el('span',{class:'cl-muted',id:'objects-count'});
+  const objectEmpty=el('p',{class:'cl-empty',id:'objects-empty',role:'status',hidden:''});
+  objectsView.append(backButton,el('label',{class:'cl-field'},el('span',{class:'cl-field-name'},'Find an object'),objectSearch),el('div',{class:'cl-objects-head'},el('span',{},'Drawing order'),objectCount),objectEmpty);
+  const propertiesHead=moreTitle,kindHead=moreKind;
+  function showMoreView(name){
+    const objects=name==='objects';
+    if(propertiesView.hidden!==objects)more.scrollTop=0;
+    propertiesView.hidden=objects;objectsView.hidden=!objects;
+    if(propertiesHead.textContent!==(objects?'Objects':syncMoreTitle()))propertiesHead.textContent=objects?'Objects':syncMoreTitle();
+    kindHead.hidden=objects;
+    if(objects){
+      // Filtering belongs to app.js, which owns the outline rows; one input
+      // event refreshes the count and empty state from the same code path.
+      objectSearch.dispatchEvent(new Event('input',{bubbles:true}));
+      requestAnimationFrame(()=>objectSearch.focus({preventScroll:true}));
+    }
+  }
+  backButton.onclick=()=>{showMoreView('properties');syncMoreHead();closeMore.focus();};
   // Label text is edited on the canvas; this dialog adds the sizing choice
   // (grow the shape, wrap inside it, or keep a fixed size).
   const labelOptions=el('button',{type:'button',class:'cl-label-options'},'Label options…');
   labelOptions.onclick=()=>{toggle(more,moreButton,false);studio.editLabelDialog?.();};
-  more.append(labelOptions);
-  // A multiple selection gets its own labelled section: Move and Arrange act
-  // on every selected object, so they do not belong in one object's inspector.
+  propertiesView.append(labelOptions);
+  // Group actions keep their shared editor in the properties view.
+  // Style uses the same guarded group form as the contextual action.
   const groupCount=el('span',{class:'cl-muted'});
+  const groupStyle=el('button',{type:'button',class:'cl-group-style'},'Style…');
+  groupStyle.onclick=()=>{$('appearance-selected')?.click();};
   const groupSection=el('section',{class:'cl-group','aria-label':'Group actions',hidden:''},
     el('div',{class:'cl-group-head'},el('strong',{},'Group'),groupCount),
     selection?.querySelector('.move-selection')||null,
-    el('div',{class:'cl-group-arrange'},selection?.querySelector('.arrange-selection')||null,$('arrange')||null));
-  more.append(groupSection);
-  const dock=q('.canvas-context-dock');if(dock)more.append(dock);
-  const aside=q('main aside');if(aside)more.append(aside);
+    el('div',{class:'cl-group-arrange'},selection?.querySelector('.arrange-selection')||null,$('arrange')||null,groupStyle));
+  propertiesView.append(groupSection);
+  const dock=q('.canvas-context-dock');if(dock)propertiesView.append(dock);
+  const aside=q('main aside');
+  // Search and properties never compete for the same panel height.
+  const objectsSection=aside?.querySelector('#objects')?.closest('section');
+  if(objectsSection){
+    objectsView.append($('objects'));
+    objectsSection.remove();
+  }
+  if(aside)propertiesView.append(aside);
   // Runs from layout() too, so a selection made while the popover is open
   // switches it between the object inspector and the group section. Every
   // write is conditional: layout() is driven by DOM observers.
+  const syncMoreTitle=()=>{
+    const s=studio.state(),o=s.object,count=(s.selectedIds||[]).length;
+    return count>1?count+' selected':o?.name||(o?o.kind:'Selection');
+  };
   const syncMoreHead=()=>{
     const s=studio.state(),o=s.object,count=(s.selectedIds||[]).length,group=count>1;
-    const title=group?count+' selected':o?.name||(o?o.kind:'Selection'),kind=group?'':o&&o.name?o.kind:'';
+    const title=syncMoreTitle(),kind=group?'':o&&o.name?o.kind:'';
+    if(!objectsView.hidden)return;
     if(moreTitle.textContent!==title)moreTitle.textContent=title;
     if(moreKind.textContent!==kind)moreKind.textContent=kind;
     if(groupSection.hidden!==!group)groupSection.hidden=!group;
     if(labelOptions.hidden!==group)labelOptions.hidden=group;
-    const note=group?'Move or arrange every selected object as one change.':'';
+    const note=group?'Move, arrange or style every selected object as one change.':'';
     if(groupCount.textContent!==note)groupCount.textContent=note;
   };
-  moreButton.onclick=()=>{syncMoreHead();toggle(more,moreButton);};
-  // Classic buttons (Style, Route, Objects) open the inspector by adding a body
-  // class; here that opens the ⋯ popover.
+  moreButton.onclick=()=>{showMoreView('properties');syncMoreHead();toggle(more,moreButton);};
+  // Classic buttons (Style, Route) open the inspector by adding a body class;
+  // Objects opens the outline view. Each keeps its trigger as the opener so
+  // Escape and Close return focus there.
   new MutationObserver(()=>{
     const cls=document.body.classList;
     const wanted=cls.contains('inspector-open')||cls.contains('objects-open');if(!wanted)return;
     const objects=cls.contains('objects-open');
     cls.remove('inspector-open','objects-open');
-    syncMoreHead();toggle(more,moreButton,true);
-    if(objects){const d=$('objects')?.closest('details');if(d){d.open=true;d.scrollIntoView({block:'nearest'});}}
-    else{const s=$('inspector')?.querySelector('.appearance-editor[open]');if(s){s.scrollIntoView({block:'nearest'});s.querySelector('input,select')?.focus({preventScroll:true});}}
+    showMoreView(objects?'objects':'properties');syncMoreHead();
+    const focus=objects?menuButton:(document.activeElement?.closest('.cl-context button')||more.returnFocus||moreButton);
+    toggle(more,moreButton,true);more.returnFocus=focus;
+    if(objects)return;
+    const s=$('inspector')?.querySelector('.appearance-editor[open]');if(s){s.scrollIntoView({block:'nearest'});s.querySelector('input,select')?.focus({preventScroll:true});}
   }).observe(document.body,{attributes:true,attributeFilter:['class']});
+  // Choosing an object from the outline returns to its properties, so the
+  // list is a way in rather than a place to get stuck.
+  $('objects')?.addEventListener('click',e=>{if(e.target.closest('button')){showMoreView('properties');syncMoreHead();closeMore.focus();}});
   $('show-source-selected')?.addEventListener('click',()=>setDrawer(true));
 
   // ---- candidate chip ----------------------------------------------------------
@@ -884,7 +936,7 @@ function install(studio){
   document.addEventListener('keydown',e=>{
     if(e.key==='Escape'){
       if(connect){e.preventDefault();cancelConnect();return;}
-      const open=popovers.find(p=>!p.hidden);if(open&&!e.target.closest?.('#diagram')){e.preventDefault();toggle(open,open.opener,false);open.opener?.focus();return;}
+      const open=popovers.find(p=>!p.hidden);if(open&&!e.target.closest?.('#diagram')){e.preventDefault();toggle(open,open.opener,false);restoreFocus(open);return;}
       if(drawer.classList.contains('open')&&drawer.contains(e.target)){e.preventDefault();setDrawer(false);return;}
       // Outside the canvas (e.g. focus on a palette button) Escape still
       // returns to the Select tool; inside it, canvas-tools handles it.

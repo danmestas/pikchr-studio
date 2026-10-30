@@ -67,6 +67,7 @@ body.layout-canvas .cl-context .selection-toolbar>:is(#multi-select,#clear-selec
 /* A group selection names itself in the toolbar; one object needs no count. */
 body.layout-canvas .cl-context .selection-toolbar>#selection-count{display:none!important;margin:0 6px 0 2px;color:var(--cl-muted);font-size:12px;white-space:nowrap}
 body.layout-canvas.has-multiple .cl-context .selection-toolbar>#selection-count{display:inline!important}
+body.layout-canvas.has-multiple .cl-context .selection-toolbar>#appearance-selected{display:none!important}
 body.layout-canvas .cl-context .selection-toolbar>button:disabled{display:none!important}
 body.layout-canvas .cl-context .selection-toolbar>button{border-color:transparent;background:transparent;padding:0;display:inline-flex;align-items:center;justify-content:center}
 body.layout-canvas .cl-context .selection-toolbar>button svg,body.layout-canvas .cl-more-button svg{width:20px;height:20px;flex:none;pointer-events:none}
@@ -236,7 +237,44 @@ body.layout-canvas .cl-menu .tool-options>summary{font-weight:400}
 body.layout-canvas .cl-more{width:min(340px,calc(100vw - 24px));padding-top:8px}
 body.layout-canvas .cl-popover-head{position:sticky;top:-8px;z-index:1;display:flex;align-items:center;gap:8px;margin:-8px -14px 8px;padding:10px 8px 8px 14px;background:var(--cl-chip);border-bottom:1px solid var(--cl-line)}
 body.layout-canvas .cl-popover-head .cl-muted{flex:1}
-body.layout-canvas .cl-more-title{font-size:14px}
+body.layout-canvas .cl-more-title{flex:1;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.layout-canvas .cl-popover-head .cl-popover-kind{flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.layout-canvas .cl-popover-head .cl-close{flex:none}
+/* One bounded view at a time: properties or the object outline. */
+body.layout-canvas .cl-view[hidden]{display:none!important}
+body.layout-canvas .cl-view-objects{display:flex;flex-direction:column;gap:8px;min-height:0}
+body.layout-canvas .cl-back{border-color:transparent!important;padding-left:0;color:var(--cl-accent);align-self:flex-start}
+body.layout-canvas .cl-back::before{content:'‹';font-size:16px;line-height:1}
+body.layout-canvas .cl-objects-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:12px;color:var(--cl-muted)}
+body.layout-canvas .cl-empty{margin:0;font-size:12px;color:var(--cl-muted)}
+body.layout-canvas .cl-view-objects #object-search{width:100%}
+/* The outline itself: one searchable row per object, never a pill wall. */
+body.layout-canvas #objects{display:flex;flex-direction:column;gap:2px;margin:2px 0 0;min-height:0}
+body.layout-canvas #objects .object-row{display:flex;align-items:center;justify-content:flex-start;gap:8px;min-height:34px;padding:0 8px;border:0!important;border-radius:7px;
+  background:transparent;color:var(--cl-ink);font:inherit;font-size:13px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%}
+body.layout-canvas #objects .object-row[hidden]{display:none!important}
+body.layout-canvas #objects .object-row:hover:not(:disabled){background:var(--cl-accent-bg)}
+body.layout-canvas #objects .object-row[aria-pressed=true]{background:var(--cl-accent-bg);color:var(--cl-accent);font-weight:600}
+body.layout-canvas #objects .object-row::before{content:'';flex:none;width:8px;height:8px;border:1.5px solid var(--cl-line);border-radius:2px}
+body.layout-canvas #objects .object-row[aria-pressed=true]::before{border-color:var(--cl-accent);background:var(--cl-accent)}
+/* Route choices: shape previews before route detail text. */
+body.layout-canvas .cl-popover .cl-route-choices{display:flex;flex-direction:column;gap:8px;margin:0 0 10px!important;padding:0 0 10px!important;border:0!important;border-bottom:1px solid var(--cl-line)!important}
+body.layout-canvas .cl-route-choices h4{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--cl-muted);margin:0}
+body.layout-canvas .cl-route-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}
+body.layout-canvas .cl-route-option{flex-direction:column!important;gap:1px!important;min-width:0;min-height:52px!important;height:auto;padding:4px 2px!important;white-space:normal!important;font-size:11px!important;line-height:1.2}
+body.layout-canvas .cl-route-option svg{width:100%;max-width:44px;height:20px}
+body.layout-canvas .cl-route-option[aria-pressed=true]{background:var(--cl-accent-bg);border-color:var(--cl-accent)!important;color:var(--cl-accent)}
+body.layout-canvas .cl-route-elbow{display:flex;flex-wrap:wrap;gap:6px}
+body.layout-canvas .cl-route-elbow[hidden]{display:none}
+body.layout-canvas .cl-route-note{margin:0;font-size:12px;color:var(--cl-muted);line-height:1.4}
+/* Advanced facts stay collapsed until asked for. The panel kit zeroes every
+   details border and margin, so the separator is set here explicitly. */
+body.layout-canvas .cl-more .inspector-advanced{margin:10px 0 0!important;padding:8px 0 0!important;border-top:1px solid var(--cl-line)!important}
+body.layout-canvas .cl-more .inspector-advanced>summary{font-weight:600;color:var(--cl-muted)}
+body.layout-canvas .cl-more .inspector-advanced dl{margin:6px 0 8px}
+body.layout-canvas .cl-more .inspector-advanced button{justify-content:flex-start}
+body.layout-canvas .cl-more #inspector>.inspector-status{order:-1;border:0;padding:0;margin:0 0 12px}
+body.layout-canvas .cl-more .inspector-advanced{order:10}
 /* Group actions: one labelled section for a multiple selection. */
 body.layout-canvas .cl-more .cl-group{display:flex;flex-direction:column;gap:8px}
 body.layout-canvas .cl-more .cl-group[hidden]{display:none!important}
@@ -298,10 +336,20 @@ body.layout-canvas .cl-candidate #preview-accept{color:var(--cl-accent);font-wei
 body.layout-canvas .cl-note{border-radius:8px}
 
 @media (max-width:700px){
-  body.layout-canvas .cl-more{top:auto;bottom:118px;left:12px;right:12px;width:auto;max-height:55dvh}
+  /* A bottom sheet with its own scroll: the head stays put while the choices
+     scroll under it, and nothing touches the screen edges. */
+  body.layout-canvas .cl-more{top:auto;bottom:118px;left:16px;right:16px;width:auto;max-height:min(62dvh,calc(100dvh - 180px));padding:8px 14px 14px;overscroll-behavior:contain}
+  body.layout-canvas .cl-more .cl-popover-head{top:-8px;margin:-8px -14px 8px;padding:10px 6px 8px 14px}
+  body.layout-canvas .cl-more .cl-close{min-width:36px;min-height:36px}
+  body.layout-canvas .cl-route-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  body.layout-canvas .cl-route-option{min-height:56px!important;font-size:12px!important}
   body.layout-canvas .cl-menu{max-height:calc(100dvh - 190px)}
   body.layout-canvas dialog{padding:12px}
   body.layout-canvas #example-picker [data-list]{grid-template-columns:1fr 1fr}
+}
+/* Small laptop windows: keep the grid readable without shrinking the labels. */
+@media (min-width:701px) and (max-width:860px){
+  body.layout-canvas .cl-route-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
 }
 body.layout-canvas .cl-more .canvas-context-dock{height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important}
 body.layout-canvas .cl-menu .queue-panel .cl-field-name:has(+ #diff:empty){display:none}
