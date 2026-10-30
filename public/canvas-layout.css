@@ -67,6 +67,7 @@ body.layout-canvas .cl-context .selection-toolbar>:is(#multi-select,#clear-selec
 /* A group selection names itself in the toolbar; one object needs no count. */
 body.layout-canvas .cl-context .selection-toolbar>#selection-count{display:none!important;margin:0 6px 0 2px;color:var(--cl-muted);font-size:12px;white-space:nowrap}
 body.layout-canvas.has-multiple .cl-context .selection-toolbar>#selection-count{display:inline!important}
+body.layout-canvas.has-multiple .cl-context .selection-toolbar>#appearance-selected{display:none!important}
 body.layout-canvas .cl-context .selection-toolbar>button:disabled{display:none!important}
 body.layout-canvas .cl-context .selection-toolbar>button{border-color:transparent;background:transparent;padding:0;display:inline-flex;align-items:center;justify-content:center}
 body.layout-canvas .cl-context .selection-toolbar>button svg,body.layout-canvas .cl-more-button svg{width:20px;height:20px;flex:none;pointer-events:none}

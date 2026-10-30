@@ -7,7 +7,7 @@ import {arrowEditor,connectorCapabilities,connectorLabel} from './arrow-ui.js?v=
 import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20260923c';
 import {propertyEditor} from './property-ui.js?v=20260923c';
 import {fitText,canFitText,inspectProperties,readProperties} from './properties.js?v=20260923c';
-import {duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove} from './object-actions.js?v=20260923c';
+import {duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20260923c';
 import {decodeLinkSource,linkPayload} from './link-import.js?v=20260923c';
 import {createDocumentStore} from './documents.js?v=20260923c';
 import {canvasNavigation,clampZoom} from './canvas-navigation.js?v=20260923c';
@@ -37,6 +37,7 @@ let draftBase=null;
 let rendering=false,renderVersion=0;
 const selectionHistory=new Map();
 let requestedSelectionName=null;
+let requestedSelectionIds=null;
 let requestedSelectionId=null,applied=false;
 let selectedIds=new Set(),zoom=1,pan={x:0,y:0},panMode=false;
 let multiSelect=false;
@@ -171,11 +172,13 @@ async function renderSource(preRendered=null){
   if(viewportDocumentId===activeDocumentId&&scene&&oldSvg?.dataset.baseViewBox){const[x,y,w,h]=oldSvg.getAttribute('viewBox').split(/[ ,]+/).map(Number),base=oldSvg.dataset.baseViewBox.split(/[ ,]+/).map(Number);oldViewport={center:new DOMPoint(x+w/2,y+h/2).matrixTransform(matrix().inverse()),baseWidth:base[2],baseHeight:base[3],scale:Math.abs(scene.transform.a),zoom};}
   const focused=document.activeElement,focusResize=focused?.getAttribute('data-resize'),focusLabel=focused?.getAttribute('aria-label'),focusText=focused?.tagName==='BUTTON'?focused.textContent:null;
   const token=++renderVersion;rendering=true;
-  const selectedNames=[...selectedIds].map(id=>scene?.objects.find(o=>o.id===id)?.name).filter(Boolean);
-  clearProposal();const rev=revision,text=source.value,name=current()?.name,oldId=selectedId,oldKind=current()?.kind,oldSource=renderedSource;
+  const priorIds=[...selectedIds];
+  const selectedNames=priorIds.map(id=>scene?.objects.find(o=>o.id===id)?.name).filter(Boolean);
+  clearProposal();const rev=revision,text=source.value,name=current()?.name,oldId=selectedId,oldKind=current()?.kind,oldSource=renderedSource,manualSourceEdit=manualEditBase!==null;
   const desiredName=requestedSelectionName;requestedSelectionName=null;
+  const desiredIds=requestedSelectionIds;requestedSelectionIds=null;
   const desiredId=requestedSelectionId;requestedSelectionId=null;
-  if(current())selectionHistory.set(oldSource,{id:oldId,kind:oldKind});
+  if(scene&&desiredIds?.length!==0)selectionHistory.set(oldSource,{id:oldId,kind:oldKind,ids:priorIds});
   status('Rendering…');const result=preRendered?.svg?preRendered:await render(text);
   if(token!==renderVersion)return;
   rendering=false;updateDraft();
@@ -191,9 +194,14 @@ async function renderSource(preRendered=null){
   const matches=scene.objects.filter(o=>o.name&&o.name===(desiredName||name));
   const saved=selectionHistory.get(text);
   selectedId=desiredName?matches[0]?.id:desiredId?scene.objects.find(o=>o.id===desiredId)?.id:saved?scene.objects.find(o=>o.id===saved.id&&o.kind===saved.kind)?.id:
-    matches.length===1?matches[0].id:(!name&&(undo.at(-1)===oldSource||draft.at(-1)?.before===oldSource)?scene.objects.find(o=>o.id===oldId&&o.kind===oldKind)?.id:null);
-  selectedIds=new Set(scene.objects.filter(o=>selectedNames.includes(o.name)).map(o=>o.id));
-  if(desiredName||desiredId)selectedIds=new Set(selectedId?[selectedId]:[]);
+    matches.length===1?matches[0].id:(!manualSourceEdit&&priorIds.length===1&&!name&&(undo.at(-1)===oldSource||draft.at(-1)?.before===oldSource)?scene.objects.find(o=>o.id===oldId&&o.kind===oldKind)?.id:null);
+  // Render-local ids are safe for an explicit style rewrite or an exact
+  // source already seen in history, not arbitrary edits of unnamed objects.
+  selectedIds=new Set(scene.objects.filter(o=>o.name&&selectedNames.includes(o.name)).map(o=>o.id));
+  if(desiredIds){selectedIds=new Set(desiredIds.filter(id=>scene.objects.some(o=>o.id===id)));if(!selectedIds.size)selectedId=null;}
+  else if(desiredName||desiredId)selectedIds=new Set(selectedId?[selectedId]:[]);
+  else if(saved?.ids)selectedIds=new Set(saved.ids.filter(id=>scene.objects.some(o=>o.id===id)));
+  if(selectedIds.size&&!selectedIds.has(selectedId))selectedId=[...selectedIds][0]||null;
   const svg=$('diagram').querySelector('svg');
   const openTools=[...$('creation-tools').querySelectorAll('details')].map(d=>d.open);
   creationTools({scene,source:text,host:$('creation-tools'),propose:options=>validateSuggestions(null,options),status,
@@ -259,7 +267,8 @@ function select(id,highlight=false,additive=false,preserve=false){
   $('selection-count').textContent=selectedIds.size?selectedIds.size+' selected':'No selection';
   $('duplicate-selected').disabled=!o||!single;
   $('delete-selected').disabled=!selectedIds.size;
-  $('appearance-selected').disabled=!o||!single;
+  $('appearance-selected').disabled=!o;
+  $('appearance-selected').title=single?'Style this object':'Style every selected object as one source change';
   $('route-selected').disabled=!o||!single||!['arrow','line','spline','arc'].includes(o.kind);
   $('tidy-route').disabled=!o||!single||!['arrow','line'].includes(o.kind);
   $('copy-selection').disabled=$('save-component').disabled=!selectedIds.size;
@@ -294,8 +303,11 @@ function select(id,highlight=false,additive=false,preserve=false){
     valid:()=>source.value===renderedSource&&!$('diagram').classList.contains('stale')});
   directTools?.sync();
 }
-// A group selection names itself and its actions; one object's label, style
-// and connector fields would silently apply to only that object.
+// A group selection names itself and its actions; one object's label, size
+// and connector fields would silently apply to only that object. Style is the
+// exception: it edits every member as one atomic source change, and offers
+// fill only when every member can carry it.
+let groupStyleOpen=false;
 function drawGroupInspector(){
   const objects=scene.objects.filter(o=>selectedIds.has(o.id));
   const p=document.createElement('p');
@@ -304,6 +316,40 @@ function drawGroupInspector(){
   const hint=document.createElement('p');
   hint.textContent='Drag any selected shape to move the group, or use Move and Arrange in Group actions. Each group edit is one undoable source change.';
   $('inspector').append(p,hint);
+  const capabilities=groupStyleCapabilities(objects);
+  const details=document.createElement('details'),summary=document.createElement('summary');
+  details.className='appearance-editor group-style';details.open=groupStyleOpen;
+  details.ontoggle=()=>{if(details.isConnected)groupStyleOpen=details.open;};
+  summary.textContent='Style all '+objects.length+' objects';details.append(summary);
+  const form=document.createElement('form');form.className='appearance-form';
+  const fields=[['stroke','Stroke / text color'],['thickness','Line thickness (pixels)'],...(capabilities.fill?[['fill','Fill color']]:[])];
+  const controls={};
+  for(const [key,title] of fields){
+    const label=document.createElement('label');label.textContent=title;
+    const input=document.createElement('input');input.setAttribute('aria-label',title);
+    input.dataset.initial=input.value='';
+    if(key==='thickness'){input.type='number';input.step='any';input.min='0';}
+    else input.placeholder=key==='fill'?'none, white, or #ffffff':'black or #000000';
+    controls[key]=input;label.append(input);form.append(label);
+  }
+  const error=document.createElement('p');error.className='property-error';error.setAttribute('role','alert');
+  const apply=document.createElement('button');apply.type='submit';apply.textContent='Style '+objects.length+' objects';form.append(apply);
+  form.onsubmit=e=>{
+    e.preventDefault();
+    if(rendering||source.value!==renderedSource||$('diagram').classList.contains('stale')){error.textContent='Render the current source before styling the group.';status(error.textContent);return;}
+    const values={};
+    for(const [key,input] of Object.entries(controls)){
+      const value=input.value.trim();
+      if(value!==''&&value!==input.dataset.initial)values[key]=key==='thickness'?Number(value):value;
+    }
+    if(!Object.keys(values).length){error.textContent='Change a stroke, thickness or fill value first.';status(error.textContent);return;}
+    let option;
+    try{option=changeSelectionAppearance(renderedSource,objects,scene,values);}
+    catch(problem){error.textContent=problem.message;status('Edit not applied. '+problem.message);return;}
+    error.textContent='';
+    validateSuggestions(objects[0],[{...option,selectionIds:option.selectionIds}]);
+  };
+  details.append(form,error);$('inspector').append(details);
 }
 $('edit-selected').onclick=()=>directTools?.editText();
 $('appearance-selected').onclick=()=>{openInspector();const section=$('inspector').querySelector('.appearance-editor');if(section){section.open=true;section.scrollIntoView({block:'nearest'});section.querySelector('input')?.focus({preventScroll:true});}};
@@ -909,9 +955,13 @@ async function choose(option){
     const a=byteOffsetToIndex(option.base,option.patch.start),b=byteOffsetToIndex(option.base,option.patch.end);
     draft.push({before:source.value,after:next,label:(option.subject?option.subject+': ':'')+option.label,
       diff:'- '+option.base.slice(a,b)+'\n+ '+option.patch.text});
-    requestedSelectionName=option.selectName||current()?.name||null;
-    if(option.clearSelection){selectedIds.clear();selectedId=null;requestedSelectionName=null;}
-    requestedSelectionId=option.selectId||null;
+    requestedSelectionName=option.selectionIds?null:option.selectName||current()?.name||null;
+    requestedSelectionIds=option.selectionIds||null;
+    if(option.clearSelection){
+      selectionHistory.set(renderedSource,{id:selectedId,kind:current()?.kind,ids:[...selectedIds]});
+      selectedIds.clear();selectedId=null;requestedSelectionName=null;requestedSelectionIds=[];
+    }
+    requestedSelectionId=option.clearSelection?null:option.selectId||null;
     source.value=next;dirty();updateDraft();
     await renderSource(option.result);
     for(const item of previousSizing){const object=scene.objects.find(o=>o.name===item.name&&o.kind===item.kind);if(!object||Math.abs(object.bbox.width-item.box.width)>.0001||Math.abs(object.bbox.height-item.box.height)>.0001)continue;try{if(inspectProperties(source.value,object,scene).text===item.text)sizingPreferences=writeSizingPreference(source.value,scene,object,sizingPreferences,item.preference);}catch{}}

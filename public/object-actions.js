@@ -1,6 +1,7 @@
-import {applyPatch,byteOffsetToIndex,candidates} from './edits.js?v=20260923c';
+import {applyPatch,byteOffsetToIndex,candidates,editability} from './edits.js?v=20260923c';
 import {readProperties,propertyCandidate} from './properties.js?v=20260923c';
 import {literalRoute,translateLineCandidate} from './free-lines.js?v=20260923c';
+import {connectorStyleCandidate} from './route-styles.js?v=20260923c';
 
 const bytes=s=>new TextEncoder().encode(s).length;
 const masked=s=>s.replace(/"(?:\\.|[^"\\])*"/g,m=>' '.repeat(m.length));
@@ -17,12 +18,36 @@ function setAttribute(statement,key,value) {
 }
 
 export function changeAppearance(source,object,scene,values) {
+  const input={...values,color:values.color??values.stroke};
+  for(const key of ['width','height'])if(input[key]!==undefined&&input[key]!==''&&connectorKinds.includes(object.kind))
+    throw new Error('Resize shapes, not connector paths.');
+  // Splines and arcs have no single-object style editor, but a group selection
+  // can still restyle them. Their statement is rewritten only through the
+  // guarded connector parser, never the more permissive property reader.
+  if(connectorKinds.includes(object.kind)) {
+    if(input.fill!==undefined&&input.fill!=='')throw new Error('Fill is not available for connector paths.');
+    let color=input.color===undefined||input.color===''?undefined:input.color;
+    const thickness=input.thickness===undefined||input.thickness===''?undefined:input.thickness;
+    let number;
+    if(color!==undefined) {
+      if(!/^(?:#[0-9a-f]{6}|0x[0-9a-f]{6}|black|white|red|blue|green|yellow|gray|grey|none)$/i.test(color))throw new Error('Use a six-digit hex color or a supported named color.');
+      color=color.replace('#','0x');
+    }
+    if(thickness!==undefined) {
+      number=Number(thickness);
+      if(!Number.isFinite(number)||number<=0||number>100)throw new Error('thickness must be greater than zero and at most 100.');
+    }
+    const option=connectorStyleCandidate(source,object,scene,{
+      ...(color!==undefined?{color}:{}),
+      ...(number!==undefined?{thickness:number}:{}),
+    });
+    if(!option)throw new Error('The connector style expression must be edited in source.');
+    return {...option,label:'Change stroke and thickness'};
+  }
   const {statement}=readProperties(source,object,scene);
   let replacement=statement;
-  const input={...values,color:values.color??values.stroke};
   for(const key of ['width','height','fill','color','thickness']) {
     let value=input[key];if(value===undefined||value==='')continue;
-    if(['width','height'].includes(key)&&['arrow','line'].includes(object.kind))throw new Error('Resize shapes, not connector paths.');
     if(key==='fill'||key==='color') {
       if(!/^(?:#[0-9a-f]{6}|0x[0-9a-f]{6}|black|white|red|blue|green|yellow|gray|grey|none)$/i.test(value))throw new Error('Use a six-digit hex color or a supported named color.');
       value=value.replace('#','0x');
@@ -36,6 +61,47 @@ export function changeAppearance(source,object,scene,values) {
     for(const m of match.reverse())replacement=replacement.slice(0,m.index)+replacement.slice(m.index+3);
   }
   return propertyCandidate(source,object,statement,replacement,'Change size and style');
+}
+
+// A group edit uses exactly the same per-object rewrite, expression checks and
+// combined-patch pipeline as every other multi-object action. Fill is offered
+// only when every member can carry it; sizing stays a single-object concern.
+const connectorKinds=['arrow','line','spline','arc'];
+const styleKinds=['box','cylinder','circle','ellipse','oval','diamond','text',...connectorKinds];
+const filledKinds=['box','cylinder','circle','ellipse','oval','diamond'];
+const styleKeys=['stroke','color','thickness','fill'];
+export function groupStyleCapabilities(objects) {
+  return {fill:objects.length>0&&objects.every(object=>filledKinds.includes(object.kind))};
+}
+export function changeSelectionAppearance(source,objects,scene,values) {
+  if(objects.length<2||new Set(objects).size!==objects.length)throw new Error('Select at least two different objects to style together.');
+  const unsupported=Object.keys(values).filter(key=>values[key]!==undefined&&values[key]!==''&&!styleKeys.includes(key));
+  if(unsupported.length)throw new Error('Group style changes stroke, thickness and fill only. Resize one shape at a time.');
+  const changes=Object.fromEntries(styleKeys.filter(key=>values[key]!==undefined&&values[key]!=='').map(key=>[key,values[key]]));
+  if(!Object.keys(changes).length)throw new Error('Choose a stroke, thickness or fill change.');
+  if(changes.fill!==undefined&&!groupStyleCapabilities(objects).fill)throw new Error('Fill is not available for every selected object. Change stroke or thickness instead.');
+  // Refuse the whole selection before touching any member: a partial result
+  // would leave the author with styles on some objects and no explanation.
+  const failures=[];
+  for(const object of objects){
+    const label=object.name||object.kind;
+    const reason=styleKinds.includes(object.kind)?editability(object,scene).reason:'only shapes, text and connectors can be styled';
+    if(reason)failures.push(`${label}: ${reason}`);
+  }
+  if(failures.length)throw new Error('No style applied — '+failures.length+' of '+objects.length+' selected objects cannot be styled: '+failures.join('; '));
+  const patches=[];
+  for(const object of objects){
+    try{patches.push(changeAppearance(source,object,scene,changes).patch);}
+    catch(error){throw new Error(`No style applied — ${object.name||object.kind}: ${error.message}`);}
+  }
+  // Selection identity is carried by the renderer's stable ids, which survive a
+  // style rewrite (object order and types do not change), so unnamed members
+  // and entirely unnamed groups stay selected without naming the author's
+  // objects.
+  const first=objects[0];
+  return {...combined(source,patches,`Style ${objects.length} objects`,first.name),
+    ...(first.name?{}:{selectId:first.id,targetKind:first.kind}),
+    selectionIds:objects.map(object=>object.id)};
 }
 
 export function duplicateObject(source,object,scene,{dx=0.4,dy=-0.4}={}) {

@@ -28,7 +28,9 @@ export function propertyEditor({object,scene,source,inspector,propose,status,val
   const appearance=document.createElement('details'),summary=document.createElement('summary');appearance.className='appearance-editor';appearance.open=appearanceOpen;appearance.ontoggle=()=>{if(appearance.isConnected)appearanceOpen=appearance.open;};summary.textContent='Style';appearance.append(summary);
   const styleForm=document.createElement('form');styleForm.className='appearance-form';
   const controls={};
-  const dimensioned=!['arrow','line','spline','move','text'].includes(object.kind);
+  // Connectors have no fill, whatever their kind, so the field never appears
+  // for a spline or arc that has no single-object style editor of its own.
+  const dimensioned=!['arrow','line','spline','arc','move','text'].includes(object.kind);
   const fields=[['fill','Fill color',props.fill??'none'],['color','Stroke / text color',props.color??'black'],['thickness','Line thickness (pixels)',props.thickness??'']];
   for(const[key,title,value]of fields){
     if(key==='fill'&&!dimensioned)continue;
