@@ -17,7 +17,6 @@ with sync_playwright() as pw:
 
         def route():
             object_button(page, "Link").click()
-            page.wait_for_function("document.querySelector('.route-styles .route-style-option')")
             close_popovers(page)
             button = page.locator("#route-selected")
             expect(button).to_be_visible()
@@ -29,7 +28,20 @@ with sync_playwright() as pw:
             panel = page.locator(".cl-more").bounding_box()
             tile = first.bounding_box()
             assert panel and tile and tile["y"] >= panel["y"] and tile["y"] + tile["height"] <= panel["y"] + panel["height"], (panel, tile)
+            heading = page.locator(".route-styles h4").bounding_box()
+            header = page.locator(".cl-more .cl-popover-head").bounding_box()
+            assert heading and header and heading["y"] >= header["y"] + header["height"], (heading, header)
             assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
+
+        # Open immediately on an uncached, slower render rather than waiting
+        # for the choices before clicking the control we are testing.
+        cdp = context.new_cdp_session(page)
+        cdp.send("Emulation.setCPUThrottlingRate", {"rate": 4})
+        crowded = BASE + ''.join(f'Extra{i}: box "{i}" at ({i % 6},{-3-i // 6})\n' for i in range(18))
+        set_source(page, crowded + 'Link: arrow from A.e to B.w\n')
+        route()
+        close_popovers(page)
+        cdp.send("Emulation.setCPUThrottlingRate", {"rate": 1})
 
         for statement, label, kind in (
             ('Link: arrow from A.e to B.w\n', "Arc clockwise", "arc"),
@@ -39,6 +51,9 @@ with sync_playwright() as pw:
             set_source(page, original)
             route()
             page.locator(".route-styles").get_by_role("option", name=label, exact=True).click()
+            chip = page.locator("#preview-actions").bounding_box()
+            panel = page.locator(".cl-more").bounding_box()
+            assert chip and panel and (chip["x"] + chip["width"] <= panel["x"] or panel["x"] + panel["width"] <= chip["x"] or chip["y"] + chip["height"] <= panel["y"] or panel["y"] + panel["height"] <= chip["y"]), (chip, panel)
             page.locator("#preview-accept").click()
             page.wait_for_function("kind => document.querySelector('#source').value.includes('Link: ' + kind + ' ') && document.querySelector('#save-state').dataset.state === 'saved'", arg=kind)
             changed = page.locator("#source").input_value()

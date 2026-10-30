@@ -208,6 +208,9 @@ export function routeStyleGallery({object,scene,source,render,preview,accept,dis
         b.onclick=()=>{if(active===i)accept();else{mark(i);preview(checked.good,i,{onIndex:mark});}};
         list.append(b);return b;
       });
+      // Route may have focused the section while these thumbnails rendered.
+      // Transfer only that pending focus; never steal it back from another control.
+      if(document.activeElement===section)shown[0]?.focus({preventScroll:true});
       const hidden=[...unavailable,...checked.rejected];
       note.textContent=(shown.length?shown.length+' styles.':'No style rendered cleanly.')+(hidden.length?' Not offered: '+hidden.map(h=>h.label).join(', ')+'. '+(hidden[0].reason||hidden[0].problem):'');
     });
