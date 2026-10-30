@@ -133,7 +133,12 @@ with sync_playwright() as pw:
     assert svg.get_attribute("viewBox") == original_view
     page.set_viewport_size({"width": 390, "height": 844})
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth"), "Mobile layout overflows horizontally"
-    assert page.locator("#duplicate-selected").is_visible()
+    # A + B are still selected: the toolbar names the group, and Duplicate —
+    # a one-object action — stays out of reach rather than copying one shape.
+    assert page.locator("#selection-count").is_visible()
+    assert page.locator("#selection-count").inner_text() == "2 selected"
+    assert page.locator("#duplicate-selected").is_hidden()
+    assert page.locator('.cl-context [aria-label="More options"]').is_visible()
     assert not errors, errors
     browser.close()
     print("PASS: saved draft reload/recovery, multiple documents, duplicate/delete/undo, multi-select align and group nudge, source-neutral zoom/pan/fit")

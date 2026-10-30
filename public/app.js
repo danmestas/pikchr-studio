@@ -56,7 +56,9 @@ function openInspector(){document.body.classList.remove('objects-open','creation
 $('mobile-objects').onclick=()=>{document.body.classList.remove('inspector-open','creation-open');document.body.classList.toggle('objects-open');document.querySelector('#objects').closest('details').open=true;};
 $('mobile-add').onclick=()=>document.body.classList.toggle('creation-open');
 $('multi-select').onclick=()=>{multiSelect=!multiSelect;$('multi-select').setAttribute('aria-pressed',String(multiSelect));status(multiSelect?'Tap objects to add or remove them from the selection.':'Single selection. Drag selected objects to move them.');};
-$('clear-selection').onclick=()=>select(null);
+// Clear ends group editing as well as the selection, so the next tap selects
+// one object instead of adding to an invisible set.
+$('clear-selection').onclick=()=>{multiSelect=false;$('multi-select').setAttribute('aria-pressed','false');select(null);};
 for(const [id,dx,dy]of [['left',-.1,0],['right',.1,0],['up',0,.1],['down',0,-.1]])$('move-'+id).onclick=()=>{const o=current();if(o)suggest(o,{x:o.center.x+dx,y:o.center.y+dy});};
 let storageReady=false,saveTimer=null,activeDocumentId=null,activeDocumentTitle=null;
 const documents=createDocumentStore();
@@ -246,23 +248,31 @@ function select(id,highlight=false,additive=false,preserve=false){
   if(id&&!selectedIds.has(id)&&!additive)selectedIds.add(id);
   if(additive&&!selectedIds.has(id))id=[...selectedIds].at(-1)||null;
   selectedId=id;const o=current();
+  // Label, style and connector controls edit exactly one object. With several
+  // selected they stay out of reach rather than quietly changing only one.
+  const single=selectedIds.size<=1;
   document.body.classList.toggle('has-selection',!!o);document.body.classList.toggle('has-multiple',selectedIds.size>1);
-  $('edit-selected').disabled=!o;
-  $('fit-text').disabled=!o||source.value!==renderedSource||!canFitText(renderedSource,o,scene);
+  $('edit-selected').disabled=!o||!single;
+  $('fit-text').disabled=!o||!single||source.value!==renderedSource||!canFitText(renderedSource,o,scene);
   $('fit-text').title=$('fit-text').disabled?'Select a supported shape with literal placement to fit its label':'Resize the selected shape to its text; connected arrows follow its anchors';
   for(const b of $('objects').children)b.setAttribute('aria-pressed',String(selectedIds.has(b.dataset.id)));
   $('selection-count').textContent=selectedIds.size?selectedIds.size+' selected':'No selection';
-  $('duplicate-selected').disabled=!o;
+  $('duplicate-selected').disabled=!o||!single;
   $('delete-selected').disabled=!selectedIds.size;
-  $('appearance-selected').disabled=!o;
-  $('route-selected').disabled=!o||!['arrow','line'].includes(o.kind);
-  $('tidy-route').disabled=!o||!['arrow','line'].includes(o.kind);
+  $('appearance-selected').disabled=!o||!single;
+  $('route-selected').disabled=!o||!single||!['arrow','line'].includes(o.kind);
+  $('tidy-route').disabled=!o||!single||!['arrow','line'].includes(o.kind);
   $('copy-selection').disabled=$('save-component').disabled=!selectedIds.size;
-  $('show-source-selected').disabled=!o?.span;
+  $('show-source-selected').disabled=!o?.span||!single;
   $('arrange').disabled=selectedIds.size<2;
   $('focus-selection').disabled=!selectedIds.size;
   $('inspector').replaceChildren();
   if(!o){$('inspector').textContent='Select an object in the diagram or object list.';drawOverlay();directTools?.sync();return;}
+  if(!single){
+    drawGroupInspector();
+    drawOverlay();directTools?.sync();
+    return;
+  }
   const dl=document.createElement('dl');
   const details={
     Name:o.name||'(unnamed)',Type:o.kind,
@@ -283,6 +293,17 @@ function select(id,highlight=false,additive=false,preserve=false){
   propertyEditor({object:o,scene,source:renderedSource,inspector:$('inspector'),propose:options=>validateSuggestions(o,options),status,
     valid:()=>source.value===renderedSource&&!$('diagram').classList.contains('stale')});
   directTools?.sync();
+}
+// A group selection names itself and its actions; one object's label, style
+// and connector fields would silently apply to only that object.
+function drawGroupInspector(){
+  const objects=scene.objects.filter(o=>selectedIds.has(o.id));
+  const p=document.createElement('p');
+  p.className='group-summary';
+  p.textContent=objects.length+' objects selected: '+objects.map(o=>o.name||o.kind).join(', ')+'.';
+  const hint=document.createElement('p');
+  hint.textContent='Drag any selected shape to move the group, or use Move and Arrange in Group actions. Each group edit is one undoable source change.';
+  $('inspector').append(p,hint);
 }
 $('edit-selected').onclick=()=>directTools?.editText();
 $('appearance-selected').onclick=()=>{openInspector();const section=$('inspector').querySelector('.appearance-editor');if(section){section.open=true;section.scrollIntoView({block:'nearest'});section.querySelector('input')?.focus({preventScroll:true});}};

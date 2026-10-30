@@ -105,6 +105,13 @@ function install(studio){
     row(link('https://github.com/danmestas/pikchr-studio','Source on GitHub'),link('licenses.html','Licenses')),
     el('p',{class:'cl-about'},'Diagrams are rendered by ',link('https://pikchr.org','Pikchr'),', used under the 0BSD license.'));
   menu.append(docSection,exampleSection,viewSection,changesSection,toolsSection,advancedSection,aboutSection);
+  // Selecting more than one object has to be discoverable without a keyboard:
+  // the toggle and Clear sit in the menu, where they are reachable even with
+  // nothing selected yet.
+  const selectionSection=section('Selection',
+    row($('multi-select'),$('clear-selection')),
+    el('p',{class:'cl-muted'},'Turn on Select multiple, then tap shapes to add or remove them.'));
+  menu.insertBefore(selectionSection,changesSection);
   // Remaining toolbar controls (render, undo, redo, downloads) stay
   // reachable by id but off-stage; the export menu below takes the downloads.
   if(nav){nav.classList.add('cl-offstage');document.body.append(nav);}
@@ -263,9 +270,29 @@ function install(studio){
   const labelOptions=el('button',{type:'button',class:'cl-label-options'},'Label options…');
   labelOptions.onclick=()=>{toggle(more,moreButton,false);studio.editLabelDialog?.();};
   more.append(labelOptions);
+  // A multiple selection gets its own labelled section: Move and Arrange act
+  // on every selected object, so they do not belong in one object's inspector.
+  const groupCount=el('span',{class:'cl-muted'});
+  const groupSection=el('section',{class:'cl-group','aria-label':'Group actions',hidden:''},
+    el('div',{class:'cl-group-head'},el('strong',{},'Group'),groupCount),
+    selection?.querySelector('.move-selection')||null,
+    el('div',{class:'cl-group-arrange'},selection?.querySelector('.arrange-selection')||null,$('arrange')||null));
+  more.append(groupSection);
   const dock=q('.canvas-context-dock');if(dock)more.append(dock);
   const aside=q('main aside');if(aside)more.append(aside);
-  const syncMoreHead=()=>{const o=studio.state?.().object;moreTitle.textContent=o?.name||(o?o.kind:'Selection');moreKind.textContent=o&&o.name?o.kind:'';};
+  // Runs from layout() too, so a selection made while the popover is open
+  // switches it between the object inspector and the group section. Every
+  // write is conditional: layout() is driven by DOM observers.
+  const syncMoreHead=()=>{
+    const s=studio.state(),o=s.object,count=(s.selectedIds||[]).length,group=count>1;
+    const title=group?count+' selected':o?.name||(o?o.kind:'Selection'),kind=group?'':o&&o.name?o.kind:'';
+    if(moreTitle.textContent!==title)moreTitle.textContent=title;
+    if(moreKind.textContent!==kind)moreKind.textContent=kind;
+    if(groupSection.hidden!==!group)groupSection.hidden=!group;
+    if(labelOptions.hidden!==group)labelOptions.hidden=group;
+    const note=group?'Move or arrange every selected object as one change.':'';
+    if(groupCount.textContent!==note)groupCount.textContent=note;
+  };
   moreButton.onclick=()=>{syncMoreHead();toggle(more,moreButton);};
   // Classic buttons (Style, Route, Objects) open the inspector by adding a body
   // class; here that opens the ⋯ popover.
@@ -328,7 +355,7 @@ function install(studio){
     for(const g of svg.querySelectorAll('[data-pikchr-id]')){const on=ids.has(g.getAttribute('data-pikchr-id'));if(g.classList.contains('cl-selected')!==on)g.classList.toggle('cl-selected',on);}
   }
   function layout(){
-    syncStatus();syncTitle();markSelection();syncCandidate();
+    syncStatus();syncTitle();markSelection();syncCandidate();syncMoreHead();
     const s=studio.state(),object=s.object;
     const previewing=!!previewActions&&!previewActions.hidden;
     const dragging=stage.classList.contains('cl-pressing')||!!connect||targeting||previewing;
@@ -352,8 +379,10 @@ function install(studio){
     drawDots();drawLineHandles();
   }
   new MutationObserver(schedule).observe(diagram,{childList:true,subtree:true,attributes:true,attributeFilter:['viewBox','class']});
-  for(const node of [selection,$('queue-status'),diagnostic,previewActions,$('accept')].filter(Boolean))
-    new MutationObserver(schedule).observe(node,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['hidden','disabled']});
+  // The count updates on every selection change, and the toggle's pressed
+  // state changes outside the toolbar; either re-syncs the ⋯ head.
+  for(const node of [selection,$('selection-count'),$('multi-select'),$('queue-status'),diagnostic,previewActions,$('accept')].filter(Boolean))
+    new MutationObserver(schedule).observe(node,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['hidden','disabled','aria-pressed']});
   let refitTimer=0;
   addEventListener('resize',()=>{schedule();clearTimeout(refitTimer);refitTimer=setTimeout(()=>{studio.refit?.();schedule();},120);});
   requestAnimationFrame(()=>studio.refit?.());
