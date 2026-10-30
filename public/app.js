@@ -1,4 +1,5 @@
-import {candidates,snap,applyPatch,byteOffsetToIndex} from './edits.js?v=20260923c';
+import {candidates,snap,applyPatch,byteOffsetToIndex,routeCandidates} from './edits.js?v=20260923c';
+import {routeStyleCandidates} from './route-styles.js?v=20260923c';
 import {correspondingObject} from './candidate-target.js?v=20260923c';
 import {alignmentGuides,gapMarks} from './guides.js?v=20260923c';
 import {constrainDrag,smartSnap} from './constrain.js?v=20260923c';
@@ -54,7 +55,7 @@ $('advanced-mode').onchange=()=>{advanced=$('advanced-mode').checked;try{localSt
 applyAdvanced();
 // inspector-open / objects-open ask the layout to open the ⋯ inspector popover.
 function openInspector(){document.body.classList.remove('objects-open','creation-open');document.body.classList.add('inspector-open');$('inspector').scrollIntoView({block:'nearest'});}
-$('mobile-objects').onclick=()=>{document.body.classList.remove('inspector-open','creation-open');document.body.classList.toggle('objects-open');document.querySelector('#objects').closest('details').open=true;};
+$('mobile-objects').onclick=()=>{document.body.classList.remove('inspector-open','creation-open');document.body.classList.toggle('objects-open');};
 $('mobile-add').onclick=()=>document.body.classList.toggle('creation-open');
 $('multi-select').onclick=()=>{multiSelect=!multiSelect;$('multi-select').setAttribute('aria-pressed',String(multiSelect));status(multiSelect?'Tap objects to add or remove them from the selection.':'Single selection. Drag selected objects to move them.');};
 // Clear ends group editing as well as the selection, so the next tap selects
@@ -244,10 +245,26 @@ function populateObjects(){
     const b=document.createElement('button'),group=$('diagram').querySelector(`[data-pikchr-id="${o.id}"]`);
     const label=[...(group?.querySelectorAll('text')||[])].map(t=>t.textContent).join(' ').replace(/\s+/g,' ').trim();
     b.textContent=(o.name||o.kind+' '+o.id)+(label?' · '+label:'');b.title=b.textContent;b.dataset.id=o.id;
-    if(['arrow','line'].includes(o.kind)&&o.span){const statement=renderedSource.slice(byteOffsetToIndex(renderedSource,o.span.start),byteOffsetToIndex(renderedSource,o.span.end));const refs=[...statement.matchAll(/\b([A-Z][\w]*)\.(?:n|s|e|w|ne|nw|se|sw|c|center)\b/g)].map(m=>m[1]);if(refs.length>1)b.textContent+=' · '+refs[0]+' → '+refs.at(-1);}
+    if(['arrow','line','spline','arc'].includes(o.kind)&&o.span){const statement=renderedSource.slice(byteOffsetToIndex(renderedSource,o.span.start),byteOffsetToIndex(renderedSource,o.span.end));const refs=[...statement.matchAll(/\b([A-Z][\w]*)\.(?:n|s|e|w|ne|nw|se|sw|c|center)\b/g)].map(m=>m[1]);if(refs.length>1)b.textContent+=' · '+refs[0]+' → '+refs.at(-1);}
+    b.title=b.textContent;b.classList.add('object-row');b.dataset.search=(o.kind+' '+b.textContent).toLowerCase();
     b.onclick=e=>select(o.id,false,multiSelect||e.shiftKey||e.metaKey||e.ctrlKey);$('objects').append(b);
   }
+  filterObjects();
 }
+// The Objects view is a searchable outline, not a wall of pills: one row per
+// object, narrowed by name, label or type. Filtering only hides rows; the
+// list itself keeps every object so selection state stays addressable.
+function filterObjects(){
+  const box=$('object-search'),query=(box?.value||'').trim().toLowerCase();
+  const terms=query.split(/\s+/);
+  let shown=0;
+  for(const row of $('objects').children){const hit=terms.every(term=>(row.dataset.search||'').includes(term));row.hidden=!hit;if(hit)shown++;}
+  const empty=$('objects-empty');if(empty){empty.hidden=shown>0;empty.textContent=query?'No object matches “'+box.value.trim()+'”. Try a name, label or type.':'This diagram has no objects yet.';}
+  const count=$('objects-count');if(count)count.textContent=query?shown+' of '+$('objects').children.length+' objects':$('objects').children.length+(shown===1?' object':' objects');
+}
+// The Objects view is built by canvas-layout, which runs after this module:
+// listen on the document so the search field works whichever module owns it.
+document.addEventListener('input',e=>{if(e.target?.id==='object-search')filterObjects();});
 const fixed=n=>Number(n).toFixed(3);
 function select(id,highlight=false,additive=false,preserve=false){
   if(id!==selectedId)clearProposal();
@@ -288,20 +305,110 @@ function select(id,highlight=false,additive=false,preserve=false){
     Center:fixed(o.center.x)+', '+fixed(o.center.y)+' in',
     Bounds:fixed(o.bbox.width)+' × '+fixed(o.bbox.height)+' in',
     Source:o.span?o.span.start+'–'+o.span.end+' UTF-8 bytes':'Origin unavailable',
-    Editing:o.editable?'Placement suggestions available':o.reason||'Inspect only',
     Anchors:Object.keys(o.anchors||{}).join(', '),
     Dependencies:(o.dependencies?.map(id=>scene.objects.find(n=>n.id===id)?.name||id).join(', ')||'None')+(o.dependenciesComplete?'':' (endpoint references only)'),
     'Referenced by':scene.objects.filter(n=>n.dependencies?.includes(o.id)).map(n=>n.name||n.kind).join(', ')||'Nothing yet'
   };
   for(const [key,value]of Object.entries(details)){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=key;dd.textContent=value;dl.append(dt,dd);}
-  $('inspector').append(dl);
+  // Editing is the one fact the panel must show up front: it says whether the
+  // actions above can change this object at all. Everything else is reference
+  // material and lives under one Advanced disclosure.
+  const statusDl=document.createElement('dl');statusDl.className='inspector-status';
+  const statusDt=document.createElement('dt'),statusDd=document.createElement('dd');
+  statusDt.textContent='Editing';
+  statusDd.textContent=o.editable?'Placement suggestions available':o.reason||'Inspect only';
+  statusDl.append(statusDt,statusDd);
+  const advanced=document.createElement('details');advanced.className='inspector-advanced';
+  const advancedSummary=document.createElement('summary');advancedSummary.textContent='Advanced & source';
+  const sourceButton=document.createElement('button');sourceButton.type='button';sourceButton.textContent='Show source';
+  sourceButton.disabled=$('show-source-selected').disabled;
+  sourceButton.onclick=()=>$('show-source-selected')?.click();
+  advanced.append(advancedSummary,dl,sourceButton);
+  if(sourceButton.disabled){const reason=document.createElement('p');reason.textContent='No independent source span is available. Open the source drawer to inspect the generating program.';advanced.append(reason);}
+  $('inspector').append(statusDl,advanced);
   shapeTypeEditor({object:o,scene,source:renderedSource,inspector:$('inspector'),propose:options=>validateSuggestions(o,options),status,
     valid:()=>source.value===renderedSource&&!$('diagram').classList.contains('stale')});
   drawOverlay();
   installArrowEditor();
   propertyEditor({object:o,scene,source:renderedSource,inspector:$('inspector'),propose:options=>validateSuggestions(o,options),status,
     valid:()=>source.value===renderedSource&&!$('diagram').classList.contains('stale')});
+  const chooser=routeChooser(o);if(chooser)$('inspector').insertBefore(chooser,$('inspector').querySelector('.arrow-editor')||advanced);
+  // Advanced is the reference tail of the panel whatever the other editors
+  // prepended or inserted above it.
+  $('inspector').append(advanced);
   directTools?.sync();
+}
+// Visual route choices for a connector: each button reads the same candidate
+// generators the route editor uses, and every click goes through the normal
+// validated propose path. Unavailable choices say why instead of doing
+// nothing, and the pressed state reports what the source actually is.
+function routeChooser(o){
+  if(!['arrow','line','spline','arc'].includes(o.kind))return null;
+  const ready=()=>source.value===renderedSource&&!$('diagram').classList.contains('stale');
+  const styles=(()=>{try{return routeStyleCandidates(source.value,o,scene).options;}catch{return[];}})();
+  const style=id=>styles.find(item=>item.id===id)||null;
+  const straight=style('straighten')||routeCandidates(source.value,o,scene,'straight')[0]||null;
+  const elbow={horizontal:routeCandidates(source.value,o,scene,'horizontal')[0]||null,vertical:routeCandidates(source.value,o,scene,'vertical')[0]||null};
+  const bends=(o.path||[]).length>2;
+  const section=document.createElement('section');section.className='cl-route-choices';section.setAttribute('aria-label','Route');
+  const heading=document.createElement('h4');heading.textContent='Route';
+  const grid=document.createElement('div');grid.className='cl-route-grid';grid.setAttribute('role','group');grid.setAttribute('aria-label','Route shape');
+  const note=document.createElement('p');note.className='cl-route-note';note.setAttribute('role','status');
+  const marks={
+    straight:'M5 20 55 5',elbow:'M5 20H30V5H55',curve:'M5 20C25 20 30 5 55 5',arc:'M5 20Q30 0 55 20',waypoints:'M5 20 20 5 40 20 55 5'
+  };
+  const apply=options=>{if(!ready()){status('Render the current source before changing the route.');return;}if(!options.length){note.textContent='That route is not available for this connector’s source expression.';return;}validateSuggestions(o,options);};
+  const button=(id,label,marksPath,pressed,title,onclick)=>{
+    const b=document.createElement('button');b.type='button';b.className='cl-route-option';b.dataset.route=id;
+    b.setAttribute('aria-pressed',String(pressed));
+    if(title)b.title=title;
+    const svg=svgElement('svg',{viewBox:'0 0 60 25','aria-hidden':'true',focusable:'false',fill:'none',stroke:'currentColor','stroke-width':'2','stroke-linecap':'round','stroke-linejoin':'round'});
+    svg.append(svgElement('path',{d:marksPath}));
+    const span=document.createElement('span');span.textContent=label;
+    b.append(svg,span);b.onclick=onclick;grid.append(b);return b;
+  };
+  const straightPressed=!bends&&['arrow','line'].includes(o.kind);
+  button('straight',o.kind==='spline'?'Segments':'Straight',o.kind==='spline'?marks.waypoints:marks.straight,straightPressed,
+    straight?(o.kind==='spline'?'Replace the curve with straight segments':'Replace the route with a direct line'):'This route expression cannot be rewritten as a straight line',
+    ()=>apply(straight?[straight]:[]));
+  const elbowButton=button('elbow','Elbow',marks.elbow,false,'Choose horizontal first or vertical first',()=>{
+    const open=elbowRow.hidden;elbowRow.hidden=!open;elbowButton.setAttribute('aria-expanded',String(open));
+    note.textContent=open?'Elbow: choose which axis the route turns on first.':defaultNote();
+  });
+  elbowButton.setAttribute('aria-expanded','false');
+  const elbowRow=document.createElement('div');elbowRow.className='cl-route-elbow';elbowRow.hidden=true;
+  for(const [mode,label,option] of [['horizontal','Horizontal first',elbow.horizontal],['vertical','Vertical first',elbow.vertical]]){
+    const b=document.createElement('button');b.type='button';b.textContent=label;b.disabled=!option;
+    b.title=option?'Route turns '+mode+' first':'This connector has no rewriteable endpoint route';
+    b.onclick=()=>apply(option?[option]:[]);elbowRow.append(b);
+  }
+  const curveOption=style('curve');
+  button('curve','Curve',marks.curve,o.kind==='spline',
+    o.kind==='spline'?'This route is already a curve':curveOption?null:'Curve needs at least one bend in an arrow or line route; add a waypoint first',
+    ()=>{if(o.kind==='spline'){note.textContent=defaultNote();return;}apply(curveOption?[curveOption]:[]);});
+  const arcOption=o.kind==='arc'?style('flip-arc'):(style('arc-cw')||style('arc-ccw'));
+  button('arc',o.kind==='arc'?'Flip arc':'Arc',marks.arc,o.kind==='arc',
+    arcOption?null:'An arc needs a simple two-point connector; this route cannot become one safely',
+    ()=>apply(arcOption?[arcOption]:[]));
+  const waypoints=button('waypoints','Waypoints',marks.waypoints,bends,
+    'Edit the existing bends and segments in the route editor',
+    ()=>{
+      const tab=[...$('inspector').querySelectorAll('.arrow-editor .connector-tabs button')].find(b=>b.textContent==='Routing');
+      if(!tab){note.textContent='Waypoint editing is unavailable: this route keeps its endpoints in a form Studio cannot rewrite. Edit it in source.';return;}
+      tab.click();
+      const panel=$('inspector').querySelector('.route-controls');
+      panel?.scrollIntoView({block:'nearest'});panel?.querySelector('.route-handle')?.focus?.({preventScroll:true});
+      note.textContent='Drag a square handle on the canvas to move a bend, or use Add bend and Delete bend below.';
+    });
+  function defaultNote(){
+    if(o.kind==='arc')return 'Arc selected. Flip reverses its direction.';
+    if(o.kind==='spline')return 'Curve selected. Segments keeps its bends with straight edges.';
+    if(bends)return 'Waypoints selected. Drag a square handle to move a bend.';
+    return 'Straight selected. Elbow turns on one axis first.';
+  }
+  note.textContent=defaultNote();
+  section.append(heading,grid,elbowRow,note);
+  return section;
 }
 // A group selection names itself and its actions; one object's label, size
 // and connector fields would silently apply to only that object. Style is the
@@ -390,10 +497,15 @@ function installArrowEditor(){
     valid:()=>source.value===renderedSource&&!$('diagram').classList.contains('stale'),clear:clearProposal});
   const routable=!!$('inspector').querySelector('.arrow-editor .connector-tabs');
   const capabilities=connectorCapabilities({object:o,scene,source:source.value});
-  const description=capabilities&&(capabilities.endpoints||capabilities.route||capabilities.styles)
-    ?'Editable here: '+[capabilities.endpoints&&'endpoint reconnection (Endpoints)',capabilities.route&&'routing',capabilities.styles&&'styles'].filter(Boolean).join(', ')+'.'
-    :'Inspect only: this connector expression cannot be safely rewritten. Edit it in source.';
-  for(const dt of $('inspector').querySelectorAll('dt'))if(dt.textContent==='Editing')dt.nextElementSibling.textContent=description;
+  // The connector editor speaks only for connectors. For a box it must not
+  // replace the Editing fact with connector wording: the object keeps its own
+  // placement/source verdict.
+  if(['arrow','line','spline','arc'].includes(o.kind)){
+    const description=capabilities&&(capabilities.endpoints||capabilities.route||capabilities.styles)
+      ?'Editable here: '+[capabilities.endpoints&&'endpoint reconnection (Endpoints)',capabilities.route&&'routing',capabilities.styles&&'styles'].filter(Boolean).join(', ')+'.'
+      :o.reason||'Inspect only: this connector expression cannot be safely rewritten. Edit it in source.';
+    for(const dt of $('inspector').querySelectorAll('dt'))if(dt.textContent==='Editing')dt.nextElementSibling.textContent=description;
+  }
 }
 const matrix=()=>{const t=scene.transform;return new DOMMatrix([t.a,t.b,t.c,t.d,t.e,t.f]);};
 const svgPoint=p=>new DOMPoint(p.x,p.y).matrixTransform(matrix());

@@ -39,7 +39,10 @@ def open_more(page):
         else:
             open_document_menu(page)
             page.locator('#mobile-objects').click()
-        expect(page.locator(MORE)).to_be_visible()
+    expect(page.locator(MORE)).to_be_visible()
+    if page.locator('.cl-view-objects').is_visible():
+        page.locator('.cl-back').click()
+    expect(page.locator('.cl-view-properties')).to_be_visible()
 
 def open_export(page):
     _open(page, EXPORT, '.cl-doc [aria-label="Export"]')
