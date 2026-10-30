@@ -63,7 +63,10 @@ body.layout-canvas .cl-zoom #zoom-level{min-width:44px;text-align:center;font-si
 /* Contextual toolbar: the existing selection buttons, shown as icons. */
 body.layout-canvas .cl-context{z-index:11;max-width:calc(100vw - 16px);overflow-x:auto;scrollbar-width:none}
 body.layout-canvas .cl-context .selection-toolbar{display:flex!important;align-items:center;gap:2px;margin:0;padding:0;border:0;background:none;flex-wrap:nowrap}
-body.layout-canvas .cl-context .selection-toolbar>:is(#selection-count,#multi-select,#clear-selection,.move-selection){display:none!important}
+body.layout-canvas .cl-context .selection-toolbar>:is(#multi-select,#clear-selection,.move-selection){display:none!important}
+/* A group selection names itself in the toolbar; one object needs no count. */
+body.layout-canvas .cl-context .selection-toolbar>#selection-count{display:none!important;margin:0 6px 0 2px;color:var(--cl-muted);font-size:12px;white-space:nowrap}
+body.layout-canvas.has-multiple .cl-context .selection-toolbar>#selection-count{display:inline!important}
 body.layout-canvas .cl-context .selection-toolbar>button:disabled{display:none!important}
 body.layout-canvas .cl-context button[data-icon]{font-size:0;border-color:transparent;background:transparent;padding:0 6px}
 body.layout-canvas .cl-context button[data-icon]::before{content:attr(data-icon);font-size:15px}
@@ -234,6 +237,16 @@ body.layout-canvas .cl-more{width:min(340px,calc(100vw - 24px));padding-top:8px}
 body.layout-canvas .cl-popover-head{position:sticky;top:-8px;z-index:1;display:flex;align-items:center;gap:8px;margin:-8px -14px 8px;padding:10px 8px 8px 14px;background:var(--cl-chip);border-bottom:1px solid var(--cl-line)}
 body.layout-canvas .cl-popover-head .cl-muted{flex:1}
 body.layout-canvas .cl-more-title{font-size:14px}
+/* Group actions: one labelled section for a multiple selection. */
+body.layout-canvas .cl-more .cl-group{display:flex;flex-direction:column;gap:8px}
+body.layout-canvas .cl-more .cl-group[hidden]{display:none!important}
+body.layout-canvas .cl-more .cl-group-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap}
+body.layout-canvas .cl-more .cl-group-head .cl-muted{flex:1 1 100%;font-size:12px}
+body.layout-canvas .cl-more .cl-group .move-selection{display:flex!important;gap:4px;padding:0;border:0;margin:0}
+body.layout-canvas .cl-more .cl-group .move-selection button{min-width:40px;height:36px;border:1px solid var(--cl-line)}
+body.layout-canvas .cl-more .cl-group-arrange{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+body.layout-canvas .cl-more .cl-group .arrange-selection{display:flex!important;align-items:center;gap:6px;flex:1 1 200px;min-width:0}
+body.layout-canvas .cl-more .cl-group .arrange-selection select{flex:1 1 auto;min-width:0;width:auto}
 body.layout-canvas .cl-popover .cl-close{border:0!important;min-width:32px;padding:0;font-size:18px;color:var(--cl-muted)}
 body.layout-canvas .cl-more aside>section{padding:0 0 10px!important;margin:0 0 10px!important;border-bottom:1px solid var(--cl-line)!important}
 body.layout-canvas .cl-more aside>section:last-child{border-bottom:0!important;margin-bottom:0!important}

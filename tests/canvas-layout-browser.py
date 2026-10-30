@@ -184,9 +184,9 @@ with sync_playwright() as pw:
     menu = phone.locator(".cl-menu")
     expect(menu).to_be_visible()
     titles = menu.locator(".cl-section:visible > .cl-section-title").all_inner_texts()
-    assert [t.strip().lower() for t in titles][:4] == ["document", "examples", "view", "changes"], titles
+    assert [t.strip().lower() for t in titles][:5] == ["document", "examples", "view", "selection", "changes"], titles
     assert menu.locator("details.canvas-view-options:visible, details.draft-toolbar:visible").count() == 0
-    for id_ in ["#accept", "#cancel", "#undo-draft", "#auto-apply", "#anchors", "#choose-example"]:
+    for id_ in ["#accept", "#cancel", "#undo-draft", "#auto-apply", "#anchors", "#choose-example", "#multi-select", "#clear-selection"]:
         assert menu.locator(id_).count() == 1, id_
     box = menu.bounding_box()
     assert box["y"] >= 0 and box["y"] + box["height"] <= 844 and box["x"] + box["width"] <= 390, box

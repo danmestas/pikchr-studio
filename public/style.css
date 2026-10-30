@@ -153,7 +153,7 @@ footer{display:none}
 #preview-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 2px 6px;padding:6px 8px;border:1px solid var(--accent);background:var(--accent-bg);flex-shrink:0;font-size:12px}#preview-actions .hint{margin:0}#preview-label{font-weight:600;overflow-wrap:anywhere}#preview-accept{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}#preview-actions button{min-height:36px}
 .diagram-pane>#diagnostic{white-space:pre-wrap;font:12px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--error);margin:0 2px 6px;flex-shrink:0;max-height:120px;overflow:auto}.diagram-pane>#diagnostic:empty{display:none}
 .selection-toolbar>button:disabled{color:var(--muted)}
-body:not(.advanced) .component-tools,body:not(.advanced) #backup-workspace,body:not(.advanced) #restore-workspace,body:not(.advanced) .arrange-selection,body:not(.advanced) #arrange,body:not(.advanced) .shape-type-form{display:none!important}
+body:not(.advanced) .component-tools,body:not(.advanced) #backup-workspace,body:not(.advanced) #restore-workspace,body:not(.advanced) .shape-type-form{display:none!important}
 @media(min-width:701px){.selection-toolbar{flex-wrap:wrap;overflow:visible;row-gap:4px}.selection-toolbar>*{white-space:nowrap}}
 /* Live drag: hide the committed render while the candidate layer is shown. */
 #diagram svg.live-dragging>:not(.live-drag):not(.studio-overlay):not(.arrow-overlay):not(.align-guides):not(.canvas-overlay):not(.canvas-preview){visibility:hidden}

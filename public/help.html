@@ -36,7 +36,7 @@
 <p>Click a shape to select it; Shift-click adds to the selection. Drag on empty canvas to draw a selection box: every shape and connector fully inside is selected. A shape that encloses other shapes, such as a frame, is selected by its border, so clicks inside it reach the shapes within.</p>
 <h2>Move and align</h2>
 <p>Drag a shape. While you drag, the diagram re-renders with the edit that will be applied, and the shape snaps to other shapes' edges and centres, to the mirror position of a sibling about a third shape, and to equal gaps along a row; red guides show what it snapped to. Hold <kbd>Shift</kbd> to lock the move to horizontal, vertical or 45°. On release the top-ranked edit applies immediately: Studio prefers Pikchr-native placements such as <code>with .n at 0.6 below API.s</code> over literal coordinates. Undo reverts it.</p>
-<p>With several shapes selected, Arrange in the selection toolbar aligns or distributes them (Advanced tools). Arrow keys nudge a selected shape by 0.1 inch, Shift by 1 inch, Alt by 0.01 inch.</p>
+<p>With several shapes selected, Arrange in ⋯ › Group aligns or distributes them as one undoable change; Arrow keys nudge every selected shape by 0.1 inch, Shift by 1 inch, Alt by 0.01 inch. To select more than one without a keyboard, turn on Select multiple in ☰ › Selection, then tap shapes to add or remove them; the selected count appears beside the toolbar. Clear ends both the selection and multiple-select mode.</p>
 <h2>Resize</h2>
 <p>A selected shape has four corner handles and a grab strip along each edge. The side or corner opposite the handle stays fixed; <kbd>Shift</kbd> keeps the aspect ratio and <kbd>Alt</kbd> resizes from the centre. Moving edges snap to other shapes, otherwise to a 0.05 inch grid. A shape attached to another (for example <code>with .n at API.s</code>) keeps that attachment and grows around it.</p>
 <h2>Connect</h2>
@@ -51,7 +51,7 @@
 <h2>Queue mode</h2>
 <p>Changes apply immediately by default. To review edits before they apply, turn off Auto-apply in ☰ › Changes: accepted edits then join a draft, the status chip shows how many are queued, and Apply all or Discard all finishes the batch. While changes are queued the source is read-only.</p>
 <h2>Advanced tools</h2>
-<p>Reusable components, workspace backups, Arrange, and shape-type conversion are hidden by default. Saved documents are always available in ☰ › Document. Turn on Advanced tools in ☰ › View, or open the editor with <code>?advanced=1</code>.</p>
+<p>Reusable components, workspace backups, and shape-type conversion are hidden by default. Saved documents are always available in ☰ › Document. Turn on Advanced tools in ☰ › View, or open the editor with <code>?advanced=1</code>.</p>
 <h2>Supported scope</h2>
 <p>Macros, nested objects, complex expressions, and unsupported placements can be inspected but not freely manipulated; Studio explains why an operation is unavailable. Your Pikchr remains the canonical document. If the source fails to render, the error appears on the canvas, the last valid diagram stays visible but dimmed, and it cannot be manipulated until the source renders again. The renderer accepts source up to 100000 UTF-8 bytes and rejects NUL characters.</p>
 <h2>Run locally</h2>
