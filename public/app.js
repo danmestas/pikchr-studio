@@ -977,8 +977,10 @@ function restoreDocument(state,preRendered=null){
   source.value=state.source;draft.splice(0,draft.length,...state.draft);draftBase=state.draftBase;
   undo.splice(0,undo.length,...state.undo);redo.splice(0,redo.length,...state.redo);
   // Changes apply immediately (undo reverts them) unless the author chose
-  // queue mode on this browser. A document with queued changes keeps its mode.
-  $('auto-apply').checked=state.draft.length?!!state.autoApply:!prefersQueue();applied=state.applied;selectedId=null;selectedIds.clear();
+  // queue mode on this browser. A document with queued history — pending or
+  // undone — keeps its mode: a queued redo only exists in queue mode.
+  const queued=!!state.draft.length||!!state.draftRedo?.length;
+  $('auto-apply').checked=queued?!!state.autoApply:!prefersQueue();applied=state.applied;selectedId=null;selectedIds.clear();
   zoom=1;pan={x:0,y:0};++revision;return renderSource(preRendered);
 }
 async function newDocument(text='',preRendered=null,title=null){
