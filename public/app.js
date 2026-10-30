@@ -345,7 +345,8 @@ function drawGroupInspector(){
   details.append(form,error);$('inspector').append(details);
 }
 $('edit-selected').onclick=()=>directTools?.editText();
-$('appearance-selected').onclick=()=>{openInspector();const section=$('inspector').querySelector('.appearance-editor');if(section){section.open=true;section.scrollIntoView({block:'nearest'});section.querySelector('input')?.focus({preventScroll:true});}};$('route-selected').onclick=()=>{
+$('appearance-selected').onclick=()=>{openInspector();const section=$('inspector').querySelector('.appearance-editor');if(section){section.open=true;section.scrollIntoView({block:'nearest'});section.querySelector('input')?.focus({preventScroll:true});}};
+$('route-selected').onclick=()=>{
   openInspector();
   const button=[...$('inspector').querySelectorAll('button')].find(b=>b.textContent==='Routing');button?.click();
   // The layout opens the popover after this click. Scroll only once it is
