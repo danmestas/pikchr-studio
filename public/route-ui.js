@@ -83,8 +83,19 @@ export function routeEditor({object,scene,source,svg,layer,propose,status,valid,
     if(mode==='vertex')h.setAttribute('fill','#0969da');
     let dragging=false,last=p;
     const reset=()=>{ghost.removeAttribute('points');h.setAttribute('x',q.x-r);h.setAttribute('y',q.y-r);};
+    // Escape and pointercancel are the same cancel: end the drag, restore the
+    // handle and guide, and leave the source alone. `last` goes back to the
+    // starting point so a release after Escape cannot apply the abandoned one.
+    // The listener lives on the window because a drag does not move focus to
+    // the handle, so the key arrives at the diagram, not here. It uses
+    // stopPropagation, not stopImmediatePropagation: every other live handle
+    // drag must still see the same Escape, while the event goes no further
+    // and so cannot deselect the connector.
+    const cancel=()=>{removeEventListener('keydown',onEscape,true);if(!dragging)return;dragging=false;last=p;reset();status('Route drag cancelled. Source unchanged.');};
+    const onEscape=e=>{if(e.key!=='Escape')return;if(!h.isConnected){removeEventListener('keydown',onEscape,true);return;}e.preventDefault();e.stopPropagation();cancel();};
     h.onpointerdown=e=>{
       if(!valid())return;e.preventDefault();e.stopPropagation();clear();dragging=true;last=p;h.setPointerCapture(e.pointerId);
+      addEventListener('keydown',onEscape,true);
       status('Drag to change the route. '+commitHint()+' Escape cancels.');
     };
     h.onpointermove=e=>{
@@ -98,10 +109,11 @@ export function routeEditor({object,scene,source,svg,layer,propose,status,valid,
       h.setAttribute('x',pos.x-r);h.setAttribute('y',pos.y-r);preview(mode,last,index);
       status(label+': '+last.x.toFixed(2)+', '+last.y.toFixed(2)+' in'+snapped.description);
     };
-    h.onpointerup=e=>{if(!dragging)return;dragging=false;e.stopPropagation();reset();request(mode,last,index);};
-    h.onpointercancel=()=>{dragging=false;reset();status('Route drag cancelled. Source unchanged.');};
+    h.onpointerup=e=>{if(!dragging)return;dragging=false;removeEventListener('keydown',onEscape,true);e.stopPropagation();reset();request(mode,last,index);};
+    h.onpointercancel=cancel;
+    h.onlostpointercapture=cancel;
     h.onkeydown=e=>{
-      if(e.key==='Escape'){e.preventDefault();e.stopPropagation();dragging=false;reset();clear();status('Route drag cancelled. Source unchanged.');return;}
+      if(e.key==='Escape'){e.preventDefault();e.stopPropagation();if(dragging){cancel();return;}clear();status('Route drag cancelled. Source unchanged.');return;}
       const delta={ArrowLeft:[-.1,0],ArrowRight:[.1,0],ArrowUp:[0,.1],ArrowDown:[0,-.1]}[e.key];
       if(!delta)return;e.preventDefault();e.stopPropagation();
       request(mode,{x:p.x+delta[0],y:p.y+delta[1]},index);
