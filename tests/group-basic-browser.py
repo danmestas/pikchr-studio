@@ -107,6 +107,50 @@ with sync_playwright() as pw:
     page.wait_for_function("!document.body.classList.contains('has-multiple')")
     assert page.locator("#selection-count").inner_text() == "No selection"
 
+    # A group mixing a shape and a connector offers no single-object connector
+    # actions: Reverse and Reconnect would edit only the last-clicked
+    # connector, and the sizing hint addresses one object. These controls live
+    # in the canvas-context dock inside ⋯, not in .cl-context.
+    open_document_menu(page)
+    page.locator(".cl-menu #multi-select").click()
+    close_popovers(page)
+    object_button(page, "A").click()
+    object_button(page, "Link").click()
+    page.wait_for_function("document.body.classList.contains('has-multiple')")
+    assert page.locator("#selection-count").inner_text() == "2 selected"
+    open_more(page)
+    expect(page.locator(".cl-more .cl-more-title")).to_have_text("2 selected")
+    expect(page.locator(".cl-more .cl-group")).to_be_visible()
+    dock = page.locator(".cl-more .canvas-context-dock")
+    expect(dock).to_be_hidden()
+    for name in ("Reverse direction", "Reconnect start", "Reconnect end"):
+        expect(page.locator(".cl-more button", has_text=re.compile(r"^" + name + r"$"))).to_be_hidden()
+    expect(page.locator(".cl-more .context-hint")).to_be_hidden()
+    assert page.locator("#source").input_value() == BASE
+    close_popovers(page)
+
+    # The same connector alone keeps its actions, and they act on it.
+    reveal(page, "#clear-selection").click()
+    page.wait_for_function("document.querySelector('#selection-count').textContent==='No selection'")
+    object_button(page, "Link").click()
+    page.wait_for_function("document.querySelector('#selection-count').textContent==='1 selected'")
+    open_more(page)
+    expect(dock).to_be_visible()
+    expect(page.locator(".cl-more .context-hint")).to_be_hidden()
+    reverse = page.get_by_role("button", name="Reverse direction", exact=True)
+    expect(reverse).to_be_visible()
+    expect(reverse).to_be_enabled()
+    for name in ("Reconnect start", "Reconnect end"):
+        expect(page.get_by_role("button", name=name, exact=True)).to_be_visible()
+    reverse.click()
+    changed(BASE)
+    reversed_source = page.locator("#source").input_value()
+    assert "Link: arrow from B.w to A.e" in reversed_source, reversed_source
+    undo()
+    page.wait_for_function("text => document.querySelector('#source').value === text", arg=BASE)
+    reveal(page, "#clear-selection").click()
+    page.wait_for_function("document.querySelector('#selection-count').textContent==='No selection'")
+
     # Phone width: the group section is reachable inside the viewport, and the
     # page never scrolls sideways.
     page.set_viewport_size({"width": 390, "height": 844})

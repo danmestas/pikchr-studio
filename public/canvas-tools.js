@@ -123,6 +123,10 @@ export function canvasTools({host,toolbar,getState,render,propose,select,selectM
     toolbar.dataset.mode=mode;host.dataset.tool=mode;
     neighbor.disabled=!s.valid||!o||arrow||!o.name;place.disabled=connect.disabled=!s.valid;
     quick.hidden=!arrow;reconnectFrom.disabled=reconnectTo.disabled=!s.valid;
+    // Every dock control edits one object: sizing fields, the hint and the
+    // connector actions would silently act on the last-clicked member of a
+    // group, so the dock is shown only for a single selection.
+    dock.hidden=s.multiple;
     if(arrow){try{ends.select.value=inspectProperties(s.source,o,s.scene).termination;ends.select.disabled=false;}catch{ends.select.disabled=true;}}
     // Reconnecting needs an endpoint expression that can reference a shape;
     // say so on the buttons instead of starting a pick that must be refused.
