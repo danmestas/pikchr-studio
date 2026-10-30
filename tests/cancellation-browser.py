@@ -6,9 +6,15 @@ The connect-drag, empty-canvas reconnect and drag-to-preview cases are
 companion checks of the same rule along the other routes that own a gesture;
 canvas-layout, endpoint-ownership and preview already cover their basic
 cancellation, so this script adds no claims about those beyond what it runs.
-Every case finishes with a real follow-up operation and an exact history or
-queue count, which is what proves a cancelled gesture never landed even
-though validation is asynchronous.
+
+A release can start validation that settles long after the pointer lifts, so
+"the source is unchanged right after the release" proves nothing on its own:
+the app reports `valid` throughout that window. `settle` therefore waits for
+the validation and render the release started to finish (the status text is
+no longer Validating/Rendering and the diagram is valid) before any assertion,
+then a real follow-up action plus one Undo or one queued entry must land
+exactly on the pre-gesture source. Had the abandoned edit applied, the
+assertion after `settle` sees a different source and Undo stops one step short.
 """
 import os
 import re
@@ -31,6 +37,8 @@ arrow from API.e to Database.w
 SCREEN = """([name,anchor])=>{const s=pikchrStudio.state(),o=s.scene.objects.find(o=>o.name===name);
   const p=pikchrStudio.modelToScreen(anchor?o.anchors[anchor]:o.center);return {x:p.x,y:p.y}}"""
 
+BUSY = "^(Rendering|Validating|Source changed)"
+
 
 def rendered(page):
     page.wait_for_function("document.querySelector('.cl-summary')?.textContent==='Rendered'")
@@ -50,6 +58,18 @@ def show_routing(page, name="L"):
     page.get_by_role("button", name="Routing", exact=True).click()
 
 
+def settle(page):
+    """Wait for any validation or render the gesture started to finish.
+
+    `state.valid` stays true while candidates are being validated, so it
+    alone is not a boundary. The app's own status text is: it reads
+    Validating/Rendering for exactly as long as that work is outstanding.
+    When nothing was started (the cancel worked) this returns at once."""
+    page.wait_for_function(
+        "busy=>{const t=document.querySelector('#state').textContent.trim();"
+        "return window.pikchrStudio.state().valid&&!new RegExp(busy).test(t)}", arg=BUSY)
+
+
 def undo_once(page, expected):
     page.locator("#canvas-undo").click()
     page.wait_for_function("o=>document.querySelector('#source').value===o", arg=expected)
@@ -57,7 +77,7 @@ def undo_once(page, expected):
 
 def bend_drag(page, dx=40, dy=30, steps=6, escape=False):
     """Drag the first bend handle. With escape, wait for the cancel itself to
-    show (the guide clears) instead of sleeping; the release then follows."""
+    show (the guide clears) before releasing."""
     handle = handle_center(page, "Drag bend 1")
     page.mouse.move(handle["x"], handle["y"])
     page.mouse.down()
@@ -79,7 +99,9 @@ with sync_playwright() as pw:
 
     # --- 1. Escape cancels a route-bend drag before release -------------------
     # A filled bend handle drags one literal waypoint. Escape must drop the
-    # gesture: the guide clears, and the release that follows applies nothing.
+    # gesture: the guide clears, and once the release's validation has settled
+    # the source is untouched. The next real drag applies, and one Undo must
+    # return the original.
     set_source(page, SOURCE)
     show_routing(page)
     before = source.input_value()
@@ -92,19 +114,16 @@ with sync_playwright() as pw:
     page.wait_for_function("!(document.querySelector('.route-ghost')?.getAttribute('points'))")
     assert not page.locator(".route-ghost").get_attribute("points"), "Escape removes the route guide"
     page.mouse.up()
-    page.wait_for_function("pikchrStudio.state().valid")
+    settle(page)
     assert source.input_value() == before, "Escape must leave the bend where it was"
     assert page.locator("#queue-list li").count() == 0, "a cancelled bend drag queues nothing"
     assert page.get_by_role("button", name="Drag bend 1", exact=True).is_visible(), \
         "the connector stays selected with its handles after the cancel"
 
-    # The next supported operation works, and exactly one undo returns the
-    # original: had the cancelled drag landed, undo would stop at its result.
     bend_drag(page)
     page.wait_for_function("o=>document.querySelector('#source').value!==o", arg=before)
     assert re.search(r"L: arrow from A\.e to \(\d+\.\d+, -?\d+\.\d+\)", source.input_value()), source.input_value()
     undo_once(page, before)
-    assert source.input_value() == before
 
     # --- 2. Escape reaches every listener that is waiting for it -------------
     # The route handles listen on the window, so several live gestures share
@@ -129,7 +148,7 @@ with sync_playwright() as pw:
     page.keyboard.press("Escape")
     page.mouse.move(handle["x"] + 60, handle["y"] - 50, steps=5)
     page.mouse.up()
-    page.wait_for_function("pikchrStudio.state().valid")
+    settle(page)
     assert source.input_value() == before, "movement after Escape must not revive the cancelled gesture"
     assert page.locator("#queue-list li").count() == 0
 
@@ -139,7 +158,7 @@ with sync_playwright() as pw:
     close_popovers(page)
     show_routing(page)
     bend_drag(page, escape=True)
-    page.wait_for_function("pikchrStudio.state().valid")
+    settle(page)
     assert source.input_value() == before, "a cancelled bend drag queues nothing in review"
     assert page.locator("#queue-list li").count() == 0
     # One queue entry, not two, is what proves the cancelled drag never queued.
@@ -163,7 +182,7 @@ with sync_playwright() as pw:
     target = origin(page, "Database", "n")
     page.mouse.move(target["x"], target["y"], steps=6)
     page.mouse.up()
-    page.wait_for_function("pikchrStudio.state().valid")
+    settle(page)
     assert source.input_value() == PIPELINE, "Escape before choosing a target creates no connector"
     assert page.evaluate("pikchrStudio.state().scene.objects.length") == 5
 
@@ -181,9 +200,10 @@ with sync_playwright() as pw:
     page.mouse.down()
     page.mouse.move(300, 800, steps=6)
     page.mouse.up()
-    # The drop's observable result is the restored endpoint and its message;
-    # wait for that rather than for a fixed interval.
+    # The drop reports its own outcome; wait for that message rather than for
+    # a fixed interval.
     page.wait_for_function("document.querySelector('#state').textContent.includes('Connection unchanged')")
+    settle(page)
     assert page.locator(".arrow-overlay .endpoint-handle").count() == 2
     assert source.input_value() == PIPELINE, "an empty-canvas reconnect drop changes nothing"
     assert page.evaluate("pikchrStudio.state().scene.objects.length") == 5, \
@@ -215,6 +235,7 @@ with sync_playwright() as pw:
     page.locator("#diagram").focus()
     page.keyboard.press("Escape")
     page.wait_for_function("document.querySelector('#preview-actions').hidden")
+    settle(page)
     assert source.input_value() == previewed, "Escape discards the preview and keeps the original"
     assert page.locator("#queue-list li").count() == 0
     # The next drag still previews; accepting it queues exactly one change.
@@ -231,4 +252,4 @@ with sync_playwright() as pw:
 
     assert not errors, errors
     browser.close()
-    print("PASS: Escape cancels a live route-bend drag (and the other canvas gestures), reaches every live route listener without deselecting, and the following release, movement or drop applies nothing, in auto-apply and review")
+    print("PASS: Escape cancels a live route-bend drag (and the other canvas gestures), reaches every live route listener without deselecting, and each release's validation settles with the source unchanged, in auto-apply and review")
