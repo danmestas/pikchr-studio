@@ -74,7 +74,7 @@ body.layout-canvas .cl-context button{min-width:34px;height:34px}
 body.layout-canvas .cl-more-button{font-size:18px}
 
 /* Candidate chip beside the object being changed. */
-body.layout-canvas .cl-candidate{z-index:11;flex-wrap:nowrap;max-width:calc(100vw - 16px);gap:6px;padding:6px 8px;margin:0;font-size:13px;border:0}
+body.layout-canvas .cl-candidate{z-index:45;flex-wrap:nowrap;max-width:calc(100vw - 16px);gap:6px;padding:6px 8px;margin:0;font-size:13px;border:0}
 body.layout-canvas .cl-candidate :is(.hint,#preview-label){display:none}
 body.layout-canvas .cl-candidate .cl-check{color:var(--cl-ok);padding:0 2px}
 body.layout-canvas .cl-candidate .cl-code{font:12px ui-monospace,monospace;background:var(--cl-accent-bg);color:var(--cl-accent);padding:3px 7px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:52vw}

@@ -260,7 +260,7 @@ function select(id,highlight=false,additive=false,preserve=false){
   $('duplicate-selected').disabled=!o||!single;
   $('delete-selected').disabled=!selectedIds.size;
   $('appearance-selected').disabled=!o||!single;
-  $('route-selected').disabled=!o||!single||!['arrow','line'].includes(o.kind);
+  $('route-selected').disabled=!o||!single||!['arrow','line','spline','arc'].includes(o.kind);
   $('tidy-route').disabled=!o||!single||!['arrow','line'].includes(o.kind);
   $('copy-selection').disabled=$('save-component').disabled=!selectedIds.size;
   $('show-source-selected').disabled=!o?.span||!single;
@@ -307,7 +307,18 @@ function drawGroupInspector(){
 }
 $('edit-selected').onclick=()=>directTools?.editText();
 $('appearance-selected').onclick=()=>{openInspector();const section=$('inspector').querySelector('.appearance-editor');if(section){section.open=true;section.scrollIntoView({block:'nearest'});section.querySelector('input')?.focus({preventScroll:true});}};
-$('route-selected').onclick=()=>{openInspector();const button=[...$('inspector').querySelectorAll('button')].find(b=>b.textContent==='Routing');button?.click();$('inspector').querySelector('.arrow-editor')?.scrollIntoView({block:'nearest'});};
+$('route-selected').onclick=()=>{
+  openInspector();
+  const button=[...$('inspector').querySelectorAll('button')].find(b=>b.textContent==='Routing');button?.click();
+  // The layout opens the popover after this click. Scroll only once it is
+  // visible, directly to the visual choices rather than the inspector fields.
+  requestAnimationFrame(()=>{
+    const section=$('inspector').querySelector('.route-styles')||$('inspector').querySelector('.arrow-editor');
+    if(!section)return;
+    section.tabIndex=-1;section.scrollIntoView({block:'start'});
+    (section.querySelector('.route-style-option')||section).focus({preventScroll:true});
+  });
+};
 // Direct reconnect for a selected connector. canvas-layout's contextual
 // toolbar and any other chrome call this instead of open-coding the mode.
 const reconnectSelected=which=>{const o=current();if(!o||!['arrow','line','spline','arc'].includes(o.kind))return;directTools?.reconnect(which);};
