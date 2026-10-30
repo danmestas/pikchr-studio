@@ -99,15 +99,18 @@ def main(argv):
         for script in scripts:
             code, out, err = run_script(script)
             status = "PASS" if code == 0 else "FAIL"
+            failures = []
             if code != 0:
+                failures.append((1, out, err))
                 code2, out2, err2 = run_script(script)
                 if code2 == 0:
                     status = "FLAKY"
                 else:
-                    out, err = out2, err2
+                    failures.append((2, out2, err2))
             results.append((script.name, status))
             print(f"{status:5} {script.name}", flush=True)
-            if status == "FAIL":
+            for attempt, out, err in failures:
+                print(f"      Attempt {attempt} failed:")
                 tail = (out + "\n" + err).strip().splitlines()[-int(os.environ.get("PIKCHR_STUDIO_TAIL", "25")):]
                 for line in tail:
                     print("      " + line)
