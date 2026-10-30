@@ -202,6 +202,11 @@ with sync_playwright() as pw:
     page.mouse.click(40, 500)
     page.wait_for_function('pikchrStudio.state().selectedIds.length===0')
     for name in ('A', 'B', 'A', 'B'):
+        # The source drawer closes with an animation. Wait until the shape is
+        # actually reachable, not merely until its model has rendered.
+        page.wait_for_function("""name=>{const s=pikchrStudio.state();
+          const o=s.scene.objects.find(o=>o.name===name),p=pikchrStudio.modelToScreen(o.anchors.c);
+          return !!document.elementFromPoint(p.x,p.y)?.closest('#diagram')}""", arg=name)
         point = page.evaluate(ANCHOR, [name, 'c'])
         page.mouse.move(point['x'], point['y'])
         page.wait_for_function("""name=>{const s=pikchrStudio.state();
