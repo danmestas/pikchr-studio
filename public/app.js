@@ -7,7 +7,7 @@ import {arrowEditor,connectorCapabilities,connectorLabel} from './arrow-ui.js?v=
 import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20260923c';
 import {propertyEditor} from './property-ui.js?v=20260923c';
 import {fitText,canFitText,inspectProperties,readProperties} from './properties.js?v=20260923c';
-import {duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove} from './object-actions.js?v=20260923c';
+import {duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20260923c';
 import {decodeLinkSource,linkPayload} from './link-import.js?v=20260923c';
 import {createDocumentStore} from './documents.js?v=20260923c';
 import {canvasNavigation,clampZoom} from './canvas-navigation.js?v=20260923c';
@@ -259,7 +259,8 @@ function select(id,highlight=false,additive=false,preserve=false){
   $('selection-count').textContent=selectedIds.size?selectedIds.size+' selected':'No selection';
   $('duplicate-selected').disabled=!o||!single;
   $('delete-selected').disabled=!selectedIds.size;
-  $('appearance-selected').disabled=!o||!single;
+  $('appearance-selected').disabled=!o;
+  $('appearance-selected').title=single?'Style this object':'Style every selected object as one source change';
   $('route-selected').disabled=!o||!single||!['arrow','line','spline','arc'].includes(o.kind);
   $('tidy-route').disabled=!o||!single||!['arrow','line'].includes(o.kind);
   $('copy-selection').disabled=$('save-component').disabled=!selectedIds.size;
@@ -294,8 +295,11 @@ function select(id,highlight=false,additive=false,preserve=false){
     valid:()=>source.value===renderedSource&&!$('diagram').classList.contains('stale')});
   directTools?.sync();
 }
-// A group selection names itself and its actions; one object's label, style
-// and connector fields would silently apply to only that object.
+// A group selection names itself and its actions; one object's label, size
+// and connector fields would silently apply to only that object. Style is the
+// exception: it edits every member as one atomic source change, and offers
+// fill only when every member can carry it.
+let groupStyleOpen=false;
 function drawGroupInspector(){
   const objects=scene.objects.filter(o=>selectedIds.has(o.id));
   const p=document.createElement('p');
@@ -304,10 +308,44 @@ function drawGroupInspector(){
   const hint=document.createElement('p');
   hint.textContent='Drag any selected shape to move the group, or use Move and Arrange in Group actions. Each group edit is one undoable source change.';
   $('inspector').append(p,hint);
+  const capabilities=groupStyleCapabilities(objects);
+  const details=document.createElement('details'),summary=document.createElement('summary');
+  details.className='appearance-editor group-style';details.open=groupStyleOpen;
+  details.ontoggle=()=>{if(details.isConnected)groupStyleOpen=details.open;};
+  summary.textContent='Style all '+objects.length+' objects';details.append(summary);
+  const form=document.createElement('form');form.className='appearance-form';
+  const fields=[['stroke','Stroke / text color'],['thickness','Line thickness (pixels)'],...(capabilities.fill?[['fill','Fill color']]:[])];
+  const controls={};
+  for(const [key,title] of fields){
+    const label=document.createElement('label');label.textContent=title;
+    const input=document.createElement('input');input.setAttribute('aria-label',title);
+    input.dataset.initial=input.value='';
+    if(key==='thickness'){input.type='number';input.step='any';input.min='0';}
+    else input.placeholder=key==='fill'?'none, white, or #ffffff':'black or #000000';
+    controls[key]=input;label.append(input);form.append(label);
+  }
+  const error=document.createElement('p');error.className='property-error';error.setAttribute('role','alert');
+  const apply=document.createElement('button');apply.type='submit';apply.textContent='Style '+objects.length+' objects';form.append(apply);
+  form.onsubmit=e=>{
+    e.preventDefault();
+    if(rendering||source.value!==renderedSource||$('diagram').classList.contains('stale')){error.textContent='Render the current source before styling the group.';status(error.textContent);return;}
+    const values={};
+    for(const [key,input] of Object.entries(controls)){
+      const value=input.value.trim();
+      if(value!==''&&value!==input.dataset.initial)values[key]=key==='thickness'?Number(value):value;
+    }
+    if(!Object.keys(values).length){error.textContent='Change a stroke, thickness or fill value first.';status(error.textContent);return;}
+    let option;
+    try{option=changeSelectionAppearance(renderedSource,objects,scene,values);}
+    catch(problem){error.textContent=problem.message;status('Edit not applied. '+problem.message);return;}
+    error.textContent='';
+    validateSuggestions(scene.objects.find(o=>o.name===option.selectName)||objects[0],
+      [{...option,selectionNames:objects.map(o=>o.name).filter(Boolean)}]);
+  };
+  details.append(form,error);$('inspector').append(details);
 }
 $('edit-selected').onclick=()=>directTools?.editText();
-$('appearance-selected').onclick=()=>{openInspector();const section=$('inspector').querySelector('.appearance-editor');if(section){section.open=true;section.scrollIntoView({block:'nearest'});section.querySelector('input')?.focus({preventScroll:true});}};
-$('route-selected').onclick=()=>{
+$('appearance-selected').onclick=()=>{openInspector();const section=$('inspector').querySelector('.appearance-editor');if(section){section.open=true;section.scrollIntoView({block:'nearest'});section.querySelector('input')?.focus({preventScroll:true});}};$('route-selected').onclick=()=>{
   openInspector();
   const button=[...$('inspector').querySelectorAll('button')].find(b=>b.textContent==='Routing');button?.click();
   // The layout opens the popover after this click. Scroll only once it is

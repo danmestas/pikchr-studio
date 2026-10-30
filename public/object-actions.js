@@ -1,4 +1,4 @@
-import {applyPatch,byteOffsetToIndex,candidates} from './edits.js?v=20260923c';
+import {applyPatch,byteOffsetToIndex,candidates,editability} from './edits.js?v=20260923c';
 import {readProperties,propertyCandidate} from './properties.js?v=20260923c';
 import {literalRoute,translateLineCandidate} from './free-lines.js?v=20260923c';
 
@@ -36,6 +36,42 @@ export function changeAppearance(source,object,scene,values) {
     for(const m of match.reverse())replacement=replacement.slice(0,m.index)+replacement.slice(m.index+3);
   }
   return propertyCandidate(source,object,statement,replacement,'Change size and style');
+}
+
+// A group edit uses exactly the same per-object rewrite, expression checks and
+// combined-patch pipeline as every other multi-object action. Fill is offered
+// only when every member can carry it; sizing stays a single-object concern.
+const styleKinds=['box','cylinder','circle','ellipse','oval','diamond','line','arrow','text'];
+const filledKinds=['box','cylinder','circle','ellipse','oval','diamond'];
+const styleKeys=['stroke','color','thickness','fill'];
+export function groupStyleCapabilities(objects) {
+  return {fill:objects.length>0&&objects.every(object=>filledKinds.includes(object.kind))};
+}
+export function changeSelectionAppearance(source,objects,scene,values) {
+  if(objects.length<2||new Set(objects).size!==objects.length)throw new Error('Select at least two different objects to style together.');
+  const unsupported=Object.keys(values).filter(key=>values[key]!==undefined&&values[key]!==''&&!styleKeys.includes(key));
+  if(unsupported.length)throw new Error('Group style changes stroke, thickness and fill only. Resize one shape at a time.');
+  const changes=Object.fromEntries(styleKeys.filter(key=>values[key]!==undefined&&values[key]!=='').map(key=>[key,values[key]]));
+  if(!Object.keys(changes).length)throw new Error('Choose a stroke, thickness or fill change.');
+  if(changes.fill!==undefined&&!groupStyleCapabilities(objects).fill)throw new Error('Fill is not available for every selected object. Change stroke or thickness instead.');
+  // Refuse the whole selection before touching any member: a partial result
+  // would leave the author with styles on some objects and no explanation.
+  const failures=[];
+  for(const object of objects){
+    const label=object.name||object.kind;
+    const reason=styleKinds.includes(object.kind)?editability(object,scene).reason:'only shapes, text and connectors can be styled';
+    if(reason)failures.push(`${label}: ${reason}`);
+  }
+  if(failures.length)throw new Error('No style applied — '+failures.length+' of '+objects.length+' selected objects cannot be styled: '+failures.join('; '));
+  if(scene.source!==undefined&&scene.source!==source)throw new Error('No style applied — the diagram is out of date. Render the current source and try again.');
+  const patches=[];
+  for(const object of objects){
+    try{patches.push(changeAppearance(source,object,scene,changes).patch);}
+    catch(error){throw new Error(`No style applied — ${object.name||object.kind}: ${error.message}`);}
+  }
+  const named=objects.filter(object=>object.name);
+  if(!named.length)throw new Error('Group style needs at least one named object so the selection can be restored.');
+  return combined(source,patches,`Style ${objects.length} objects`,named[0].name);
 }
 
 export function duplicateObject(source,object,scene,{dx=0.4,dy=-0.4}={}) {

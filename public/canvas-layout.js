@@ -270,13 +270,16 @@ function install(studio){
   const labelOptions=el('button',{type:'button',class:'cl-label-options'},'Label options…');
   labelOptions.onclick=()=>{toggle(more,moreButton,false);studio.editLabelDialog?.();};
   more.append(labelOptions);
-  // A multiple selection gets its own labelled section: Move and Arrange act
-  // on every selected object, so they do not belong in one object's inspector.
+  // A multiple selection gets its own labelled section: Move, Arrange and
+  // Style act on every selected object, so they do not belong in one object's
+  // inspector. Style opens the same group editor the aside shows.
   const groupCount=el('span',{class:'cl-muted'});
+  const groupStyle=el('button',{type:'button',class:'cl-group-style'},'Style…');
+  groupStyle.onclick=()=>{$('appearance-selected')?.click();};
   const groupSection=el('section',{class:'cl-group','aria-label':'Group actions',hidden:''},
     el('div',{class:'cl-group-head'},el('strong',{},'Group'),groupCount),
     selection?.querySelector('.move-selection')||null,
-    el('div',{class:'cl-group-arrange'},selection?.querySelector('.arrange-selection')||null,$('arrange')||null));
+    el('div',{class:'cl-group-arrange'},selection?.querySelector('.arrange-selection')||null,$('arrange')||null,groupStyle));
   more.append(groupSection);
   const dock=q('.canvas-context-dock');if(dock)more.append(dock);
   const aside=q('main aside');if(aside)more.append(aside);
@@ -290,7 +293,7 @@ function install(studio){
     if(moreKind.textContent!==kind)moreKind.textContent=kind;
     if(groupSection.hidden!==!group)groupSection.hidden=!group;
     if(labelOptions.hidden!==group)labelOptions.hidden=group;
-    const note=group?'Move or arrange every selected object as one change.':'';
+    const note=group?'Move, arrange or style every selected object as one change.':'';
     if(groupCount.textContent!==note)groupCount.textContent=note;
   };
   moreButton.onclick=()=>{syncMoreHead();toggle(more,moreButton);};
