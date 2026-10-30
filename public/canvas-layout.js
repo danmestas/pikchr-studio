@@ -356,6 +356,10 @@ function install(studio){
   }
   function layout(){
     syncStatus();syncTitle();markSelection();syncCandidate();syncMoreHead();
+    if(!more.hidden){
+      const padding=(more.querySelector('.cl-popover-head').offsetHeight+8)+'px';
+      if(more.style.scrollPaddingTop!==padding)more.style.scrollPaddingTop=padding;
+    }
     const s=studio.state(),object=s.object;
     const previewing=!!previewActions&&!previewActions.hidden;
     const dragging=stage.classList.contains('cl-pressing')||!!connect||targeting||previewing;
@@ -373,7 +377,21 @@ function install(studio){
     if(previewActions&&!previewActions.hidden){
       const overlay=diagram.querySelector('.preview-overlay rect')?.getBoundingClientRect();
       const target=overlay?{left:overlay.left,top:overlay.top,right:overlay.right,bottom:overlay.bottom}:box;
-      if(target){const w=previewActions.offsetWidth,h=previewActions.offsetHeight;let left=Math.max(8,Math.min(innerWidth-w-8,(target.left+target.right)/2-w/2));let top=target.bottom+14;if(top+h>innerHeight-64)top=Math.max(64,target.top-h-14);previewActions.style.left=left+'px';previewActions.style.top=top+'px';}
+      if(target){
+        const w=previewActions.offsetWidth,h=previewActions.offsetHeight;
+        let left=Math.max(8,Math.min(innerWidth-w-8,(target.left+target.right)/2-w/2));
+        let top=target.bottom+14;if(top+h>innerHeight-64)top=Math.max(64,target.top-h-14);
+        if(!more.hidden){
+          const panel=more.getBoundingClientRect();
+          if(left<panel.right&&left+w>panel.left&&top<panel.bottom&&top+h>panel.top){
+            // Keep confirmation beside the inspector, not over its choices.
+            if(panel.top-h-8>=64)top=panel.top-h-8;
+            else if(panel.left-w-8>=8)left=panel.left-w-8;
+            else if(panel.bottom+h+8<=innerHeight-8)top=panel.bottom+8;
+          }
+        }
+        previewActions.style.left=left+'px';previewActions.style.top=top+'px';
+      }
       if(!context.hidden&&previewActions.getBoundingClientRect().top<context.getBoundingClientRect().bottom+4&&previewActions.getBoundingClientRect().bottom>context.getBoundingClientRect().top)context.hidden=true;
     }
     drawDots();drawLineHandles();
