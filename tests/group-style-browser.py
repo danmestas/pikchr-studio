@@ -5,7 +5,17 @@ canvas taps and visible ⋯ → Group controls. Desktop and phone, light and dar
 """
 import os
 import re
-from browser_helpers import object_button, open_document_menu, close_popovers, open_more, reveal, set_source
+import signal
+
+
+def deadline(*_):
+    raise TimeoutError("Group style browser exceeded its 300-second deadline")
+
+
+signal.signal(signal.SIGALRM, deadline)
+signal.alarm(300)
+from browser_helpers import (object_button, open_document_menu, close_popovers, open_more,
+                             reveal, set_source, show_source, hide_source)
 from playwright.sync_api import sync_playwright, expect
 
 STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
@@ -54,7 +64,7 @@ with sync_playwright() as pw:
         # this waits for the render rather than a chip that may still read
         # "Rendered" from the previous source.
         page.wait_for_function("()=>{const s=window.pikchrStudio&&pikchrStudio.state();"
-                               "return !!(s&&s.valid&&document.querySelector('.cl-summary')?.textContent==='Rendered')}")
+                               "return !!(s&&s.valid)}")
 
     def click(name):
         point = page.evaluate(CENTER, name)
@@ -177,6 +187,155 @@ with sync_playwright() as pw:
     assert page.evaluate("pikchrStudio.state().queued") == 0, "refusal queued a partial change"
     close_popovers(page)
 
+    # ---- unnamed members and entirely unnamed groups stay selected ----------
+    mixed_names = ('A: box "Alpha" at (0,0)\nbox "Anonymous" at (2.5,0)\n'
+                   'B: cylinder "Beta" at (5,0)\n')
+    set_source(page, mixed_names)
+    rendered()
+    reset_selection()
+    open_document_menu(page)
+    page.locator(".cl-menu #multi-select").click()
+    close_popovers(page)
+    object_button(page, "A").click()
+    object_button(page, "box o2").click()
+    object_button(page, "B").click()
+    page.wait_for_function("pikchrStudio.state().selectedIds.length === 3")
+    panel = open_group_style()
+    panel.get_by_label("Stroke / text color", exact=True).fill("#123456")
+    panel.get_by_role("button", name="Style 3 objects", exact=True).click()
+    changed(mixed_names)
+    assert page.locator("#source").input_value() == ('A: box "Alpha" at (0,0) color 0x123456\n'
+                                                     'box "Anonymous" at (2.5,0) color 0x123456\n'
+                                                     'B: cylinder "Beta" at (5,0) color 0x123456\n')
+    # The unnamed member is still selected and still unnamed in the source.
+    assert page.locator("#selection-count").inner_text() == "3 selected"
+    assert page.evaluate("pikchrStudio.state().selectedIds.join(',')") == "o1,o2,o3"
+    assert page.evaluate("()=>pikchrStudio.state().scene.objects.map(o=>o.name||'').join(',')") == "A,,B"
+    # One Undo restores the source and keeps the whole selection.
+    undo()
+    page.wait_for_function("text => document.querySelector('#source').value === text", arg=mixed_names)
+    assert page.locator("#selection-count").inner_text() == "3 selected"
+    assert page.evaluate("pikchrStudio.state().selectedIds.join(',')") == "o1,o2,o3"
+
+    anonymous = 'box "One" at (0,0)\nbox "Two" at (2,0)\n'
+    set_source(page, anonymous)
+    rendered()
+    reset_selection()
+    open_document_menu(page)
+    page.locator(".cl-menu #multi-select").click()
+    close_popovers(page)
+    object_button(page, "box o1").click()
+    object_button(page, "box o2").click()
+    page.wait_for_function("pikchrStudio.state().selectedIds.length === 2")
+    panel = open_group_style()
+    panel.get_by_label("Stroke / text color", exact=True).fill("#222222")
+    panel.get_by_label("Line thickness (pixels)", exact=True).fill("2")
+    panel.get_by_role("button", name="Style 2 objects", exact=True).click()
+    changed(anonymous)
+    assert page.locator("#source").input_value() == ('box "One" at (0,0) color 0x222222 thickness 2\n'
+                                                     'box "Two" at (2,0) color 0x222222 thickness 2\n')
+    assert page.locator("#selection-count").inner_text() == "2 selected"
+    assert page.evaluate("pikchrStudio.state().selectedIds.join(',')") == "o1,o2"
+    undo()
+    page.wait_for_function("text => document.querySelector('#source').value === text", arg=anonymous)
+    assert page.locator("#selection-count").inner_text() == "2 selected"
+
+    # The same unnamed group survives a staged edit and explicit acceptance.
+    reveal(page, "#auto-apply").uncheck()
+    close_popovers(page)
+    panel = open_group_style()
+    panel.get_by_label("Stroke / text color", exact=True).fill("#123456")
+    panel.get_by_role("button", name="Style 2 objects", exact=True).click()
+    changed(anonymous)
+    assert page.evaluate("pikchrStudio.state().queued") == 1
+    assert page.evaluate("pikchrStudio.state().selectedIds.join(',')") == "o1,o2"
+    reveal(page, "#accept").click()
+    close_popovers(page)
+    assert page.evaluate("pikchrStudio.state().queued") == 0
+    assert page.locator("#selection-count").inner_text() == "2 selected"
+    undo()
+    page.wait_for_function("text => document.querySelector('#source').value === text", arg=anonymous)
+    assert page.locator("#selection-count").inner_text() == "2 selected"
+    reveal(page, "#auto-apply").check()
+    close_popovers(page)
+
+    # Unrelated source edits can keep the same kinds/order/count but replace
+    # every unnamed object. Old render-local ids must not select replacements.
+    replacement = 'box "Different Two" at (2,0)\nbox "Different One" at (0,0)\n'
+    set_source(page, replacement)
+    rendered()
+    assert page.evaluate("pikchrStudio.state().selectedIds") == []
+    assert page.locator("#selection-count").inner_text() == "No selection"
+
+    # A clear selection stays clear when a theme change rerenders a source
+    # whose earlier history entry did have a selection.
+    object_button(page, "box o1").click()
+    page.emulate_media(color_scheme="dark")
+    page.wait_for_function("document.body.classList.contains('cl-dark')")
+    rendered()
+    assert page.locator("#selection-count").inner_text() == "1 selected"
+    reset_selection()
+    page.emulate_media(color_scheme="light")
+    page.wait_for_function("!document.body.classList.contains('cl-dark')")
+    rendered()
+    assert page.locator("#selection-count").inner_text() == "No selection"
+
+    # ---- spline and arc join a group selection ----------------------------
+    curves = ('A: box "Alpha" at (0,0)\nB: box "Beta" at (3.5,0)\n'
+              'S: spline from A.e to B.w\nR: arc from A.n to B.n cw\n')
+    set_source(page, curves)
+    rendered()
+    reset_selection()
+    open_document_menu(page)
+    page.locator(".cl-menu #multi-select").click()
+    close_popovers(page)
+    object_button(page, "A").click()
+    object_button(page, "S").click()
+    object_button(page, "R").click()
+    page.wait_for_function("pikchrStudio.state().selectedIds.length === 3")
+    before_paths = page.evaluate("()=>JSON.stringify(pikchrStudio.state().scene.objects.map(o=>[o.id,o.kind,o.path]))")
+    panel = open_group_style()
+    assert panel.get_by_label("Fill color", exact=True).count() == 0, "fill offered for connector members"
+    panel.get_by_label("Stroke / text color", exact=True).fill("#345678")
+    panel.get_by_label("Line thickness (pixels)", exact=True).fill("1.5")
+    panel.get_by_role("button", name="Style 3 objects", exact=True).click()
+    changed(curves)
+    assert page.locator("#source").input_value() == ('A: box "Alpha" at (0,0) color 0x345678 thickness 1.5\n'
+                                                     'B: box "Beta" at (3.5,0)\n'
+                                                     'S: spline from A.e to B.w color 0x345678 thickness 1.5\n'
+                                                     'R: arc from A.n to B.n cw color 0x345678 thickness 1.5\n')
+    # Connector identity and geometry are unchanged; the box moved nowhere.
+    assert page.evaluate("()=>JSON.stringify(pikchrStudio.state().scene.objects.map(o=>[o.id,o.kind,o.path]))") == before_paths
+    assert svg_stroke(page, "S") == "rgb(52, 86, 120)", shape_style(page, "S")
+    assert svg_stroke(page, "R") == "rgb(52, 86, 120)", shape_style(page, "R")
+    assert page.locator("#selection-count").inner_text() == "3 selected"
+    undo()
+    page.wait_for_function("text => document.querySelector('#source').value === text", arg=curves)
+    assert page.locator("#selection-count").inner_text() == "3 selected"
+
+    # ---- a stale source refuses group style without touching it ------------
+    set_source(page, BASE)
+    rendered()
+    select_group("A", "B", "C")
+    panel = open_group_style()
+    stale = BASE + 'this is not a pikchr statement\n'
+    show_source(page)
+    page.locator("#source").fill(stale)
+    page.wait_for_function("document.querySelector('#diagram').classList.contains('stale')")
+    hide_source(page)
+    panel = open_group_style()
+    panel.get_by_label("Stroke / text color", exact=True).fill("#123456")
+    panel.get_by_role("button", name="Style 3 objects", exact=True).click()
+    error = page.locator("#inspector .group-style .property-error")
+    expect(error).to_contain_text("Render the current source before styling the group.")
+    assert page.locator("#source").input_value() == stale, "group style overwrote the edited source"
+    assert page.evaluate("pikchrStudio.state().queued") == 0, "stale refusal queued a change"
+    assert page.locator("#source").input_value() != STYLED
+    # The invalid source is still there: restore a valid diagram for the
+    # responsive pass below.
+    set_source(page, BASE)
+    rendered()
+
     # ---- desktop and phone, each in light and dark -------------------------
     for width, scheme in ((1440, "light"), (1440, "dark"), (390, "light"), (390, "dark")):
         page.set_viewport_size({"width": width, "height": 900 if width == 1440 else 844})
@@ -224,7 +383,6 @@ with sync_playwright() as pw:
     assert page.locator("#source").input_value() == STYLED
     page.reload()
     rendered()
-    from browser_helpers import show_source
     show_source(page)
     page.wait_for_function("text => document.querySelector('#source').value === text", arg=STYLED)
 

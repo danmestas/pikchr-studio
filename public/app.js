@@ -37,6 +37,7 @@ let draftBase=null;
 let rendering=false,renderVersion=0;
 const selectionHistory=new Map();
 let requestedSelectionName=null;
+let requestedSelectionIds=null;
 let requestedSelectionId=null,applied=false;
 let selectedIds=new Set(),zoom=1,pan={x:0,y:0},panMode=false;
 let multiSelect=false;
@@ -171,11 +172,13 @@ async function renderSource(preRendered=null){
   if(viewportDocumentId===activeDocumentId&&scene&&oldSvg?.dataset.baseViewBox){const[x,y,w,h]=oldSvg.getAttribute('viewBox').split(/[ ,]+/).map(Number),base=oldSvg.dataset.baseViewBox.split(/[ ,]+/).map(Number);oldViewport={center:new DOMPoint(x+w/2,y+h/2).matrixTransform(matrix().inverse()),baseWidth:base[2],baseHeight:base[3],scale:Math.abs(scene.transform.a),zoom};}
   const focused=document.activeElement,focusResize=focused?.getAttribute('data-resize'),focusLabel=focused?.getAttribute('aria-label'),focusText=focused?.tagName==='BUTTON'?focused.textContent:null;
   const token=++renderVersion;rendering=true;
-  const selectedNames=[...selectedIds].map(id=>scene?.objects.find(o=>o.id===id)?.name).filter(Boolean);
-  clearProposal();const rev=revision,text=source.value,name=current()?.name,oldId=selectedId,oldKind=current()?.kind,oldSource=renderedSource;
+  const priorIds=[...selectedIds];
+  const selectedNames=priorIds.map(id=>scene?.objects.find(o=>o.id===id)?.name).filter(Boolean);
+  clearProposal();const rev=revision,text=source.value,name=current()?.name,oldId=selectedId,oldKind=current()?.kind,oldSource=renderedSource,manualSourceEdit=manualEditBase!==null;
   const desiredName=requestedSelectionName;requestedSelectionName=null;
+  const desiredIds=requestedSelectionIds;requestedSelectionIds=null;
   const desiredId=requestedSelectionId;requestedSelectionId=null;
-  if(current())selectionHistory.set(oldSource,{id:oldId,kind:oldKind});
+  if(scene&&desiredIds?.length!==0)selectionHistory.set(oldSource,{id:oldId,kind:oldKind,ids:priorIds});
   status('Rendering…');const result=preRendered?.svg?preRendered:await render(text);
   if(token!==renderVersion)return;
   rendering=false;updateDraft();
@@ -191,9 +194,14 @@ async function renderSource(preRendered=null){
   const matches=scene.objects.filter(o=>o.name&&o.name===(desiredName||name));
   const saved=selectionHistory.get(text);
   selectedId=desiredName?matches[0]?.id:desiredId?scene.objects.find(o=>o.id===desiredId)?.id:saved?scene.objects.find(o=>o.id===saved.id&&o.kind===saved.kind)?.id:
-    matches.length===1?matches[0].id:(!name&&(undo.at(-1)===oldSource||draft.at(-1)?.before===oldSource)?scene.objects.find(o=>o.id===oldId&&o.kind===oldKind)?.id:null);
-  selectedIds=new Set(scene.objects.filter(o=>selectedNames.includes(o.name)).map(o=>o.id));
-  if(desiredName||desiredId)selectedIds=new Set(selectedId?[selectedId]:[]);
+    matches.length===1?matches[0].id:(!manualSourceEdit&&priorIds.length===1&&!name&&(undo.at(-1)===oldSource||draft.at(-1)?.before===oldSource)?scene.objects.find(o=>o.id===oldId&&o.kind===oldKind)?.id:null);
+  // Render-local ids are safe for an explicit style rewrite or an exact
+  // source already seen in history, not arbitrary edits of unnamed objects.
+  selectedIds=new Set(scene.objects.filter(o=>o.name&&selectedNames.includes(o.name)).map(o=>o.id));
+  if(desiredIds){selectedIds=new Set(desiredIds.filter(id=>scene.objects.some(o=>o.id===id)));if(!selectedIds.size)selectedId=null;}
+  else if(desiredName||desiredId)selectedIds=new Set(selectedId?[selectedId]:[]);
+  else if(saved?.ids)selectedIds=new Set(saved.ids.filter(id=>scene.objects.some(o=>o.id===id)));
+  if(selectedIds.size&&!selectedIds.has(selectedId))selectedId=[...selectedIds][0]||null;
   const svg=$('diagram').querySelector('svg');
   const openTools=[...$('creation-tools').querySelectorAll('details')].map(d=>d.open);
   creationTools({scene,source:text,host:$('creation-tools'),propose:options=>validateSuggestions(null,options),status,
@@ -339,8 +347,7 @@ function drawGroupInspector(){
     try{option=changeSelectionAppearance(renderedSource,objects,scene,values);}
     catch(problem){error.textContent=problem.message;status('Edit not applied. '+problem.message);return;}
     error.textContent='';
-    validateSuggestions(scene.objects.find(o=>o.name===option.selectName)||objects[0],
-      [{...option,selectionNames:objects.map(o=>o.name).filter(Boolean)}]);
+    validateSuggestions(objects[0],[{...option,selectionIds:option.selectionIds}]);
   };
   details.append(form,error);$('inspector').append(details);
 }
@@ -948,9 +955,13 @@ async function choose(option){
     const a=byteOffsetToIndex(option.base,option.patch.start),b=byteOffsetToIndex(option.base,option.patch.end);
     draft.push({before:source.value,after:next,label:(option.subject?option.subject+': ':'')+option.label,
       diff:'- '+option.base.slice(a,b)+'\n+ '+option.patch.text});
-    requestedSelectionName=option.selectName||current()?.name||null;
-    if(option.clearSelection){selectedIds.clear();selectedId=null;requestedSelectionName=null;}
-    requestedSelectionId=option.selectId||null;
+    requestedSelectionName=option.selectionIds?null:option.selectName||current()?.name||null;
+    requestedSelectionIds=option.selectionIds||null;
+    if(option.clearSelection){
+      selectionHistory.set(renderedSource,{id:selectedId,kind:current()?.kind,ids:[...selectedIds]});
+      selectedIds.clear();selectedId=null;requestedSelectionName=null;requestedSelectionIds=[];
+    }
+    requestedSelectionId=option.clearSelection?null:option.selectId||null;
     source.value=next;dirty();updateDraft();
     await renderSource(option.result);
     for(const item of previousSizing){const object=scene.objects.find(o=>o.name===item.name&&o.kind===item.kind);if(!object||Math.abs(object.bbox.width-item.box.width)>.0001||Math.abs(object.bbox.height-item.box.height)>.0001)continue;try{if(inspectProperties(source.value,object,scene).text===item.text)sizingPreferences=writeSizingPreference(source.value,scene,object,sizingPreferences,item.preference);}catch{}}

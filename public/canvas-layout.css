@@ -67,11 +67,12 @@ body.layout-canvas .cl-context .selection-toolbar>:is(#multi-select,#clear-selec
 /* A group selection names itself in the toolbar; one object needs no count. */
 body.layout-canvas .cl-context .selection-toolbar>#selection-count{display:none!important;margin:0 6px 0 2px;color:var(--cl-muted);font-size:12px;white-space:nowrap}
 body.layout-canvas.has-multiple .cl-context .selection-toolbar>#selection-count{display:inline!important}
+body.layout-canvas.has-multiple .cl-context .selection-toolbar>#appearance-selected{display:none!important}
 body.layout-canvas .cl-context .selection-toolbar>button:disabled{display:none!important}
-body.layout-canvas .cl-context button[data-icon]{font-size:0;border-color:transparent;background:transparent;padding:0 6px}
-body.layout-canvas .cl-context button[data-icon]::before{content:attr(data-icon);font-size:15px}
+body.layout-canvas .cl-context .selection-toolbar>button{border-color:transparent;background:transparent;padding:0;display:inline-flex;align-items:center;justify-content:center}
+body.layout-canvas .cl-context .selection-toolbar>button svg,body.layout-canvas .cl-more-button svg{width:20px;height:20px;flex:none;pointer-events:none}
 body.layout-canvas .cl-context button{min-width:34px;height:34px}
-body.layout-canvas .cl-more-button{font-size:18px}
+body.layout-canvas .cl-more-button{display:inline-flex;align-items:center;justify-content:center;padding:0}
 
 /* Candidate chip beside the object being changed. */
 body.layout-canvas .cl-candidate{z-index:45;flex-wrap:nowrap;max-width:calc(100vw - 16px);gap:6px;padding:6px 8px;margin:0;font-size:13px;border:0}
