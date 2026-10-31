@@ -47,6 +47,18 @@ def open_more(page):
 def open_export(page):
     _open(page, EXPORT, '.cl-doc [aria-label="Export"]')
 
+def export_item(page, group, name):
+    """A button in the open Export popover, found the way a person reads it: group, then name."""
+    open_export(page)
+    return page.locator(EXPORT).get_by_role('button', name=group + ' ' + name, exact=True)
+
+def set_selection_only(page, on):
+    """Tick or clear the Export popover's "Selection only" box."""
+    open_export(page)
+    box = page.locator(EXPORT).get_by_label('Selection only')
+    box.set_checked(on)
+    return box
+
 def show_source(page):
     wait_rendered(page)
     if 'open' not in (page.locator(DRAWER).get_attribute('class') or ''):

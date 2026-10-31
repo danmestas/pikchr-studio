@@ -36,9 +36,10 @@
 <button id="new-document">New diagram</button><button id="open-document">Open file</button><input id="file-input" type="file" accept=".pikchr,.txt" hidden>
 <label>Saved documents <select id="documents" aria-label="Saved documents"><option>Current diagram</option></select></label>
 <button id="render" title="Source renders automatically as you type; use this if a render was interrupted">Render</button><button id="undo" disabled>Undo</button><button id="redo" disabled>Redo</button>
-<button id="download">Download source</button>
-<button id="export-svg">Download SVG</button><span id="save-state" role="status">Not saved yet</span>
-<button id="export-png">Download PNG</button><button id="export-selection">Download selection region SVG</button>
+<button id="download">Source (.pikchr)</button>
+<button id="export-svg">SVG</button><span id="save-state" role="status">Not saved yet</span>
+<button id="export-png">PNG</button><label><input id="selection-only" type="checkbox" disabled> Selection only</label>
+<button id="copy-link">Copy share link</button><button id="copy-source">Copy Pikchr source</button><button id="copy-svg">Copy SVG</button>
 <button id="backup-workspace">Backup documents</button><button id="restore-workspace">Restore document copies</button><input id="backup-input" type="file" accept=".json" hidden>
 <span id="state">Loading Pikchr…</span>
 </nav></details>

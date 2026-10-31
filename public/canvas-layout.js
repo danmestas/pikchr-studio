@@ -49,7 +49,7 @@ function install(studio){
     const open=force??panel.hidden;
     for(const other of popovers)if(other!==panel&&open){other.hidden=true;other.opener?.setAttribute('aria-expanded','false');}
     panel.hidden=!open;panel.opener=button;button?.setAttribute('aria-expanded',String(open));
-    if(open){panel.returnFocus=button;layout();}
+    if(open){panel.returnFocus=button;layout();panel.sheetOpened?.();}
   }
   document.addEventListener('pointerdown',e=>{
     for(const panel of popovers)if(!panel.hidden&&!panel.contains(e.target)&&!panel.opener?.contains(e.target)&&!e.target.closest?.('dialog'))toggle(panel,panel.opener,false);
@@ -119,7 +119,24 @@ function install(studio){
   if(nav){nav.classList.add('cl-offstage');document.body.append(nav);}
   menuButton.onclick=()=>toggle(menu,menuButton);
   const exportMenu=popover('cl-export','Export');
-  exportMenu.append(el('strong',{},'Export'),...['export-svg','export-png','export-selection','download'].map(id=>$(id)).filter(Boolean));
+  // Two titled groups share one "Selection only" switch. The buttons are declared in
+  // index.html and moved here, so each keeps its id and handler.
+  const EXPORT_ICONS={
+    link:[['path',{d:'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1'}],['path',{d:'M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1'}]],
+    code:[['path',{d:'m8 8-4 4 4 4'}],['path',{d:'m16 8 4 4-4 4'}],['path',{d:'m13.5 5-3 14'}]],
+    svg:[['path',{d:'M5 18C5 8 12 6 19 6'}],['rect',{x:'3',y:'16',width:'4',height:'4'}],['rect',{x:'17',y:'4',width:'4',height:'4'}]],
+    png:[['rect',{x:'3',y:'4',width:'18',height:'16',rx:'2'}],['circle',{cx:'9',cy:'10',r:'1.5'}],['path',{d:'m21 16-5-5-9 9'}]],
+    file:[['path',{d:'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z'}],['path',{d:'M14 3v5h5'}],['path',{d:'M12 11v6'}],['path',{d:'m9.5 14.5 2.5 2.5 2.5-2.5'}]],
+  };
+  const exportItem=(id,group,icon,text)=>{const b=$(id);if(!b)return null;b.setAttribute('aria-label',group+' '+text.replace(/ \(.*/,''));b.classList.add('cl-export-item');b.replaceChildren(iconMarkup(EXPORT_ICONS[icon]),el('span',{class:'cl-label'},text));return b;};
+  const selectionOnly=$('selection-only'),selectionLabel=selectionOnly?.closest('label');
+  if(selectionLabel){selectionLabel.classList.add('cl-check-row');selectionLabel.replaceChildren(selectionOnly,el('span',{},'Selection only'));}
+  const selectionHint=el('span',{id:'selection-only-hint',class:'cl-muted'},'select objects first');
+  const fallback=el('div',{id:'copy-fallback',class:'cl-copy-fallback',hidden:''},el('label',{class:'cl-field'},el('span',{class:'cl-field-name'},'Copy this text yourself'),el('textarea',{readonly:'',rows:'4',spellcheck:'false','aria-label':'Text to copy manually'})));
+  exportMenu.append(el('strong',{},'Export'),
+    section('Copy',exportItem('copy-link','Copy','link','Share link'),exportItem('copy-source','Copy','code','Pikchr source'),exportItem('copy-svg','Copy','svg','SVG')),
+    section('Download',exportItem('export-svg','Download','svg','SVG'),exportItem('export-png','Download','png','PNG'),exportItem('download','Download','file','Source (.pikchr)')),
+    el('div',{class:'cl-export-scope'},selectionLabel,selectionHint),fallback);
   exportButton.onclick=()=>toggle(exportMenu,exportButton);
   const documents=$('documents');
   const syncTitle=()=>{const own=studio.title?.();const text=own||documents?.selectedOptions?.[0]?.textContent?.trim();const next=text&&text!=='Current diagram'?text:'Untitled';if(title.textContent!==next)title.textContent=next;};
@@ -299,7 +316,33 @@ function install(studio){
     (button?.isConnected&&button.getClientRects().length?button:fallback).focus();
   }
   closeMore.onclick=()=>{toggle(more,more.opener,false);restoreFocus(more);};
-  more.append(el('div',{class:'cl-popover-head'},moreTitle,moreKind,closeMore));
+  // On phones the inspector is a bottom sheet (see canvas-layout.css): it opens at 45% of
+  // the viewport and its handle drags, or toggles, it up to 90%. The canvas pans so the
+  // selection stays visible above it.
+  const phoneQuery=matchMedia('(max-width:700px)');
+  const grab=el('button',{type:'button',class:'cl-grab','aria-label':'Resize inspector','aria-expanded':'false'});
+  const SHEET=[.45,.9];
+  const sheetPx=f=>Math.round(innerHeight*f);
+  function setSheet(px,smooth=true){more.classList.toggle('cl-dragging',!smooth);more.style.setProperty('--cl-sheet',px+'px');grab.setAttribute('aria-expanded',String(px>sheetPx((SHEET[0]+SHEET[1])/2)));}
+  function revealAboveSheet(){if(phoneQuery.matches&&!more.hidden){const room=more.offsetHeight;studio.reveal?.({bottom:room+12,top:Math.max(8,Math.min(64,innerHeight-room-60))});}}
+  function openSheet(){if(!phoneQuery.matches)return;setSheet(sheetPx(SHEET[0]),false);requestAnimationFrame(revealAboveSheet);}
+  grab.onclick=()=>{if(grab.dragged){grab.dragged=false;return;}setSheet(sheetPx(more.offsetHeight>sheetPx((SHEET[0]+SHEET[1])/2)?SHEET[0]:SHEET[1]));setTimeout(revealAboveSheet,220);};
+  grab.onpointerdown=e=>{
+    if(e.button)return;
+    const startY=e.clientY,startH=more.offsetHeight;grab.dragged=false;grab.setPointerCapture?.(e.pointerId);
+    const move=ev=>{const dy=startY-ev.clientY;if(Math.abs(dy)>4)grab.dragged=true;if(grab.dragged)setSheet(Math.max(sheetPx(.25),Math.min(sheetPx(SHEET[1]),startH+dy)),false);};
+    const up=()=>{
+      grab.removeEventListener('pointermove',move);grab.removeEventListener('pointerup',up);grab.removeEventListener('pointercancel',up);
+      if(!grab.dragged)return;
+      const h=more.offsetHeight;
+      if(h<sheetPx(.3)){toggle(more,more.opener,false);return;}
+      setSheet(sheetPx(h>sheetPx((SHEET[0]+SHEET[1])/2)?SHEET[1]:SHEET[0]));setTimeout(revealAboveSheet,220);
+      setTimeout(()=>{grab.dragged=false;},0);
+    };
+    grab.addEventListener('pointermove',move);grab.addEventListener('pointerup',up);grab.addEventListener('pointercancel',up);
+  };
+  more.sheetOpened=openSheet;
+  more.append(el('div',{class:'cl-popover-head'},grab,moreTitle,moreKind,closeMore));
   // Two views, one bounded panel: properties for the selection, and an
   // outline for finding objects. The panel never stacks both at once.
   const propertiesView=el('div',{class:'cl-view cl-view-properties'});

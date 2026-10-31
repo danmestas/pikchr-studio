@@ -99,6 +99,13 @@ body.layout-canvas .cl-more aside{display:block!important;position:static!import
 body.layout-canvas .cl-more .canvas-context-dock{display:block;margin:0 0 12px;position:static}
 body.layout-canvas .cl-export{top:60px;left:12px;flex-direction:column;align-items:stretch;gap:6px;width:min(260px,calc(100vw - 24px))}
 body.layout-canvas .cl-export:not([hidden]){display:flex}
+body.layout-canvas .cl-export .cl-section{display:flex;flex-direction:column;gap:2px}
+body.layout-canvas .cl-export .cl-export-item{justify-content:flex-start;width:100%;gap:10px}
+body.layout-canvas .cl-export .cl-export-item svg{flex:none}
+body.layout-canvas .cl-export .cl-export-scope{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--cl-line)}
+body.layout-canvas .cl-export .cl-export-scope label:has(input:disabled){color:var(--cl-muted)}
+body.layout-canvas .cl-export .cl-export-scope [hidden]{display:none}
+body.layout-canvas .cl-export .cl-copy-fallback textarea{width:100%;font:12px/1.4 ui-monospace,monospace;resize:vertical}
 body.layout-canvas .cl-menu-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start}
 body.layout-canvas .cl-menu-tools .tool-options[open]>.tool-options-panel{position:static;transform:none;box-shadow:none;padding:8px 0;display:flex;flex-wrap:wrap;gap:8px}
 body.layout-canvas .cl-help{bottom:64px;right:12px;width:min(360px,calc(100vw - 24px));max-height:calc(100dvh - 140px)}
@@ -173,7 +180,7 @@ body.layout-canvas .cl-badge[hidden]{display:none}
   body.layout-canvas .cl-drawer{top:60px;bottom:124px}
   body.layout-canvas .cl-palette .tool-options{display:none}
 }
-@media (prefers-reduced-motion:reduce){body.layout-canvas :is(.cl-drawer,.cl-note){transition:none}}
+@media (prefers-reduced-motion:reduce){body.layout-canvas :is(.cl-drawer,.cl-note,.cl-more){transition:none}}
 
 /* ---- Panel kit: one flat visual language for every popover and dialog ----
    Flat chip surfaces, no nested borders, small uppercase section labels,
@@ -237,6 +244,7 @@ body.layout-canvas .cl-menu .tool-options>summary{font-weight:400}
 body.layout-canvas .cl-more{width:min(340px,calc(100vw - 24px));padding-top:8px}
 body.layout-canvas .cl-popover-head{position:sticky;top:-8px;z-index:1;display:flex;align-items:center;gap:8px;margin:-8px -14px 8px;padding:10px 8px 8px 14px;background:var(--cl-chip);border-bottom:1px solid var(--cl-line)}
 body.layout-canvas .cl-popover-head .cl-muted{flex:1}
+body.layout-canvas .cl-more .cl-grab{display:none}
 body.layout-canvas .cl-more-title{flex:1;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 body.layout-canvas .cl-popover-head .cl-popover-kind{flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 body.layout-canvas .cl-popover-head .cl-close{flex:none}
@@ -338,8 +346,14 @@ body.layout-canvas .cl-note{border-radius:8px}
 @media (max-width:700px){
   /* A bottom sheet with its own scroll: the head stays put while the choices
      scroll under it, and nothing touches the screen edges. */
-  body.layout-canvas .cl-more{top:auto;bottom:118px;left:16px;right:16px;width:auto;max-height:min(62dvh,calc(100dvh - 180px));padding:8px 14px 14px;overscroll-behavior:contain}
-  body.layout-canvas .cl-more .cl-popover-head{top:-8px;margin:-8px -14px 8px;padding:10px 6px 8px 14px}
+  /* The inspector is a bottom sheet: full width, rounded top, a grab handle, 45% tall
+     and draggable up to 90% (the height is --cl-sheet, set by canvas-layout.js). */
+  body.layout-canvas .cl-more{top:auto;bottom:0;left:0;right:0;width:auto;height:var(--cl-sheet,45dvh);max-height:none;box-sizing:border-box;padding:0 14px max(14px,env(safe-area-inset-bottom));
+    border-radius:16px 16px 0 0;overscroll-behavior:contain;transition:height .18s ease}
+  body.layout-canvas .cl-more.cl-dragging{transition:none}
+  body.layout-canvas .cl-more .cl-popover-head{top:0;margin:0 -14px 8px;padding:0 6px 8px 14px;flex-wrap:wrap}
+  body.layout-canvas .cl-more .cl-grab{display:flex;order:-1;flex:0 0 100%;height:24px;margin:0 8px 0 -14px;padding:0;border:0;background:transparent;align-items:center;justify-content:center;touch-action:none;cursor:grab}
+  body.layout-canvas .cl-more .cl-grab::before{content:"";width:40px;height:5px;border-radius:3px;background:var(--cl-line)}
   body.layout-canvas .cl-more .cl-close{min-width:36px;min-height:36px}
   body.layout-canvas .cl-route-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
   body.layout-canvas .cl-route-option{min-height:56px!important;font-size:12px!important}

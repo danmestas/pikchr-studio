@@ -24,10 +24,11 @@ def rendered(page):
 
 
 def sheet_inside(page, width, height):
+    """The phone inspector is a bottom sheet: full width, flush with the bottom, about 45% tall."""
     box = page.locator(".cl-more").bounding_box()
-    assert box["x"] >= 15.5 and box["x"] + box["width"] <= width - 15.5, box
-    assert box["y"] >= 0 and box["y"] + box["height"] <= height, box
-    assert box["height"] < height * .65, box
+    assert abs(box["x"]) < .5 and abs(box["x"] + box["width"] - width) < .5, box
+    assert abs(box["y"] + box["height"] - height) < .5, box
+    assert abs(box["height"] - height * .45) < 2, box
     return box
 
 
@@ -236,7 +237,7 @@ with sync_playwright() as pw:
                 if device == "phone":
                     sheet_inside(sample, width, height)
                     gb = grid.bounding_box()
-                    assert gb["x"] >= 15.5 and gb["x"] + gb["width"] <= width - 15.5, gb
+                    assert gb["x"] >= 13.5 and gb["x"] + gb["width"] <= width - 13.5, gb
                 assert not sample.evaluate("document.documentElement.scrollWidth>innerWidth")
                 screenshot(sample, device + "-" + theme + "-connector")
                 sample.keyboard.press("Escape")

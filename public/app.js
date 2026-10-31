@@ -9,7 +9,7 @@ import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20260923c';
 import {propertyEditor} from './property-ui.js?v=20260923c';
 import {fitText,canFitText,inspectProperties,readProperties} from './properties.js?v=20260923c';
 import {duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20260923c';
-import {decodeLinkSource,linkPayload} from './link-import.js?v=20260923c';
+import {decodeLinkSource,encodeLinkSource,linkFragment,linkPayload} from './link-import.js?v=20260923c';
 import {createDocumentStore} from './documents.js?v=20260923c';
 import {canvasNavigation,clampZoom} from './canvas-navigation.js?v=20260923c';
 import {examplePicker} from './example-picker.js?v=20260923c';
@@ -137,7 +137,7 @@ function updateDraft(){
   const pending=draft.length>0;
   source.readOnly=pending;
   $('source-label').textContent=pending?'Draft source':'Source';
-  $('download').textContent=pending?'Download draft':'Download source';
+  ($('download').querySelector('.cl-label')||$('download')).textContent=pending?'Draft (.pikchr)':'Source (.pikchr)';
   $('queue-status').textContent=pending?`${draft.length} queued ${draft.length===1?'change':'changes'} · Not applied`:applied?'Applied · No pending changes':'No queued changes';
   $('queue-status').dataset.state=pending?'draft':applied?'applied':'clean';
   $('auto-apply').disabled=pending;
@@ -292,6 +292,7 @@ function select(id,highlight=false,additive=false,preserve=false){
   $('show-source-selected').disabled=!o?.span||!single;
   $('arrange').disabled=selectedIds.size<2;
   $('focus-selection').disabled=!selectedIds.size;
+  {const only=$('selection-only');only.disabled=!selectedIds.size;if(only.disabled)only.checked=false;$('selection-only-hint')?.toggleAttribute('hidden',!only.disabled);}
   $('inspector').replaceChildren();
   if(!o){$('inspector').textContent='Select an object in the diagram or object list.';drawOverlay();directTools?.sync();return;}
   if(!single){
@@ -1144,6 +1145,15 @@ window.pikchrStudio={
   setDark:on=>{const flags=on?3:1;if(flags===renderFlags)return;renderFlags=flags;if(source.value.trim()||scene)renderSource();},
   refit:()=>{const svg=$('diagram').querySelector('svg');const box=svg?.dataset.exportViewBox;if(!box)return;const [x,y,w,h]=box.split(/[ ,]+/).map(Number);svg.dataset.fitViewBox=fitBox(x,y,w,h);if(zoom===1&&pan.x===0&&pan.y===0){svg.dataset.baseViewBox=svg.dataset.fitViewBox;applyViewport();refreshHandles();}},
   title:()=>activeDocumentTitle,
+  // Pan (never zoom) just enough that the selection sits inside the screen band between
+  // `top` px from the top and `bottom` px from the bottom, e.g. above a bottom sheet.
+  reveal:({top=0,bottom=0}={})=>{
+    const svg=$('diagram').querySelector('svg');if(!svg||!selectedIds.size)return;
+    const boxes=[...selectedIds].map(id=>svg.querySelector(`[data-pikchr-id="${id}"]`)?.getBoundingClientRect()).filter(Boolean);if(!boxes.length)return;
+    const t=Math.min(...boxes.map(b=>b.top)),b=Math.max(...boxes.map(b=>b.bottom)),room=innerHeight-bottom-top;
+    const dy=b-t>room?top-t:t<top||b>innerHeight-bottom?top+room/2-(t+b)/2:0;
+    if(dy){panBy(0,dy);refreshHandles();}
+  },
   editLabelDialog:()=>directTools?.editText(),
   reconnect:which=>reconnectSelected(which),
   preview:()=>{if(!preview)return null;const o=preview.options[preview.index];return {index:preview.index,count:preview.options.length,label:o.label,before:o.base.slice(byteOffsetToIndex(o.base,o.patch.start),byteOffsetToIndex(o.base,o.patch.end)),after:o.patch.text};},
@@ -1194,14 +1204,32 @@ $('new-document').onclick=()=>newDocument();
 $('open-document').onclick=()=>$('file-input').click();
 $('file-input').onchange=async e=>{const file=e.target.files[0];if(!file)return;if(file.size>2*1024*1024){status('File must be smaller than 2 MB.');return;}newDocument(await file.text());e.target.value='';};
 $('documents').onchange=()=>{const id=$('documents').value;const saved=persistDocument();if(!saved.ok){$('documents').value=activeDocumentId;status('Not opened: '+saved.error);return;}try{const record=documents.open(id);if(record){activeDocumentId=id;refreshDocuments();restoreDocument(record.state);}}catch(error){status(error.message);}};
-$('export-svg').onclick=async()=>{
-  if(source.value!==renderedSource){status('Render the latest source before exporting.');return;}
-  try{const svg=await exportSvgElement();if(!svg)return;downloadFile(cleanSVG(svg),'diagram.svg','image/svg+xml');}catch(e){status(e.message);}
-};
+// "Selection only" crops Copy SVG, Download SVG and Download PNG to the selected objects.
+const cropped=()=>{const c=$('selection-only');return !!c&&c.checked&&!c.disabled;};
+async function exportedSVG(verb){
+  if(source.value!==renderedSource)throw Error('Render the latest source before '+verb+'.');
+  const svg=await exportSvgElement();if(!svg)throw Error('Nothing to export yet.');
+  return cleanSVG(svg,cropped()?{bounds:selectedBounds()}:{});
+}
+$('export-svg').onclick=async()=>{try{downloadFile(await exportedSVG('exporting'),cropped()?'selection.svg':'diagram.svg','image/svg+xml');}catch(e){status(e.message);}};
 function downloadFile(data,name,type){const url=URL.createObjectURL(new Blob([data],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function selectedBounds(){const objects=scene?.objects.filter(o=>selectedIds.has(o.id));if(!objects?.length)throw Error('Select objects to export.');const p=objects.flatMap(o=>[svgPoint({x:o.bbox.x,y:o.bbox.y}),svgPoint({x:o.bbox.x+o.bbox.width,y:o.bbox.y+o.bbox.height})]);const xs=p.map(p=>p.x),ys=p.map(p=>p.y);return{x:Math.min(...xs),y:Math.min(...ys),width:Math.max(...xs)-Math.min(...xs),height:Math.max(...ys)-Math.min(...ys)};}
-$('export-selection').onclick=async()=>{try{if(source.value!==renderedSource)throw Error('Render the current source first.');const bounds=selectedBounds();downloadFile(cleanSVG(await exportSvgElement(),{bounds}),'selection.svg','image/svg+xml');}catch(e){status(e.message);}};
-$('export-png').onclick=async()=>{try{if(source.value!==renderedSource)throw Error('Render the current source first.');await downloadPNG(await exportSvgElement());status('PNG downloaded.');}catch(e){status(e.message);}};
+$('export-png').onclick=async()=>{try{if(source.value!==renderedSource)throw Error('Render the current source first.');await downloadPNG(await exportSvgElement(),cropped()?'selection.png':'diagram.png',cropped()?{bounds:selectedBounds()}:{});status('PNG downloaded.');}catch(e){status(e.message);}};
+// Copy actions write plain text to the clipboard. If it refuses, the text goes to a
+// selectable field in the export popover so nothing is lost.
+async function copyText(label,make){
+  const fallback=$('copy-fallback');if(fallback)fallback.hidden=true;
+  let text;
+  try{text=await make();}catch(e){status(e.message);return;}
+  try{await navigator.clipboard.writeText(text);status(label+' copied');}
+  catch(e){
+    status("Could not copy "+label.toLowerCase()+': '+(e?.name==='NotAllowedError'?'the browser blocked clipboard access':e?.message||'clipboard unavailable')+'. Select the text below and copy it yourself.');
+    if(fallback){fallback.hidden=false;const field=fallback.querySelector('textarea');field.value=text;field.focus();field.select();}
+  }
+}
+$('copy-link').onclick=()=>copyText('Share link',async()=>location.origin+location.pathname+linkFragment(await encodeLinkSource(source.value)));
+$('copy-source').onclick=()=>copyText('Pikchr source',()=>{if(!source.value.trim())throw Error('The source is empty.');return source.value;});
+$('copy-svg').onclick=()=>copyText('SVG',()=>exportedSVG('copying'));
 $('copy-selection').onclick=()=>{try{clipboardFragment=copySelection(source.value,scene,[...selectedIds]);pasteCount=0;$('paste-selection').disabled=false;status('Selection copied in Studio.'+(clipboardFragment.omittedEdges.length?' External connections omitted: '+clipboardFragment.omittedEdges.join(', '):''));}catch(e){status(e.message);}};
 $('paste-selection').onclick=()=>{if(!clipboardFragment)return;action(()=>pasteSelection(source.value,scene,clipboardFragment,{dx:++pasteCount*.5,dy:-pasteCount*.5}));};
 function refreshComponents(){const select=$('components');select.replaceChildren();try{for(const entry of componentLibrary.list()){const o=document.createElement('option');o.value=entry.id;o.textContent=entry.name;select.append(o);}}catch(e){status(e.message);} $('insert-component').disabled=!select.options.length;}

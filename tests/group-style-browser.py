@@ -75,6 +75,8 @@ with sync_playwright() as pw:
         rendered()
 
     def undo():
+        # On phones the inspector is a bottom sheet over the undo chip; close it first, as a person would.
+        close_popovers(page)
         page.locator("#canvas-undo").click()
         rendered()
 
