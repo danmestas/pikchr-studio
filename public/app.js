@@ -21,6 +21,7 @@ import {tidyRouteCandidate} from './route-suggestions.js?v=20260923c';
 import {createCandidateReview} from './candidate-review.js?v=20260923c';
 import {cleanSVG,downloadPNG} from './diagram-export.js?v=20260923c';
 import {readSizingPreference,writeSizingPreference} from './sizing-preferences.js?v=20260923c';
+import {detachCandidates,macroUses} from './macro-detach.js?v=20260923c';
 const $=id=>document.getElementById(id);
 const examples={
   pipeline:'Client: box "Client" at (0,0)\nAPI: box "API" at (2,0)\nDatabase: cylinder "Database" at (4,0)\narrow from Client.e to API.w\narrow from API.e to Database.w\n',
@@ -327,9 +328,16 @@ function select(id,highlight=false,additive=false,preserve=false){
   $('inspector').append(statusDl);
   if(o.reason==='Macro-expanded object'){
     const origin=document.createElement('p');origin.className='inspector-origin';
-    origin.textContent='Its source may be shared by other instances, so direct canvas edits are disabled. Inspect the generating source to change the program.';
+    const uses=macroUses(renderedSource,o);
+    origin.textContent='This shape comes from the macro '+(uses?.name||'that generated it')+', which other shapes may share. Detach it to edit it on its own.';
     sourceButton.textContent='Inspect generating source';
-    $('inspector').append(origin,sourceButton);
+    const detachButton=(id,label)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.disabled=!uses?.uses;
+      b.title=uses?.uses?'Preview the source with this macro use inlined; the define stays':uses?'This macro is only used inside other macro definitions':'Studio cannot tell which macro generated this shape';b.onclick=()=>detachMacro(o,id);return b;};
+    const detachRow=document.createElement('div');detachRow.className='inspector-detach';detachRow.style.cssText='display:flex;flex-wrap:wrap;gap:8px';
+    detachRow.append(detachButton('detach','Detach from macro'));
+    if(uses?.uses>1)detachRow.append(detachButton('detach-all','Detach all '+uses.uses+' uses'));
+    for(const b of detachRow.children)b.style.flex='1 1 0';
+    $('inspector').append(origin,sourceButton,detachRow);
   }else advanced.append(sourceButton);
   if(sourceButton.disabled){const reason=document.createElement('p');reason.textContent='No independent source span is available. Open the source drawer to inspect the generating program.';advanced.append(reason);}
   $('inspector').append(advanced);
@@ -1019,6 +1027,19 @@ function discardPreview(){
 $('preview-accept').onclick=acceptPreview;
 $('preview-prev').onclick=()=>cyclePreview(-1);$('preview-next').onclick=()=>cyclePreview(1);
 $('preview-discard').onclick=discardPreview;
+// Detaching inlines macro uses as ordinary source. Every option arrives
+// rendered and geometry-checked, and goes through the normal preview/accept.
+async function detachMacro(o,id){
+  if(rendering||source.value!==renderedSource||$('diagram').classList.contains('stale')){status('Wait for a valid diagram before editing.');return;}
+  const base=source.value,rev=revision;
+  status('Checking which source produced this shape…');
+  const {options,refusals}=await detachCandidates(base,o,scene,render,{only:id});
+  if(rev!==revision||base!==source.value||rendering)return;
+  const option=options.find(x=>x.id===id);
+  if(!option){status('Not detached. '+(refusals.find(x=>x.id===id)?.reason||'No safe detach was found.'));return;}
+  // Focus the canvas so Enter and Escape act on the preview, as after a drag.
+  if(previewValidated(o,[option])){$('diagram').focus({preventScroll:true});status('Previewing: '+option.label+'. '+option.note+' Enter or Accept applies it; Escape keeps the original.');}
+}
 async function validateSuggestions(o,options){
   if(rendering||source.value!==renderedSource||$('diagram').classList.contains('stale')){status('Wait for a valid diagram before editing.');return false;}
   clearProposal();const g=gesture,rev=revision,base=source.value;

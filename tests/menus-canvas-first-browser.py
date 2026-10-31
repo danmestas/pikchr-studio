@@ -65,7 +65,7 @@ def inspect_macro_source(page):
     page.locator("#object-search").fill("Generated box")
     expect(page.locator("#objects button:visible")).to_have_count(2)
     page.locator("#objects button:visible").first.click()
-    expect(page.locator("#inspector")).to_contain_text("Its source may be shared by other instances")
+    expect(page.locator("#inspector")).to_contain_text("This shape comes from the macro tile, which other shapes may share. Detach it to edit it on its own.")
     advanced = page.locator("details.inspector-advanced")
     assert advanced.get_attribute("open") is None
     expect(page.get_by_role("button", name="Inspect generating source", exact=True)).to_be_visible()
