@@ -323,9 +323,16 @@ function select(id,highlight=false,additive=false,preserve=false){
   const sourceButton=document.createElement('button');sourceButton.type='button';sourceButton.textContent='Show source';
   sourceButton.disabled=$('show-source-selected').disabled;
   sourceButton.onclick=()=>$('show-source-selected')?.click();
-  advanced.append(advancedSummary,dl,sourceButton);
+  advanced.append(advancedSummary,dl);
+  $('inspector').append(statusDl);
+  if(o.reason==='Macro-expanded object'){
+    const origin=document.createElement('p');origin.className='inspector-origin';
+    origin.textContent='Its source may be shared by other instances, so direct canvas edits are disabled. Inspect the generating source to change the program.';
+    sourceButton.textContent='Inspect generating source';
+    $('inspector').append(origin,sourceButton);
+  }else advanced.append(sourceButton);
   if(sourceButton.disabled){const reason=document.createElement('p');reason.textContent='No independent source span is available. Open the source drawer to inspect the generating program.';advanced.append(reason);}
-  $('inspector').append(statusDl,advanced);
+  $('inspector').append(advanced);
   shapeTypeEditor({object:o,scene,source:renderedSource,inspector:$('inspector'),propose:options=>validateSuggestions(o,options),status,
     valid:()=>source.value===renderedSource&&!$('diagram').classList.contains('stale')});
   drawOverlay();

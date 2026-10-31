@@ -135,7 +135,11 @@ function install(studio){
   drawer.append(el('div',{class:'cl-drawer-head'},el('strong',{},'Source'),el('span',{class:'cl-muted'},'The source is the document.'),renderNow,closeDrawer));
   if(sourcePane)drawer.append(sourcePane);
   document.body.append(drawer);
-  const setDrawer=open=>{drawer.classList.toggle('open',open);sourceButton.setAttribute('aria-pressed',String(open));if(open)$('source')?.focus({preventScroll:true});else diagram.focus({preventScroll:true});};
+  const setDrawer=open=>{
+    if(open)for(const panel of popovers)if(!panel.hidden)toggle(panel,panel.opener,false);
+    drawer.classList.toggle('open',open);sourceButton.setAttribute('aria-pressed',String(open));
+    if(open)$('source')?.focus({preventScroll:true});else diagram.focus({preventScroll:true});
+  };
   sourceButton.onclick=()=>setDrawer(!drawer.classList.contains('open'));
   closeDrawer.onclick=()=>setDrawer(false);
 
