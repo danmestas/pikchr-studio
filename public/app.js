@@ -589,7 +589,7 @@ $('focus-selection').onclick=()=>{
 // Reasons come from the scene (native) or editability() (edit engine).
 function dragBlocked(o){
   const reason=o?.reason||'';
-  if(/macro/i.test(reason))return 'This shape comes from a macro, so it can’t be dragged. Edit the macro in the source (S).';
+  if(/macro/i.test(reason))return 'This shape comes from a macro, so it can’t be dragged. Choose Detach from macro in the inspector to edit it on its own.';
   if(/nested|group/i.test(reason))return 'This shape is inside a group, so it can’t be dragged on its own. Edit it in the source (S).';
   if(/repeated names/i.test(reason))return 'Another object has the same name, so this one can’t be dragged. Rename it in the source (S).';
   if(/origin/i.test(reason))return 'Studio can’t find where this object is written, so it can’t be dragged. Edit it in the source (S).';
