@@ -1,4 +1,4 @@
-import { applyPatch, byteOffsetToIndex, editability, safeAttributes } from './edits.js?v=20260923c';
+import { applyPatch, byteOffsetToIndex, editability, safeAttributes } from './edits.js?v=20261031a';
 
 const bytes = text => new TextEncoder().encode(text).length;
 const kinds = ['box','cylinder','circle','ellipse','oval','diamond','line','arrow','text'];

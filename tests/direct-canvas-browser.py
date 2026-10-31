@@ -2,7 +2,7 @@
 import os
 import tempfile
 from playwright.sync_api import sync_playwright, expect
-from browser_helpers import open_document_menu, reveal, show_source, hide_source, open_label_dialog, render_source, close_popovers, menu_click, set_auto_apply
+from browser_helpers import open_adding, open_document_menu, reveal, show_source, hide_source, open_label_dialog, render_source, close_popovers, menu_click, set_auto_apply
 STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 
 with sync_playwright() as pw:
@@ -58,12 +58,9 @@ with sync_playwright() as pw:
 
     palette = page.get_by_role("toolbar", name="Tools")
     def menu_tool(name):
-        open_document_menu(page)
-        button = page.locator(".cl-menu button").filter(has_text=name).first
-        for details in button.locator("xpath=ancestor::details").all():
-            if details.get_attribute("open") is None:
-                details.locator(":scope > summary").click()
-        return button
+        """Tools that used to sit in the menu now live in the palette's Adding shapes popover."""
+        open_adding(page)
+        return page.locator(".cl-adding button").filter(has_text=name).first
     palette.get_by_role("button", name="Box", exact=True).click()
     menu_tool("Place at view center").click()
     changed(initial)
@@ -113,7 +110,8 @@ with sync_playwright() as pw:
     close_popovers(page)
 
     palette.get_by_role("button", name="Box", exact=True).click()
-    menu_tool("Cancel tool").click()
+    page.keyboard.press("Escape")
+    expect(palette.get_by_role("button", name="Select", exact=True)).to_have_attribute("aria-pressed", "true")
     close_popovers(page)
     expect(source).to_have_value(initial)
     if not source.is_visible():

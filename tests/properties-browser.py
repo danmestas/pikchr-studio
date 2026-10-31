@@ -1,6 +1,6 @@
 """Real WASM/browser regressions for direct object properties and apply state."""
 from playwright.sync_api import sync_playwright, expect
-from browser_helpers import prepare_legacy, object_button, edit_label, reveal, set_source, open_label_dialog, menu_click, set_auto_apply
+from browser_helpers import prepare_legacy, object_button, edit_label, reveal, set_source, open_label_dialog, menu_click, connector_editor, set_auto_apply
 import os
 STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 
@@ -53,10 +53,12 @@ with sync_playwright() as pw:
     page.locator('.label-dialog[aria-labelledby="canvas-label-title"]').get_by_role('button', name='Done', exact=True).click()
     queued(1)
     page.locator('#appearance-selected').click()
-    page.get_by_label("Shape type", exact=True).select_option("ellipse")
-    page.get_by_role("button", name="Change shape type", exact=True).click()
+    shapes = page.locator('#inspector').get_by_role("group", name="Shape type", exact=True)
+    expect(shapes.get_by_role("button", name="Box", exact=True)).to_have_attribute("aria-pressed", "true")
+    shapes.get_by_role("button", name="Circle", exact=True).click()
     queued(2)
-    expect(source).to_have_value(baseline.replace('box "A"', 'ellipse "Edited"'))
+    expect(source).to_have_value(baseline.replace('box "A"', 'circle "Edited"'))
+    expect(page.locator('#inspector').get_by_role("group", name="Shape type", exact=True).get_by_role("button", name="Circle", exact=True)).to_have_attribute("aria-pressed", "true")
     menu_click(page, "#accept")
     applied()
     committed = source.input_value()
@@ -72,14 +74,18 @@ with sync_playwright() as pw:
     render(baseline)
     object_button(page, "arrow o3").click()
     page.locator('#route-selected').click()
+    heads = page.locator('#inspector').get_by_role("group", name="Heads", exact=True)
+    expect(heads.get_by_role("button")).to_have_text(["None", "End", "Start", "Both"])
     for count, mode in enumerate(["none", "start", "both", "end"], 1):
-        page.locator('#inspector').get_by_label("Arrowheads", exact=True).select_option(mode)
+        heads.get_by_role("button", name=mode.title(), exact=True).click()
         queued(count)
-        expect(page.locator('#inspector').get_by_label("Arrowheads", exact=True)).to_have_value(mode)
+        expect(heads.locator('[aria-pressed="true"]')).to_have_text(mode.title())
+        expect(heads.locator('[aria-pressed="true"]')).to_have_count(1)
         expect(page.locator('.arrow-editor')).to_have_count(1)
         expect(page.locator('#objects button[aria-pressed="true"]')).to_contain_text("line o3")
         expect(page.locator('#diagram [data-pikchr-id="o3"] polygon')).to_have_count(
             {"none": 0, "start": 1, "both": 2, "end": 1}[mode])
+    connector_editor(page)
     page.get_by_role("button", name="Routing", exact=True).click()
     page.get_by_role("button", name="Horizontal first", exact=True).click()
     queued(5)

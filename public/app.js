@@ -1,26 +1,27 @@
-import {candidates,snap,applyPatch,byteOffsetToIndex,routeCandidates} from './edits.js?v=20260923c';
-import {routeStyleCandidates} from './route-styles.js?v=20260923c';
-import {correspondingObject} from './candidate-target.js?v=20260923c';
-import {alignmentGuides,gapMarks} from './guides.js?v=20260923c';
-import {constrainDrag,smartSnap} from './constrain.js?v=20260923c';
+import {candidates,snap,applyPatch,byteOffsetToIndex,routeCandidates} from './edits.js?v=20261031a';
+import {routeStyleCandidates} from './route-styles.js?v=20261031a';
+import {correspondingObject} from './candidate-target.js?v=20261031a';
+import {alignmentGuides,gapMarks} from './guides.js?v=20261031a';
+import {constrainDrag,smartSnap} from './constrain.js?v=20261031a';
 const params=new URL(location.href).searchParams;
-import {arrowEditor,connectorCapabilities,connectorLabel} from './arrow-ui.js?v=20260923c';
-import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20260923c';
-import {propertyEditor} from './property-ui.js?v=20260923c';
-import {fitText,canFitText,inspectProperties,readProperties} from './properties.js?v=20260923c';
-import {duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20260923c';
-import {decodeLinkSource,linkPayload} from './link-import.js?v=20260923c';
-import {createDocumentStore} from './documents.js?v=20260923c';
-import {canvasNavigation,clampZoom} from './canvas-navigation.js?v=20260923c';
-import {examplePicker} from './example-picker.js?v=20260923c';
-import {canvasTools} from './canvas-tools.js?v=20260923c';
-import {copySelection,pasteSelection} from './subgraph.js?v=20260923c';
-import {createComponentLibrary} from './component-library.js?v=20260923c';
-import {exportWorkspace,parseWorkspace} from './workspace-backup.js?v=20260923c';
-import {tidyRouteCandidate} from './route-suggestions.js?v=20260923c';
-import {createCandidateReview} from './candidate-review.js?v=20260923c';
-import {cleanSVG,downloadPNG} from './diagram-export.js?v=20260923c';
-import {readSizingPreference,writeSizingPreference} from './sizing-preferences.js?v=20260923c';
+import {arrowEditor,connectorCapabilities,connectorLabel,connectorRows,editingBlocked} from './arrow-ui.js?v=20261031a';
+import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20261031a';
+import {propertyEditor} from './property-ui.js?v=20261031a';
+import {fitText,canFitText,inspectProperties,readProperties} from './properties.js?v=20261031a';
+import {duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20261031a';
+import {decodeLinkSource,encodeLinkSource,linkFragment,linkPayload} from './link-import.js?v=20261031a';
+import {createDocumentStore} from './documents.js?v=20261031a';
+import {canvasNavigation,clampZoom} from './canvas-navigation.js?v=20261031a';
+import {examplePicker} from './example-picker.js?v=20261031a';
+import {canvasTools} from './canvas-tools.js?v=20261031a';
+import {copySelection,pasteSelection} from './subgraph.js?v=20261031a';
+import {createComponentLibrary} from './component-library.js?v=20261031a';
+import {exportWorkspace,parseWorkspace} from './workspace-backup.js?v=20261031a';
+import {tidyRouteCandidate} from './route-suggestions.js?v=20261031a';
+import {createCandidateReview} from './candidate-review.js?v=20261031a';
+import {cleanSVG,downloadPNG} from './diagram-export.js?v=20261031a';
+import {readSizingPreference,writeSizingPreference} from './sizing-preferences.js?v=20261031a';
+import {detachCandidates,macroUses} from './macro-detach.js?v=20261031a';
 const $=id=>document.getElementById(id);
 const examples={
   pipeline:'Client: box "Client" at (0,0)\nAPI: box "API" at (2,0)\nDatabase: cylinder "Database" at (4,0)\narrow from Client.e to API.w\narrow from API.e to Database.w\n',
@@ -37,12 +38,14 @@ let cancelCanvasEdit=()=>{},manualEditBase=null;
 let draftBase=null;
 let rendering=false,renderVersion=0;
 const selectionHistory=new Map();
+// Counts select() calls, so a render can tell the selection changed while it ran.
+let selectionEdits=0;
 let requestedSelectionName=null;
 let requestedSelectionIds=null;
 let requestedSelectionId=null,applied=false;
 let selectedIds=new Set(),zoom=1,pan={x:0,y:0},panMode=false;
 let multiSelect=false;
-let directTools=null;
+let directTools=null,advancedOpen=false;
 let routeReview=null,clipboardFragment=null,pasteCount=0;
 let sizingPreferences={};
 let viewportDocumentId=null;
@@ -60,7 +63,8 @@ $('mobile-add').onclick=()=>document.body.classList.toggle('creation-open');
 $('multi-select').onclick=()=>{multiSelect=!multiSelect;$('multi-select').setAttribute('aria-pressed',String(multiSelect));status(multiSelect?'Tap objects to add or remove them from the selection.':'Single selection. Drag selected objects to move them.');};
 // Clear ends group editing as well as the selection, so the next tap selects
 // one object instead of adding to an invisible set.
-$('clear-selection').onclick=()=>{multiSelect=false;$('multi-select').setAttribute('aria-pressed','false');select(null);};
+const clearSelection=()=>{multiSelect=false;$('multi-select').setAttribute('aria-pressed','false');select(null);};
+$('clear-selection').onclick=clearSelection;
 for(const [id,dx,dy]of [['left',-.1,0],['right',.1,0],['up',0,.1],['down',0,-.1]])$('move-'+id).onclick=()=>{const o=current();if(o)suggest(o,{x:o.center.x+dx,y:o.center.y+dy});};
 let storageReady=false,saveTimer=null,activeDocumentId=null,activeDocumentTitle=null;
 const documents=createDocumentStore();
@@ -76,7 +80,7 @@ function persistDocument(){
 function scheduleSave(){if(!storageReady)return;$('save-state').textContent='Saving…';clearTimeout(saveTimer);saveTimer=setTimeout(persistDocument,200);}
 function refreshDocuments(){
   const active=activeDocumentId;const entries=documents.list();
-  $('documents').replaceChildren();for(const item of entries){const option=document.createElement('option');option.value=item.id;option.textContent=item.title;$('documents').append(option);}
+  $('documents').replaceChildren();for(const item of entries){const option=document.createElement('option');option.value=item.id;option.textContent=item.title;option.dataset.updated=item.updated;$('documents').append(option);}
   if(entries.some(item=>item.id===active))$('documents').value=active;
 }
 let statusTimer=null;
@@ -137,7 +141,7 @@ function updateDraft(){
   const pending=draft.length>0;
   source.readOnly=pending;
   $('source-label').textContent=pending?'Draft source':'Source';
-  $('download').textContent=pending?'Download draft':'Download source';
+  ($('download').querySelector('.cl-label')||$('download')).textContent=pending?'Draft (.pikchr)':'Source (.pikchr)';
   $('queue-status').textContent=pending?`${draft.length} queued ${draft.length===1?'change':'changes'} · Not applied`:applied?'Applied · No pending changes':'No queued changes';
   $('queue-status').dataset.state=pending?'draft':applied?'applied':'clean';
   $('auto-apply').disabled=pending;
@@ -180,8 +184,13 @@ async function renderSource(preRendered=null){
   const desiredIds=requestedSelectionIds;requestedSelectionIds=null;
   const desiredId=requestedSelectionId;requestedSelectionId=null;
   if(scene&&desiredIds?.length!==0)selectionHistory.set(oldSource,{id:oldId,kind:oldKind,ids:priorIds});
+  const editsBefore=selectionEdits;
   status('Rendering…');const result=preRendered?.svg?preRendered:await render(text);
   if(token!==renderVersion)return;
+  // A selection made while this render ran (Escape right after Undo, a click
+  // during a theme re-render) wins over the remembered one. Ids carry over only
+  // when the source is unchanged; a clear always does.
+  const chosen=selectionEdits!==editsBefore&&(!selectedIds.size||text===oldSource)?{ids:[...selectedIds],id:selectedId}:null;
   rendering=false;updateDraft();
   if(rev!==revision)return;
   if(result.unavailable){showRendererDown();return;}
@@ -202,6 +211,7 @@ async function renderSource(preRendered=null){
   if(desiredIds){selectedIds=new Set(desiredIds.filter(id=>scene.objects.some(o=>o.id===id)));if(!selectedIds.size)selectedId=null;}
   else if(desiredName||desiredId)selectedIds=new Set(selectedId?[selectedId]:[]);
   else if(saved?.ids)selectedIds=new Set(saved.ids.filter(id=>scene.objects.some(o=>o.id===id)));
+  if(chosen){selectedIds=new Set(chosen.ids.filter(id=>scene.objects.some(o=>o.id===id)));selectedId=selectedIds.has(chosen.id)?chosen.id:[...selectedIds][0]||null;}
   if(selectedIds.size&&!selectedIds.has(selectedId))selectedId=[...selectedIds][0]||null;
   const svg=$('diagram').querySelector('svg');
   const openTools=[...$('creation-tools').querySelectorAll('details')].map(d=>d.open);
@@ -267,6 +277,7 @@ function filterObjects(){
 document.addEventListener('input',e=>{if(e.target?.id==='object-search')filterObjects();});
 const fixed=n=>Number(n).toFixed(3);
 function select(id,highlight=false,additive=false,preserve=false){
+  selectionEdits++;
   if(id!==selectedId)clearProposal();
   if(additive){if(selectedIds.has(id))selectedIds.delete(id);else selectedIds.add(id);}
   else if(!preserve)selectedIds=new Set(id?[id]:[]);
@@ -291,7 +302,8 @@ function select(id,highlight=false,additive=false,preserve=false){
   $('copy-selection').disabled=$('save-component').disabled=!selectedIds.size;
   $('show-source-selected').disabled=!o?.span||!single;
   $('arrange').disabled=selectedIds.size<2;
-  $('focus-selection').disabled=!selectedIds.size;
+  $('focus-selection').disabled=$('clear-selection').disabled=!selectedIds.size;
+  {const only=$('selection-only');only.disabled=!selectedIds.size;if(only.disabled)only.checked=false;$('selection-only-hint')?.toggleAttribute('hidden',!only.disabled);}
   $('inspector').replaceChildren();
   if(!o){$('inspector').textContent='Select an object in the diagram or object list.';drawOverlay();directTools?.sync();return;}
   if(!single){
@@ -310,39 +322,48 @@ function select(id,highlight=false,additive=false,preserve=false){
     'Referenced by':scene.objects.filter(n=>n.dependencies?.includes(o.id)).map(n=>n.name||n.kind).join(', ')||'Nothing yet'
   };
   for(const [key,value]of Object.entries(details)){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=key;dd.textContent=value;dl.append(dt,dd);}
-  // Editing is the one fact the panel must show up front: it says whether the
-  // actions above can change this object at all. Everything else is reference
-  // material and lives under one Advanced disclosure.
-  const statusDl=document.createElement('dl');statusDl.className='inspector-status';
-  const statusDt=document.createElement('dt'),statusDd=document.createElement('dd');
-  statusDt.textContent='Editing';
-  statusDd.textContent=o.editable?'Placement suggestions available':o.reason||'Inspect only';
-  statusDl.append(statusDt,statusDd);
-  const advanced=document.createElement('details');advanced.className='inspector-advanced';
+  // The panel speaks about editing only when it is blocked, and says why.
+  // Rows follow in a fixed order; reference material stays under Advanced.
+  const ins=$('inspector'),ready=()=>source.value===renderedSource&&!$('diagram').classList.contains('stale');
+  const capabilities=connectorCapabilities({object:o,scene,source:renderedSource}),blocked=editingBlocked(o,capabilities);
+  const advanced=document.createElement('details');advanced.className='inspector-advanced';advanced.open=advancedOpen;
+  advanced.ontoggle=()=>{if(advanced.isConnected)advancedOpen=advanced.open;};
   const advancedSummary=document.createElement('summary');advancedSummary.textContent='Advanced & source';
   const sourceButton=document.createElement('button');sourceButton.type='button';sourceButton.textContent='Show source';
   sourceButton.disabled=$('show-source-selected').disabled;
   sourceButton.onclick=()=>$('show-source-selected')?.click();
-  advanced.append(advancedSummary,dl);
-  $('inspector').append(statusDl);
+  const editorSlot=document.createElement('div');editorSlot.className='inspector-editor-slot';
+  advanced.append(advancedSummary,editorSlot,dl);
+  // A macro shape's origin paragraph below names the macro and gives the same
+  // advice (Detach from macro), so it stands in for the generic note.
+  if(blocked&&o.reason!=='Macro-expanded object'){const note=document.createElement('p');note.className='inspector-status';note.setAttribute('role','note');note.textContent=blocked;ins.append(note);}
   if(o.reason==='Macro-expanded object'){
-    const origin=document.createElement('p');origin.className='inspector-origin';
-    origin.textContent='Its source may be shared by other instances, so direct canvas edits are disabled. Inspect the generating source to change the program.';
+    const origin=document.createElement('p');origin.className='inspector-status inspector-origin';origin.setAttribute('role','note');
+    const uses=macroUses(renderedSource,o);
+    origin.textContent='This shape comes from the macro '+(uses?.name||'that generated it')+', which other shapes may share. Detach it to edit it on its own.';
     sourceButton.textContent='Inspect generating source';
-    $('inspector').append(origin,sourceButton);
+    const detachButton=(id,label)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.disabled=!uses?.uses;
+      b.title=uses?.uses?'Preview the source with this macro use inlined; the define stays':uses?'This macro is only used inside other macro definitions':'Studio cannot tell which macro generated this shape';b.onclick=()=>detachMacro(o,id);return b;};
+    const detachRow=document.createElement('div');detachRow.className='inspector-detach';detachRow.style.cssText='display:flex;flex-wrap:wrap;gap:8px';
+    detachRow.append(detachButton('detach','Detach from macro'));
+    if(uses?.uses>1)detachRow.append(detachButton('detach-all','Detach all '+uses.uses+' uses'));
+    for(const b of detachRow.children)b.style.flex='1 1 0';
+    ins.append(origin,sourceButton,detachRow);
   }else advanced.append(sourceButton);
   if(sourceButton.disabled){const reason=document.createElement('p');reason.textContent='No independent source span is available. Open the source drawer to inspect the generating program.';advanced.append(reason);}
-  $('inspector').append(advanced);
-  shapeTypeEditor({object:o,scene,source:renderedSource,inspector:$('inspector'),propose:options=>validateSuggestions(o,options),status,
-    valid:()=>source.value===renderedSource&&!$('diagram').classList.contains('stale')});
+  const propose=options=>validateSuggestions(o,options);
+  const parts=propertyEditor({object:o,scene,source:renderedSource,propose,status,valid:ready});
+  if(parts?.label)ins.append(parts.label);
+  if(directTools?.sizing)ins.append(directTools.sizing);
+  const rows=connectorRows({object:o,scene,source:renderedSource,capabilities,propose,status,valid:ready,reconnect:reconnectSelected});if(rows)ins.append(rows);
+  const shape=shapeTypeEditor({object:o,scene,source:renderedSource,propose,status,valid:ready});if(shape)ins.append(shape);
+  const chooser=routeChooser(o);if(chooser)ins.append(chooser);
+  if(parts?.style)ins.append(parts.style);
+  if(capabilities){const routes=document.createElement('div');routes.className='inspector-routes-slot';ins.append(routes);}
+  if(parts?.error)ins.append(parts.error);
+  ins.append(advanced);
   drawOverlay();
   installArrowEditor();
-  propertyEditor({object:o,scene,source:renderedSource,inspector:$('inspector'),propose:options=>validateSuggestions(o,options),status,
-    valid:()=>source.value===renderedSource&&!$('diagram').classList.contains('stale')});
-  const chooser=routeChooser(o);if(chooser)$('inspector').insertBefore(chooser,$('inspector').querySelector('.arrow-editor')||advanced);
-  // Advanced is the reference tail of the panel whatever the other editors
-  // prepended or inserted above it.
-  $('inspector').append(advanced);
   directTools?.sync();
 }
 // Visual route choices for a connector: each button reads the same candidate
@@ -402,6 +423,8 @@ function routeChooser(o){
     ()=>{
       const tab=[...$('inspector').querySelectorAll('.arrow-editor .connector-tabs button')].find(b=>b.textContent==='Routing');
       if(!tab){note.textContent='Waypoint editing is unavailable: this route keeps its endpoints in a form Studio cannot rewrite. Edit it in source.';return;}
+      // The route editor lives under Advanced; open it rather than click blind.
+      const details=tab.closest('details');if(details&&!details.open)details.open=true;
       tab.click();
       const panel=$('inspector').querySelector('.route-controls');
       panel?.scrollIntoView({block:'nearest'});panel?.querySelector('.route-handle')?.focus?.({preventScroll:true});
@@ -473,10 +496,12 @@ $('route-selected').onclick=()=>{
   // The layout opens the popover after this click. Scroll only once it is
   // visible, directly to the visual choices rather than the inspector fields.
   requestAnimationFrame(()=>{
-    const section=$('inspector').querySelector('.route-styles')||$('inspector').querySelector('.arrow-editor');
+    const ins=$('inspector'),section=ins.querySelector('.inspector-routes:not([hidden]) .route-styles')||ins.querySelector('.cl-route-choices');
     if(!section)return;
-    section.tabIndex=-1;section.scrollIntoView({block:'start'});
-    (section.querySelector('.route-style-option')||section).focus({preventScroll:true});
+    const details=section.closest('details');if(details&&!details.open)details.open=true;
+    // Scroll the section's heading in too, not just the choices under it.
+    section.tabIndex=-1;(details||section).scrollIntoView({block:'start'});
+    (section.querySelector('.route-style-option,.cl-route-option[aria-pressed=true]')||section).focus({preventScroll:true});
   });
 };
 // Direct reconnect for a selected connector. canvas-layout's contextual
@@ -493,26 +518,15 @@ $('fit-text').onclick=()=>{
   try{validateSuggestions(o,[fitText(renderedSource,o,scene)]);}catch(error){status(error.message);}
 };
 function installArrowEditor(){
-  const svg=$('diagram').querySelector('svg'),o=current();
+  const svg=$('diagram').querySelector('svg'),o=current(),ins=$('inspector');
   if(!svg||!o||source.value!==renderedSource||$('diagram').classList.contains('stale'))return;
   svg.querySelector('.arrow-overlay')?.remove();
-  $('inspector').querySelector('.arrow-editor')?.remove();
-  const supported=arrowEditor({object:o,scene,source:source.value,svg,inspector:$('inspector'),
+  arrowEditor({object:o,scene,source:source.value,svg,
+    slots:{routes:ins.querySelector('.inspector-routes-slot'),style:ins.querySelector('.connector-style-slot'),editor:ins.querySelector('.inspector-editor-slot')},
     autoApply:()=>$('auto-apply').checked,
     propose:options=>validateSuggestions(o,options),status,render,
     preview:(options,index,hooks)=>previewValidated(o,options,index,hooks),accept:acceptPreview,discard:discardPreview,
     valid:()=>source.value===renderedSource&&!$('diagram').classList.contains('stale'),clear:clearProposal});
-  const routable=!!$('inspector').querySelector('.arrow-editor .connector-tabs');
-  const capabilities=connectorCapabilities({object:o,scene,source:source.value});
-  // The connector editor speaks only for connectors. For a box it must not
-  // replace the Editing fact with connector wording: the object keeps its own
-  // placement/source verdict.
-  if(['arrow','line','spline','arc'].includes(o.kind)){
-    const description=capabilities&&(capabilities.endpoints||capabilities.route||capabilities.styles)
-      ?'Editable here: '+[capabilities.endpoints&&'endpoint reconnection (Endpoints)',capabilities.route&&'routing',capabilities.styles&&'styles'].filter(Boolean).join(', ')+'.'
-      :o.reason||'Inspect only: this connector expression cannot be safely rewritten. Edit it in source.';
-    for(const dt of $('inspector').querySelectorAll('dt'))if(dt.textContent==='Editing')dt.nextElementSibling.textContent=description;
-  }
 }
 const matrix=()=>{const t=scene.transform;return new DOMMatrix([t.a,t.b,t.c,t.d,t.e,t.f]);};
 const svgPoint=p=>new DOMPoint(p.x,p.y).matrixTransform(matrix());
@@ -597,6 +611,17 @@ $('focus-selection').onclick=()=>{
   const [x,y,bw,bh]=svg.dataset.baseViewBox.split(/[ ,]+/).map(Number);
   zoom=clampZoom(Math.min(3,bw/Math.max(w*2,30),bh/Math.max(h*2,30)));pan={x:left+w/2-x-bw/2,y:top+h/2-y-bh/2};applyViewport();refreshHandles();
 };
+// Why a press on an object cannot drag it, in plain words with the way out.
+// Reasons come from the scene (native) or editability() (edit engine).
+function dragBlocked(o){
+  const reason=o?.reason||'';
+  if(/macro/i.test(reason))return 'This shape comes from a macro, so it can’t be dragged. Choose Detach from macro in the inspector to edit it on its own.';
+  if(/nested|group/i.test(reason))return 'This shape is inside a group, so it can’t be dragged on its own. Edit it in the source (S).';
+  if(/repeated names/i.test(reason))return 'Another object has the same name, so this one can’t be dragged. Rename it in the source (S).';
+  if(/origin/i.test(reason))return 'Studio can’t find where this object is written, so it can’t be dragged. Edit it in the source (S).';
+  if(o&&!o.name&&['box','circle','ellipse','oval','cylinder','diamond','text'].includes(o.kind))return 'This shape has no name, so it can’t be dragged. Name it in the source (S), for example A: box.';
+  return 'Only boxes, circles, ellipses, ovals, cylinders, diamonds and text can be dragged. Edit this '+(o?.kind||'object')+' in the source (S).';
+}
 function bindDiagram(svg){
   svg.ondblclick=e=>{
     // Pointer capture can retarget dblclick to the SVG root. Hit-test the
@@ -672,11 +697,11 @@ function bindDiagram(svg){
       const connector=capabilities&&['arrow','line','spline','arc'].includes(o.kind);
       const message=/nested/i.test(o?.reason||'')
         ?'This shape is inside a group and is inspect-only. Choose Pipeline and Load example to try dragging editable shapes.'
-        :connector&&(capabilities.endpoints||capabilities.route)
-          ?'Use the connector handles in '+(capabilities.endpoints?'Endpoints':'Routing')+'; dragging the connector body only selects it.'
-          :connector&&capabilities.styles?'Use Route styles in the inspector; dragging the connector body only selects it.'
+        :connector&&capabilities.endpoints?'Drag a blue end handle to reconnect. Dragging the line only selects it.'
+          :connector&&capabilities.route?'Use Waypoints in the inspector to move a bend. Dragging the line only selects it.'
+          :connector&&capabilities.styles?'Use Style or Suggested routes in the inspector. Dragging the line only selects it.'
           :connector?'This connector is inspect-only here: edit its endpoints or route in source.'
-          :'This object is inspect-only: '+(o?.reason||'its source cannot be safely rewritten.');
+          :dragBlocked(o);
       status(message);document.querySelector('.diagram-pane .hint').textContent=message;return;
     }
     document.querySelector('.diagram-pane .hint').textContent='Release to preview ranked source edits. Accept one, or press Escape to keep the original.';
@@ -732,7 +757,7 @@ $('diagram').addEventListener('keydown',e=>{
 },true);
 $('diagram').addEventListener('keydown',e=>{
   if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();$('delete-selected').click();return;}
-  if(e.key==='Escape'){panMode=false;$('pan-mode').setAttribute('aria-pressed','false');$('diagram').style.cursor='';cancelCanvasEdit();clearProposal();select(null);return;}
+  if(e.key==='Escape'){panMode=false;$('pan-mode').setAttribute('aria-pressed','false');$('diagram').style.cursor='';cancelCanvasEdit();clearProposal();clearSelection();return;}
   const delta={ArrowLeft:[-.1,0],ArrowRight:[.1,0],ArrowUp:[0,.1],ArrowDown:[0,-.1]}[e.key],o=current();
   // Focus on a rendered object: arrows walk the object list. Focus on the
   // canvas itself: arrows nudge the selection.
@@ -1019,8 +1044,21 @@ function discardPreview(){
 $('preview-accept').onclick=acceptPreview;
 $('preview-prev').onclick=()=>cyclePreview(-1);$('preview-next').onclick=()=>cyclePreview(1);
 $('preview-discard').onclick=discardPreview;
-async function validateSuggestions(o,options){
-  if(rendering||source.value!==renderedSource||$('diagram').classList.contains('stale')){status('Wait for a valid diagram before editing.');return false;}
+// Detaching inlines macro uses as ordinary source. Every option arrives
+// rendered and geometry-checked, and goes through the normal preview/accept.
+async function detachMacro(o,id){
+  if(rendering||source.value!==renderedSource||$('diagram').classList.contains('stale')){status('Wait for a valid diagram before editing.');return;}
+  const base=source.value,rev=revision;
+  status('Checking which source produced this shape…');
+  const {options,refusals}=await detachCandidates(base,o,scene,render,{only:id});
+  if(rev!==revision||base!==source.value||rendering)return;
+  const option=options.find(x=>x.id===id);
+  if(!option){status('Not detached. '+(refusals.find(x=>x.id===id)?.reason||'No safe detach was found.'));return;}
+  // Focus the canvas so Enter and Escape act on the preview, as after a drag.
+  if(previewValidated(o,[option])){$('diagram').focus({preventScroll:true});status('Previewing: '+option.label+'. '+option.note+' Enter or Accept applies it; Escape keeps the original.');}
+}
+async function validateSuggestions(o,options,{reject}={}){
+  if(rendering||source.value!==renderedSource||$('diagram').classList.contains('stale')){status('Wait for a valid diagram before editing.');reject?.('Wait for a valid diagram before editing.');return false;}
   clearProposal();const g=gesture,rev=revision,base=source.value;
   status('Validating '+options.length+' source suggestions…');
   const valid=[],failures=[];
@@ -1059,7 +1097,7 @@ async function validateSuggestions(o,options){
     return true;
   }else{
     const message=failures[0]||'The edited object could not be identified safely.';
-    $('suggestions').textContent=message;status('Edit not applied. '+message);drawOverlay();installArrowEditor();
+    $('suggestions').textContent=message;status('Edit not applied. '+message);reject?.(message);drawOverlay();installArrowEditor();
     return false;
   }
 }
@@ -1144,6 +1182,15 @@ window.pikchrStudio={
   setDark:on=>{const flags=on?3:1;if(flags===renderFlags)return;renderFlags=flags;if(source.value.trim()||scene)renderSource();},
   refit:()=>{const svg=$('diagram').querySelector('svg');const box=svg?.dataset.exportViewBox;if(!box)return;const [x,y,w,h]=box.split(/[ ,]+/).map(Number);svg.dataset.fitViewBox=fitBox(x,y,w,h);if(zoom===1&&pan.x===0&&pan.y===0){svg.dataset.baseViewBox=svg.dataset.fitViewBox;applyViewport();refreshHandles();}},
   title:()=>activeDocumentTitle,
+  // Pan (never zoom) just enough that the selection sits inside the screen band between
+  // `top` px from the top and `bottom` px from the bottom, e.g. above a bottom sheet.
+  reveal:({top=0,bottom=0}={})=>{
+    const svg=$('diagram').querySelector('svg');if(!svg||!selectedIds.size)return;
+    const boxes=[...selectedIds].map(id=>svg.querySelector(`[data-pikchr-id="${id}"]`)?.getBoundingClientRect()).filter(Boolean);if(!boxes.length)return;
+    const t=Math.min(...boxes.map(b=>b.top)),b=Math.max(...boxes.map(b=>b.bottom)),room=innerHeight-bottom-top;
+    const dy=b-t>room?top-t:t<top||b>innerHeight-bottom?top+room/2-(t+b)/2:0;
+    if(dy){panBy(0,dy);refreshHandles();}
+  },
   editLabelDialog:()=>directTools?.editText(),
   reconnect:which=>reconnectSelected(which),
   preview:()=>{if(!preview)return null;const o=preview.options[preview.index];return {index:preview.index,count:preview.options.length,label:o.label,before:o.base.slice(byteOffsetToIndex(o.base,o.patch.start),byteOffsetToIndex(o.base,o.patch.end)),after:o.patch.text};},
@@ -1194,14 +1241,32 @@ $('new-document').onclick=()=>newDocument();
 $('open-document').onclick=()=>$('file-input').click();
 $('file-input').onchange=async e=>{const file=e.target.files[0];if(!file)return;if(file.size>2*1024*1024){status('File must be smaller than 2 MB.');return;}newDocument(await file.text());e.target.value='';};
 $('documents').onchange=()=>{const id=$('documents').value;const saved=persistDocument();if(!saved.ok){$('documents').value=activeDocumentId;status('Not opened: '+saved.error);return;}try{const record=documents.open(id);if(record){activeDocumentId=id;refreshDocuments();restoreDocument(record.state);}}catch(error){status(error.message);}};
-$('export-svg').onclick=async()=>{
-  if(source.value!==renderedSource){status('Render the latest source before exporting.');return;}
-  try{const svg=await exportSvgElement();if(!svg)return;downloadFile(cleanSVG(svg),'diagram.svg','image/svg+xml');}catch(e){status(e.message);}
-};
+// "Selection only" crops Copy SVG, Download SVG and Download PNG to the selected objects.
+const cropped=()=>{const c=$('selection-only');return !!c&&c.checked&&!c.disabled;};
+async function exportedSVG(verb){
+  if(source.value!==renderedSource)throw Error('Render the latest source before '+verb+'.');
+  const svg=await exportSvgElement();if(!svg)throw Error('Nothing to export yet.');
+  return cleanSVG(svg,cropped()?{bounds:selectedBounds()}:{});
+}
+$('export-svg').onclick=async()=>{try{downloadFile(await exportedSVG('exporting'),cropped()?'selection.svg':'diagram.svg','image/svg+xml');}catch(e){status(e.message);}};
 function downloadFile(data,name,type){const url=URL.createObjectURL(new Blob([data],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function selectedBounds(){const objects=scene?.objects.filter(o=>selectedIds.has(o.id));if(!objects?.length)throw Error('Select objects to export.');const p=objects.flatMap(o=>[svgPoint({x:o.bbox.x,y:o.bbox.y}),svgPoint({x:o.bbox.x+o.bbox.width,y:o.bbox.y+o.bbox.height})]);const xs=p.map(p=>p.x),ys=p.map(p=>p.y);return{x:Math.min(...xs),y:Math.min(...ys),width:Math.max(...xs)-Math.min(...xs),height:Math.max(...ys)-Math.min(...ys)};}
-$('export-selection').onclick=async()=>{try{if(source.value!==renderedSource)throw Error('Render the current source first.');const bounds=selectedBounds();downloadFile(cleanSVG(await exportSvgElement(),{bounds}),'selection.svg','image/svg+xml');}catch(e){status(e.message);}};
-$('export-png').onclick=async()=>{try{if(source.value!==renderedSource)throw Error('Render the current source first.');await downloadPNG(await exportSvgElement());status('PNG downloaded.');}catch(e){status(e.message);}};
+$('export-png').onclick=async()=>{try{if(source.value!==renderedSource)throw Error('Render the current source first.');await downloadPNG(await exportSvgElement(),cropped()?'selection.png':'diagram.png',cropped()?{bounds:selectedBounds()}:{});status('PNG downloaded.');}catch(e){status(e.message);}};
+// Copy actions write plain text to the clipboard. If it refuses, the text goes to a
+// selectable field in the export popover so nothing is lost.
+async function copyText(label,make){
+  const fallback=$('copy-fallback');if(fallback)fallback.hidden=true;
+  let text;
+  try{text=await make();}catch(e){status(e.message);return;}
+  try{await navigator.clipboard.writeText(text);status(label+' copied');}
+  catch(e){
+    status("Could not copy "+label.toLowerCase()+': '+(e?.name==='NotAllowedError'?'the browser blocked clipboard access':e?.message||'clipboard unavailable')+'. Select the text below and copy it yourself.');
+    if(fallback){fallback.hidden=false;const field=fallback.querySelector('textarea');field.value=text;field.focus();field.select();}
+  }
+}
+$('copy-link').onclick=()=>copyText('Share link',async()=>location.origin+location.pathname+linkFragment(await encodeLinkSource(source.value)));
+$('copy-source').onclick=()=>copyText('Pikchr source',()=>{if(!source.value.trim())throw Error('The source is empty.');return source.value;});
+$('copy-svg').onclick=()=>copyText('SVG',()=>exportedSVG('copying'));
 $('copy-selection').onclick=()=>{try{clipboardFragment=copySelection(source.value,scene,[...selectedIds]);pasteCount=0;$('paste-selection').disabled=false;status('Selection copied in Studio.'+(clipboardFragment.omittedEdges.length?' External connections omitted: '+clipboardFragment.omittedEdges.join(', '):''));}catch(e){status(e.message);}};
 $('paste-selection').onclick=()=>{if(!clipboardFragment)return;action(()=>pasteSelection(source.value,scene,clipboardFragment,{dx:++pasteCount*.5,dy:-pasteCount*.5}));};
 function refreshComponents(){const select=$('components');select.replaceChildren();try{for(const entry of componentLibrary.list()){const o=document.createElement('option');o.value=entry.id;o.textContent=entry.name;select.append(o);}}catch(e){status(e.message);} $('insert-component').disabled=!select.options.length;}
@@ -1210,7 +1275,7 @@ $('insert-component').onclick=()=>action(()=>pasteSelection(source.value,scene,c
 $('backup-workspace').onclick=()=>{const saved=persistDocument();if(!saved.ok){status('Backup stopped: '+saved.error);return;}try{downloadFile(exportWorkspace(documents.records()),'pikchr-workspace.json','application/json');status('Document backup downloaded, including queued changes and history. Components are separate local data.');}catch(e){status(e.message);}};
 $('restore-workspace').onclick=()=>$('backup-input').click();
 $('backup-input').onchange=async e=>{const file=e.target.files[0];if(!file)return;const originalId=activeDocumentId;let count=0;try{if(file.size>16*1024*1024)throw Error('Backup exceeds 16 MB.');const records=parseWorkspace(await file.text());const saved=persistDocument();if(!saved.ok)throw Error(saved.error);clearTimeout(saveTimer);for(const record of records){documents.create();const result=documents.save(record.state);if(!result.ok)throw Error(result.error);count++;}status('Restored '+count+' document copies. Your current diagram is unchanged.');}catch(error){status('Restored '+count+' copies. '+error.message+' Existing documents were not replaced.');}finally{try{documents.open(originalId);activeDocumentId=originalId;refreshDocuments();}catch(error){status('Reopen your current document: '+error.message);}e.target.value='';}};
-directTools=canvasTools({host:$('diagram'),toolbar:$('direct-tools'),render,livePreview:liveSourcePreview,liveClear:liveSourceClear,propose:validateSuggestions,select,selectMany:ids=>{selectedIds=new Set(ids);select(ids[0]||null,false,false,true);},status,invalidate:clearProposal,
+directTools=canvasTools({clearSelection,host:$('diagram'),toolbar:$('direct-tools'),render,livePreview:liveSourcePreview,liveClear:liveSourceClear,propose:validateSuggestions,select,selectMany:ids=>{selectedIds=new Set(ids);select(ids[0]||null,false,false,true);},status,invalidate:clearProposal,
   stopPan:()=>{panMode=false;$('pan-mode').setAttribute('aria-pressed','false');$('diagram').style.cursor='';},
   getState:()=>({source:source.value,scene,object:current(),sizing:sizingFor(current()),multiple:selectedIds.size>1,key:activeDocumentId+':'+revision,
     valid:!!scene&&!rendering&&source.value===renderedSource&&!$('diagram').classList.contains('stale'),

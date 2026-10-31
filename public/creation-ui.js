@@ -1,4 +1,4 @@
-import {createShape,createConnector,changeShape,connectableShapes,repeatPosition,repeatShape} from './creation.js?v=20260923c';
+import {createShape,createConnector,changeShape,connectableShapes,repeatPosition,repeatShape} from './creation.js?v=20261031a';
 const kinds=['box','circle','ellipse','oval','cylinder','diamond','text'];
 const creationState={kind:'box',label:'New shape',fit:true,width:'',height:'',fill:'none',color:'black',thickness:'',shapeOpen:false,styleOpen:false,connectorOpen:false,fromAnchor:'e',toAnchor:'w',connector:'arrow',repeat:false,dx:'0',dy:'-1',lastName:null,pending:null,includeText:false};
 const anchors=['c','n','ne','e','se','s','sw','w','nw'];
@@ -100,20 +100,28 @@ export function creationTools({scene,source,host,propose,status,valid}){
   if(shapes.length<2)connectorDetails.append(node('p','Add two named native shapes outside groups and macros, then connect their anchors.'));
   host.append(shapeDetails,connectorDetails,report);
 }
-export function shapeTypeEditor({object,scene,source,inspector,propose,status,valid}){
-  if(!kinds.includes(object.kind)||!object.name)return;
+// Shape row: one segment per common kind. A click proposes the same validated
+// changeShape candidate the old select did; a kind the engine refuses is
+// disabled with its reason rather than offered.
+export function shapeTypeEditor({object,scene,source,propose,status,valid}){
+  if(!kinds.includes(object.kind)||!object.name)return null;
   // Ask the conservative edit engine before offering an active control.
-  try{changeShape(source,object,scene,kinds.find(k=>k!==object.kind));}catch{return;}
-  const form=node('form');form.className='shape-type-form';
-  const type=select('Shape type',kinds.map(k=>[k,k[0].toUpperCase()+k.slice(1)]));type.input.value=object.kind;
-  const preview=node('button','Change shape type');preview.type='submit';preview.disabled=true;
-  type.input.onchange=()=>{preview.disabled=type.input.value===object.kind;};
-  form.append(type.field,preview);
-  form.onsubmit=e=>{
-    e.preventDefault();if(!valid())return;
-    try{propose([changeShape(source,object,scene,type.input.value)]);}catch(error){status(error.message);}
-  };
-  inspector.prepend(form);
+  try{changeShape(source,object,scene,kinds.find(k=>k!==object.kind));}catch{return null;}
+  const row=node('div');row.className='inspector-row shape-type';
+  const name=node('span','Shape');name.className='row-name';
+  const group=node('div');group.className='cl-seg';group.setAttribute('role','group');group.setAttribute('aria-label','Shape type');
+  for(const kind of ['box','circle','cylinder','diamond']){
+    const b=node('button',kind[0].toUpperCase()+kind.slice(1));b.type='button';b.dataset.value=kind;
+    b.setAttribute('aria-pressed',String(kind===object.kind));
+    if(kind!==object.kind)try{changeShape(source,object,scene,kind);}catch(error){b.disabled=true;b.title=error.message;}
+    b.onclick=()=>{
+      if(kind===object.kind)return;
+      if(!valid()){status('Render the current source before changing the shape.');return;}
+      try{propose([changeShape(source,object,scene,kind)]);}catch(error){status(error.message);}
+    };
+    group.append(b);
+  }
+  row.append(name,group);return row;
 }
 function objectLabel(object,source){
   const bytes=new TextEncoder().encode(source),statement=new TextDecoder().decode(bytes.slice(object.span.start,object.span.end));

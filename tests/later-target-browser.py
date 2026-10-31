@@ -27,7 +27,7 @@ with sync_playwright() as pw:
         # visible object list rather than depending on connector hit testing.
         object_button(page, 'arrow o4').click()
         open_more(page)
-        page.get_by_role('button', name='Reconnect ' + endpoint, exact=True).click()
+        page.locator('.cl-more').get_by_role('button', name='Reconnect ' + endpoint, exact=True).click()
         close_popovers(page)
         point = page.evaluate('window.pikchrStudio.modelToScreen({x:2,y:-1})')
         page.mouse.click(point['x'], point['y'])
@@ -47,7 +47,7 @@ with sync_playwright() as pw:
     set_source(page, overlapping)
     object_button(page, 'arrow o4').click()
     open_more(page)
-    page.get_by_role('button', name='Reconnect end', exact=True).click()
+    page.locator('.cl-more').get_by_role('button', name='Reconnect end', exact=True).click()
     close_popovers(page)
     point = page.evaluate('window.pikchrStudio.modelToScreen({x:3,y:0})')
     page.mouse.click(point['x'], point['y'])

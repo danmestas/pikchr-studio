@@ -19,7 +19,7 @@ assertion after `settle` sees a different source and Undo stops one step short.
 import os
 import re
 from playwright.sync_api import sync_playwright
-from browser_helpers import object_button, close_popovers, set_source, set_auto_apply, menu_click
+from browser_helpers import object_button, close_popovers, set_source, set_auto_apply, menu_click, connector_editor
 
 STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 
@@ -55,6 +55,7 @@ def handle_center(page, label):
 
 def show_routing(page, name="L"):
     object_button(page, name).click()
+    connector_editor(page)
     page.get_by_role("button", name="Routing", exact=True).click()
 
 
@@ -194,6 +195,7 @@ with sync_playwright() as pw:
     page.get_by_role("toolbar", name="Tools").get_by_role("button", name="Select", exact=True).click()
     close_popovers(page)
     object_button(page, "arrow o4").click()
+    connector_editor(page)
     page.get_by_role("button", name="Endpoints", exact=True).click()
     handle = handle_center(page, "Drag arrowhead endpoint")
     page.mouse.move(handle["x"], handle["y"])

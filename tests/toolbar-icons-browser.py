@@ -7,7 +7,7 @@ single-object and group visibility policies unchanged.
 """
 import os
 import re
-from browser_helpers import object_button, open_document_menu, close_popovers, set_source, wait_rendered
+from browser_helpers import object_button, open_document_menu, close_popovers, set_source, wait_rendered, select_multiple, clear_selection
 from playwright.sync_api import sync_playwright, expect
 
 STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
@@ -163,9 +163,7 @@ with sync_playwright() as pw:
             # and the count stay.
             point = page.evaluate(CENTER, "A")
             page.mouse.click(point["x"], point["y"])
-            open_document_menu(page)
-            page.locator(".cl-menu #multi-select").click()
-            close_popovers(page)
+            select_multiple(page)
             point = page.evaluate(CENTER, "B")
             page.mouse.click(point["x"], point["y"])
             page.wait_for_function("document.body.classList.contains('has-multiple')")
@@ -179,9 +177,7 @@ with sync_playwright() as pw:
             expect(page.locator('#selection-count')).to_have_text("2 selected")
 
             # A connector alone offers Route and tidy Route with distinct icons.
-            open_document_menu(page)
-            page.locator(".cl-menu #clear-selection").click()
-            close_popovers(page)
+            clear_selection(page)
             object_button(page, "Link").click()
             close_popovers(page)
             expect(page.locator('.cl-context')).to_be_visible()
@@ -190,7 +186,8 @@ with sync_playwright() as pw:
             check_icons(page, scheme, signatures)
             check_no_glyphs(page)
             change = page.locator('.cl-context .cl-endpoint-action:visible').first
-            expect(change).to_have_text(re.compile(r"Change (start|end)"))
+            expect(change).to_have_text(re.compile(r"^(Start|End)$"))
+            expect(change).to_have_attribute("aria-label", re.compile(r"^Reconnect (start|end)$"))
 
         assert not errors, errors
         context.close()

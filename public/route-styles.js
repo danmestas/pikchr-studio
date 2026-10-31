@@ -1,8 +1,8 @@
 // Route styles: every connector restyle is a whole-statement source edit that
 // the caller renders and checks before showing it. Only style tokens this
 // module recognises are rewritten; every other token keeps its bytes.
-import { byteOffsetToIndex, applyPatch, editability } from './edits.js?v=20260923c';
-import { obstacleRects } from './route-suggestions.js?v=20260923c';
+import { byteOffsetToIndex, applyPatch, editability } from './edits.js?v=20261031a';
+import { obstacleRects } from './route-suggestions.js?v=20261031a';
 
 const CONNECTORS = ['arrow','line','spline','arc'];
 const NON_OBSTACLES = [...CONNECTORS, 'move'];
@@ -447,6 +447,13 @@ export function routeStyleCandidates(source, object, scene) {
   bendOptions(model, scene, add);
   loopOptions(model, scene, add, heads);
   return { options, unavailable, reason:'' };
+}
+
+// What the Suggested routes gallery offers: route shapes only. Arrowheads are
+// the inspector's Heads control, so they are not repeated as thumbnails.
+export function suggestedRoutes(source, object, scene) {
+  const all = routeStyleCandidates(source, object, scene);
+  return { ...all, options:all.options.filter(o => o.group !== 'Arrowheads'), unavailable:all.unavailable.filter(o => o.group !== 'Arrowheads') };
 }
 
 // Rendered-result guard: the connector keeps its identity, nothing else moves,

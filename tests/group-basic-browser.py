@@ -5,7 +5,7 @@ Runs on the plain URL with no Advanced tools.
 """
 import os
 import re
-from browser_helpers import object_button, open_document_menu, close_popovers, open_more, reveal, set_source
+from browser_helpers import select_multiple, clear_selection, object_button, open_document_menu, close_popovers, open_more, reveal, set_source
 from playwright.sync_api import sync_playwright, expect
 
 STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
@@ -28,7 +28,9 @@ with sync_playwright() as pw:
     page.goto(URL)
 
     def rendered():
-        page.wait_for_function("document.querySelector('.cl-summary')?.textContent==='Rendered'")
+        # state().valid holds only once the scene matches the source; the
+        # "Rendered" chip can still be showing from the previous render.
+        page.wait_for_function("pikchrStudio.state().valid")
 
     def click(name):
         point = page.evaluate(CENTER, name)
@@ -44,9 +46,7 @@ with sync_playwright() as pw:
 
     def select_two():
         click("A")
-        open_document_menu(page)
-        page.locator(".cl-menu #multi-select").click()
-        close_popovers(page)
+        select_multiple(page)
         click("B")
         page.wait_for_function("document.body.classList.contains('has-multiple')")
         assert page.locator("#selection-count").inner_text() == "2 selected"
@@ -57,11 +57,10 @@ with sync_playwright() as pw:
     set_source(page, BASE)
     rendered()
 
-    # Select multiple lives in the basic ☰ menu, so it is reachable with no
-    # selection and needs no modifier key.
-    open_document_menu(page)
-    assert page.locator(".cl-menu #multi-select").count() == 1
-    close_popovers(page)
+    # Select multiple is a palette toggle on touch screens (hidden for a
+    # fine pointer, where Shift-click does the same); it never lives in the menu.
+    assert page.locator(".cl-palette #multi-select").count() == 1
+    assert page.locator(".cl-menu #multi-select").count() == 0
     select_two()
 
     # ⋯ states the group and offers its actions; no single-object inspector.
@@ -75,7 +74,8 @@ with sync_playwright() as pw:
     inspector = page.locator("#inspector")
     expect(inspector).to_contain_text("2 objects selected")
     assert inspector.locator("dt", has_text="Name").count() == 0
-    assert page.locator(".cl-more .cl-label-options").is_hidden()
+    assert page.locator(".cl-more .cl-label-options").count() == 0
+    assert page.locator("#inspector .label-row").count() == 0
     assert page.locator(".cl-textbar").is_hidden()
     assert page.locator(".cl-context #edit-selected").is_hidden()
     assert page.locator(".cl-context .cl-endpoint-action").first.is_hidden()
@@ -102,18 +102,38 @@ with sync_playwright() as pw:
     undo()
     page.wait_for_function("text => document.querySelector('#source').value === text", arg=BASE)
 
+    # Clearing while Undo's render is still running wins over the selection
+    # Undo would restore.
+    reveal(page, "#layout-mode").select_option("align-y")
+    reveal(page, "#arrange").click()
+    changed(BASE)
+    close_popovers(page)
+    page.locator('#diagram').focus()
+    page.evaluate("()=>{document.querySelector('#canvas-undo').click();document.querySelector('#diagram').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))}")
+    page.wait_for_function("text => document.querySelector('#source').value === text", arg=BASE)
+    rendered()
+    assert page.locator("#selection-count").inner_text() == "No selection"
+    # The same holds for a pick made during a re-render of unchanged source
+    # (the theme flips): the render does not put back the old selection.
+    page.evaluate("document.querySelector('#objects button[data-id=o1]').click()")
+    page.wait_for_function("pikchrStudio.state().selectedIds.join()==='o1'")
+    page.evaluate("()=>{pikchrStudio.setDark(true);document.querySelector('#objects button[data-id=o3]').click()}")
+    rendered()
+    assert page.evaluate("pikchrStudio.state().selectedIds") == ["o3"]
+    page.evaluate("pikchrStudio.setDark(false)")
+    rendered()
+    select_two()
+
     # Clear leaves group mode.
-    reveal(page, "#clear-selection").click()
+    clear_selection(page)
     page.wait_for_function("!document.body.classList.contains('has-multiple')")
     assert page.locator("#selection-count").inner_text() == "No selection"
 
     # A group mixing a shape and a connector offers no single-object connector
     # actions: Reverse and Reconnect would edit only the last-clicked
-    # connector, and the sizing hint addresses one object. These controls live
-    # in the canvas-context dock inside ⋯, not in .cl-context.
-    open_document_menu(page)
-    page.locator(".cl-menu #multi-select").click()
-    close_popovers(page)
+    # connector, and sizing addresses one object. These controls are the
+    # single-object inspector's rows inside ⋯, not in .cl-context.
+    select_multiple(page)
     object_button(page, "A").click()
     object_button(page, "Link").click()
     page.wait_for_function("document.body.classList.contains('has-multiple')")
@@ -121,42 +141,40 @@ with sync_playwright() as pw:
     open_more(page)
     expect(page.locator(".cl-more .cl-more-title")).to_have_text("2 selected")
     expect(page.locator(".cl-more .cl-group")).to_be_visible()
-    dock = page.locator(".cl-more .canvas-context-dock")
-    expect(dock).to_be_hidden()
+    rows = page.locator(".cl-more .connector-rows")
+    expect(rows).to_have_count(0)
+    expect(page.locator(".cl-more .canvas-sizing")).to_be_hidden()
     for name in ("Reverse direction", "Reconnect start", "Reconnect end"):
-        expect(page.locator(".cl-more button", has_text=re.compile(r"^" + name + r"$"))).to_be_hidden()
-    expect(page.locator(".cl-more .context-hint")).to_be_hidden()
+        expect(page.locator(".cl-more").get_by_role("button", name=name, exact=True)).to_have_count(0)
     assert page.locator("#source").input_value() == BASE
     close_popovers(page)
 
     # The same connector alone keeps its actions, and they act on it.
-    reveal(page, "#clear-selection").click()
+    clear_selection(page)
     page.wait_for_function("document.querySelector('#selection-count').textContent==='No selection'")
     object_button(page, "Link").click()
     page.wait_for_function("document.querySelector('#selection-count').textContent==='1 selected'")
     open_more(page)
-    expect(dock).to_be_visible()
-    expect(page.locator(".cl-more .context-hint")).to_be_hidden()
-    reverse = page.get_by_role("button", name="Reverse direction", exact=True)
+    expect(rows).to_be_visible()
+    expect(page.locator(".cl-more .canvas-sizing")).to_be_hidden()
+    reverse = page.locator(".cl-more").get_by_role("button", name="Reverse direction", exact=True)
     expect(reverse).to_be_visible()
     expect(reverse).to_be_enabled()
     for name in ("Reconnect start", "Reconnect end"):
-        expect(page.get_by_role("button", name=name, exact=True)).to_be_visible()
+        expect(page.locator(".cl-more").get_by_role("button", name=name, exact=True)).to_be_visible()
     reverse.click()
     changed(BASE)
     reversed_source = page.locator("#source").input_value()
     assert "Link: arrow from B.w to A.e" in reversed_source, reversed_source
     undo()
     page.wait_for_function("text => document.querySelector('#source').value === text", arg=BASE)
-    reveal(page, "#clear-selection").click()
+    clear_selection(page)
     page.wait_for_function("document.querySelector('#selection-count').textContent==='No selection'")
 
     # Phone width: the group section is reachable inside the viewport, and the
     # page never scrolls sideways.
     page.set_viewport_size({"width": 390, "height": 844})
-    open_document_menu(page)
-    page.locator(".cl-menu #multi-select").click()
-    close_popovers(page)
+    select_multiple(page)
     object_button(page, "A").click()
     object_button(page, "B").click()
     page.wait_for_function("document.body.classList.contains('has-multiple')")

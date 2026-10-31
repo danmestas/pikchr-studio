@@ -1,7 +1,7 @@
 """Browser checks for multiline creation, appearance, and deliberate reconnection."""
 from playwright.sync_api import sync_playwright, expect
 import re
-from browser_helpers import open_document_menu, edit_label, reveal, show_source, set_source, set_auto_apply, open_label_dialog, open_more, close_popovers, open_menu_details
+from browser_helpers import open_document_menu, edit_label, reveal, show_source, set_source, set_auto_apply, open_label_dialog, open_more, close_popovers, open_menu_details, connector_editor
 import os
 STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 
@@ -28,10 +28,13 @@ with sync_playwright() as pw:
     expect(page.locator('#inspector').get_by_label('Current label',exact=True)).to_have_text('Input manifest')
     expect(page.locator('#diagram [data-pikchr-id="o1"] text')).to_have_count(2)
     open_more(page)
-    page.get_by_label('Label behavior',exact=True).select_option('fixed')
+    fit = page.locator('#inspector').get_by_role('group', name='Text fit', exact=True)
+    fit.get_by_role('button', name='Fixed', exact=True).click()
+    expect(fit.locator('[aria-pressed=true]')).to_have_text('Fixed')
+    open_more(page)
     page.get_by_label('Shape width', exact=True).fill('1.7')
     page.get_by_label('Shape height', exact=True).fill('0.9')
-    page.get_by_role('button',name='Apply size',exact=True).click()
+    page.get_by_label('Shape height', exact=True).press('Enter')
     expect(source).to_have_value(re.compile(r'width 1\.7'))
     page.wait_for_function("!document.querySelector('#diagram').classList.contains('stale')")
     page.locator('#appearance-selected').click()
@@ -40,15 +43,16 @@ with sync_playwright() as pw:
     expect(source).to_have_value(re.compile(r'width 1\.7'))
     expect(page.get_by_label('Fit shape to text', exact=True)).to_have_count(0)
     open_more(page)
-    expect(page.get_by_label('Label behavior',exact=True)).to_have_value('fixed')
+    expect(page.locator('#inspector [role=group][aria-label="Text fit"] [aria-pressed=true]')).to_have_text('Fixed')
     edit_label(page, 'Keep uniform\ncard dimensions', 'fixed')
     expect(source).to_have_value(re.compile(r'"Keep uniform" "card dimensions".*width 1\.7 height 0\.9'))
     open_more(page)
-    expect(page.get_by_label('Label behavior',exact=True)).to_have_value('fixed')
+    expect(page.locator('#inspector [role=group][aria-label="Text fit"] [aria-pressed=true]')).to_have_text('Fixed')
     close_popovers(page)
     page.locator('#diagram [data-pikchr-id="o3"]').click()
     reveal(page, '#route-selected').click()
     expect(page.locator('.anchor-target:visible')).to_have_count(0)
+    connector_editor(page)
     page.get_by_role('button', name='Endpoints', exact=True).click()
     page.get_by_role('button', name='Reconnect on canvas', exact=True).click()
     assert page.locator('.anchor-target:visible').count() > 0

@@ -1,7 +1,7 @@
 """Saved documents remain reachable without enabling advanced tools."""
 import os
 from playwright.sync_api import expect, sync_playwright
-from browser_helpers import open_document_menu, set_source, reveal
+from browser_helpers import open_document_menu, set_source, reveal, open_document
 
 STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 FIRST = 'A: box "First" at (0,0)\n'
@@ -24,14 +24,16 @@ with sync_playwright() as pw:
 
     def reachable():
         open_document_menu(page)
-        expect(documents).to_be_visible()
-        box = documents.bounding_box()
-        assert box and box["width"] > 0 and box["height"] > 0
+        rows = page.locator(".cl-recent button")
+        expect(rows.first).to_be_visible()
+        assert rows.count() == documents.locator("option").count()
         page.locator("#new-document").focus()
         page.keyboard.press("Tab")
         expect(page.locator("#open-document")).to_be_focused()
         page.keyboard.press("Tab")
-        expect(documents).to_be_focused()
+        expect(page.locator("#choose-example")).to_be_focused()
+        page.keyboard.press("Tab")
+        expect(rows.first).to_be_focused()
 
     set_source(page, FIRST)
     saved(FIRST)
@@ -44,12 +46,12 @@ with sync_playwright() as pw:
     assert first != second
     reachable()
     assert documents.locator("option").count() == 2
-    documents.select_option(first)
+    open_document(page, id=first)
     saved(FIRST)
     expect(source).to_have_value(FIRST)
     for target, text in ((second, SECOND), (first, FIRST)):
         reachable()
-        documents.select_option(target)
+        open_document(page, id=target)
         expect(documents).to_have_value(target)
         saved(text)
 
@@ -62,10 +64,10 @@ with sync_playwright() as pw:
     saved(FIRST)
     reachable()
     expect(page.locator("#advanced-mode")).not_to_be_checked()
-    documents.select_option(second)
+    open_document(page, id=second)
     saved(SECOND)
     reachable()
-    documents.select_option(first)
+    open_document(page, id=first)
     saved(FIRST)
     assert not errors, errors
     browser.close()

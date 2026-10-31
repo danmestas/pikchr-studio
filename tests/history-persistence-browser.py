@@ -10,7 +10,7 @@ import os
 import re
 from playwright.sync_api import sync_playwright
 from browser_helpers import (object_button, open_more, close_popovers, set_source, show_source,
-                             open_document_menu, set_auto_apply, reveal)
+                             open_document_menu, set_auto_apply, reveal, connector_editor, inspector_section, open_document)
 
 STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 INITIAL = (
@@ -71,8 +71,7 @@ with sync_playwright() as pw:
         page.locator("#preview-accept").click()
 
     def opened_document(title):
-        open_document_menu(page)
-        reveal(page, "#documents").select_option(label=title)
+        open_document(page, title=title)
         page.wait_for_function("t => document.querySelector('.cl-title')?.textContent === t", arg=title)
 
     show_source(page)
@@ -86,7 +85,7 @@ with sync_playwright() as pw:
     # 1. The first anonymous arrow, pointed at a box that follows both arrows.
     select("arrow o4")
     open_more(page)
-    page.get_by_role("button", name="Reconnect end", exact=True).click()
+    page.locator(".cl-more").get_by_role("button", name="Reconnect end", exact=True).click()
     close_popovers(page)
     click_model({"x": 2, "y": -1})
     page.wait_for_function("window.pikchrStudio.state().source.includes('to Shape1.')")
@@ -100,6 +99,7 @@ with sync_playwright() as pw:
     assert re.search(r"(?m)^arrow from Client\.e to Shape1\.s$", reconnected), reconnected
     conn = "arrow o6"
     select(conn)
+    connector_editor(page)
     page.get_by_role("button", name="Routing", exact=True).click()
     page.get_by_role("button", name="Horizontal first", exact=True).click()
     page.wait_for_function("window.pikchrStudio.state().source.includes('then to Shape1.s')")
@@ -110,7 +110,7 @@ with sync_playwright() as pw:
     edited.append((routed, "route"))
 
     select(conn)
-    page.locator(".route-styles [role=group][aria-label=Stroke]").get_by_role("button", name="Dashed").click()
+    inspector_section(page, "Style").locator("[role=group][aria-label=Stroke]").get_by_role("button", name="Dashed").click()
     accept_preview()
     page.wait_for_function("window.pikchrStudio.state().source.includes('to Shape1.s dashed')")
     page.wait_for_function(SAVED)

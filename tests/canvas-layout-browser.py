@@ -39,10 +39,59 @@ with sync_playwright() as pw:
     assert box["width"] == 1400 and box["height"] == 900, box
     palette = page.get_by_role("toolbar", name="Tools")
     assert palette.is_visible() and palette.bounding_box()["y"] < 40
-    for name in ["Select", "Pan", "Box", "Circle", "Cylinder", "Diamond", "Text", "Arrow", "Line"]:
+    for name in ["Select", "Select area", "Pan", "Box", "Circle", "Cylinder", "Diamond", "Text", "Arrow", "Line"]:
         assert palette.get_by_role("button", name=name, exact=True).is_visible(), name
-    assert palette.get_by_role("button", name="Select area").count() == 0, "area select lives in the menu"
-    assert palette.locator(".tool-options").count() == 0, "tool options live in the menu"
+    names = palette.get_by_role("button").evaluate_all("bs=>bs.filter(b=>b.offsetParent).map(b=>b.getAttribute('aria-label'))")
+    assert names[:3] == ["Select", "Select area", "Pan"], "Select area sits right after Select: " + str(names)
+    assert names.index("Adding shapes") == names.index("Diamond") + 1, "the chevron follows the shape tools: " + str(names)
+    for name, letter in [("Select", "V"), ("Select area", "M"), ("Pan", "H"), ("Box", "B"), ("Circle", "C"), ("Cylinder", "D"), ("Diamond", "R"), ("Text", "T"), ("Arrow", "A"), ("Line", "L")]:
+        button = palette.get_by_role("button", name=name, exact=True)
+        assert button.get_attribute("data-key") == letter and button.get_attribute("title").endswith("(" + letter + ")"), (name, letter)
+    assert palette.locator(".tool-options").count() == 0, "tool options live in the Adding shapes popover"
+    assert not page.locator("#multi-select").is_visible(), "Select multiple is a touch-only palette toggle"
+    # Icons are drawn, never typed: no glyph characters inside the palette, doc chip or zoom chip.
+    for chip in [".cl-palette", ".cl-doc", ".cl-zoom"]:
+        assert page.locator(chip + " button svg").count() >= 3, chip
+        text = page.locator(chip).evaluate("e=>[...e.querySelectorAll('button')].map(b=>b.textContent.trim()).join('')")
+        assert all(c.isalnum() or c in " %" for c in text), (chip, text)
+    # M, R and / are shortcuts when focus is not in a text field.
+    page.locator("#diagram").focus()
+    page.keyboard.press("m")
+    expect(palette.get_by_role("button", name="Select area", exact=True)).to_have_attribute("aria-pressed", "true")
+    page.keyboard.press("r")
+    expect(palette.get_by_role("button", name="Diamond", exact=True)).to_have_attribute("aria-pressed", "true")
+    assert page.evaluate("document.querySelector('.active-shape-kind select').value") == "diamond"
+    page.keyboard.press("d")
+    assert page.evaluate("document.querySelector('.active-shape-kind select').value") == "cylinder", "D stays Cylinder"
+    page.keyboard.press("v")
+    page.keyboard.press("/")
+    expect(page.locator(".cl-more")).to_be_visible()
+    expect(page.locator("#object-search")).to_be_focused()
+    page.keyboard.type("/")
+    assert page.locator("#object-search").input_value() == "/", "/ inside a text field types normally"
+    page.keyboard.press("Escape")
+    expect(page.locator(".cl-more")).to_be_hidden()
+    page.locator("#diagram").focus()
+    # Find object and Focus selection sit beside Fit.
+    zoom = page.locator(".cl-zoom")
+    assert zoom.get_by_role("button", name="Find object").get_attribute("title") == "Find object (/)"
+    assert zoom.get_by_role("button", name="Focus selection").get_attribute("title") == "Focus selection (F)"
+    assert zoom.get_by_role("button", name="Focus selection").is_disabled()
+    zoom.get_by_role("button", name="Find object").click()
+    expect(page.locator(".cl-view-objects")).to_be_visible()
+    page.keyboard.press("Escape")
+    # Adding shapes popover holds the placement options.
+    palette.get_by_role("button", name="Adding shapes").click()
+    adding = page.locator(".cl-adding")
+    expect(adding).to_be_visible()
+    for text in ["Place at view center", "Add by coordinates", "Add connected shape", "Keep adding"]:
+        assert adding.get_by_text(text).count() >= 1, text
+    assert adding.get_by_label("Direction").count() == 1
+    page.keyboard.press("Escape")
+    expect(adding).to_be_hidden()
+    # Changes stay out of reach until something is queued or queue mode is on.
+    summary = page.locator(".cl-status .cl-summary")
+    assert summary.is_disabled() and page.locator(".cl-changes").is_hidden()
     # Compact status chip; the long status text is not inside it.
     assert page.locator(".cl-status .cl-summary").inner_text() == "Rendered"
     assert page.locator(".cl-status #state").count() == 0
@@ -184,10 +233,15 @@ with sync_playwright() as pw:
     menu = phone.locator(".cl-menu")
     expect(menu).to_be_visible()
     titles = menu.locator(".cl-section:visible > .cl-section-title").all_inner_texts()
-    assert [t.strip().lower() for t in titles][:5] == ["document", "add", "selection", "view", "changes"], titles
+    assert [t.strip().lower() for t in titles] == ["document", "preferences"], titles
     assert menu.locator("details.canvas-view-options:visible, details.draft-toolbar:visible").count() == 0
-    for id_ in ["#accept", "#cancel", "#undo-draft", "#auto-apply", "#anchors", "#choose-example", "#multi-select", "#clear-selection"]:
+    for id_ in ["#auto-apply", "#anchors", "#snap-resize", "#choose-example", "#advanced-mode"]:
         assert menu.locator(id_).count() == 1, id_
+    for id_ in ["#accept", "#cancel", "#undo-draft", "#multi-select", "#clear-selection", "#mobile-objects", "#focus-selection"]:
+        assert menu.locator(id_).count() == 0, id_ + " left the menu"
+    # Touch screens get Select multiple in the palette.
+    assert phone.evaluate("matchMedia('(pointer: coarse)').matches")
+    assert phone.locator(".cl-palette #multi-select").is_visible()
     box = menu.bounding_box()
     assert box["y"] >= 0 and box["y"] + box["height"] <= 844 and box["x"] + box["width"] <= 390, box
     phone.keyboard.press("Escape")

@@ -2,7 +2,7 @@ import os
 import tempfile
 import re
 from browser_helpers import open_more, prepare_legacy, object_button, shape_option, open_document_menu, show_source, hide_source, reveal, set_source, render_source, open_menu_details, close_popovers, menu_click
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 
 
@@ -50,7 +50,11 @@ with sync_playwright() as pw:
         assert f'Shape{index + 1}: {kind} "資料 ☕ {kind}"' in source.input_value(), source.input_value()
         assert 'fit' in source.input_value().splitlines()[-1], source.input_value()
         open_more(page)
-        assert page.get_by_role("combobox", name="Shape type", exact=True).input_value() == kind
+        pressed = page.locator('#inspector').get_by_role("group", name="Shape type", exact=True).locator('[aria-pressed="true"]')
+        if kind in ("box", "circle", "cylinder", "diamond"):
+            expect(pressed).to_have_text(kind.title())
+        else:
+            expect(pressed).to_have_count(0)
         assert page.locator("#diagram svg").count() == 1
         sizes = page.locator(f'#diagram [data-pikchr-id="o{index + 1}"]').evaluate("""group => {
           const text = group.querySelector('text').getBoundingClientRect();
@@ -75,15 +79,16 @@ with sync_playwright() as pw:
 
     # Conversion preserves the label, placement, and selected object's identity.
     before = source.input_value()
-    page.get_by_role("combobox", name="Shape type", exact=True).select_option("box")
-    page.get_by_role("button", name="Change shape type", exact=True).click()
+    open_more(page)
+    page.locator('#inspector').get_by_role("group", name="Shape type", exact=True).get_by_role("button", name="Box", exact=True).click()
     ready_preview(before)
     menu_click(page, "#accept")
     applied()
     statement = next(line for line in source.input_value().splitlines() if line.startswith('Shape6:'))
     assert statement.startswith('Shape6: box "資料 ☕ diamond"') and 'fit' in statement and 'at (4, -2)' in statement, statement
     open_more(page)
-    assert page.get_by_role("combobox", name="Shape type", exact=True).input_value() == "box"
+    shapes = page.locator('#inspector').get_by_role("group", name="Shape type", exact=True)
+    expect(shapes.locator('[aria-pressed="true"]')).to_have_text("Box")
 
     # Connect two newly created native shapes using the actual controls.
     open_details("Add connector")

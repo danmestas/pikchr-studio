@@ -1,4 +1,4 @@
-import {validateSizingPreferences} from './sizing-preferences.js?v=20260923c';
+import {validateSizingPreferences} from './sizing-preferences.js?v=20261031a';
 // Documents are independent records: a damaged record never prevents opening another.
 const PREFIX='pikchr-studio.document.v1.';
 const CURRENT='pikchr-studio.current-document.v1';

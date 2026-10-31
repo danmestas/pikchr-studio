@@ -1,11 +1,9 @@
-import {createShape,createConnector,connectableShapes,shapeKinds} from './creation.js?v=20260923c';
-import {inspectProperties,changeTermination} from './properties.js?v=20260923c';
-import {endpointCandidates} from './edits.js?v=20260923c';
-import {buildTextEdit} from './text-sizing.js?v=20260923c';
-import {createConnectedNeighbor,resizeShape} from './canvas-operations.js?v=20260923c';
-import {snapResize,resizeBox} from './resize-guides.js?v=20260923c';
-import {reverseConnector} from './reverse-connector.js?v=20260923c';
-import {connectorCapabilities} from './arrow-ui.js?v=20260923c';
+import {createShape,createConnector,connectableShapes,shapeKinds} from './creation.js?v=20261031a';
+import {inspectProperties} from './properties.js?v=20261031a';
+import {endpointCandidates} from './edits.js?v=20261031a';
+import {buildTextEdit} from './text-sizing.js?v=20261031a';
+import {createConnectedNeighbor,resizeShape} from './canvas-operations.js?v=20261031a';
+import {snapResize,resizeBox} from './resize-guides.js?v=20261031a';
 
 const ns='http://www.w3.org/2000/svg';
 const element=(tag,attrs={})=>{const node=document.createElement(tag);for(const[k,v]of Object.entries(attrs))node.setAttribute(k,v);return node;};
@@ -15,59 +13,93 @@ const pick=(label,items)=>{const field=element('label'),select=element('select',
 
 // The canvas controller does not own source, history, or document persistence.
 // It submits one validated candidate through the app's existing edit pipeline.
-export function canvasTools({host,toolbar,getState,render,propose,select,selectMany,status,stopPan,invalidate,livePreview,liveClear}){
+export function canvasTools({clearSelection,host,toolbar,getState,render,propose,select,selectMany,status,stopPan,invalidate,livePreview,liveClear}){
   let mode='select',modeKey=null,startShape=null,pending=null,resize=null,dialogSession=null,epoch=0;
   const snapshot=()=>({...getState(),toolEpoch:epoch});
   const kinds=pick('Shape',shapeKinds.map(k=>[k,k[0].toUpperCase()+k.slice(1)]));
   kinds.field.className='active-shape-kind';
   // Changing the kind while placing (e.g. Text → Box) updates the tool state.
   kinds.select.addEventListener('change',()=>sync());
-  const repeat=element('input',{type:'checkbox','aria-label':'Keep placing shapes'}),repeatLabel=element('label');repeatLabel.append(repeat,' Keep adding');
-  const directions=pick('Direction',[['right','Right'],['down','Down'],['left','Left'],['up','Up']]);
+  const repeat=element('input',{type:'checkbox',id:'keep-adding','aria-label':'Keep placing shapes'}),repeatLabel=element('label');repeatLabel.append(repeat,' Keep adding');
+  const directions=pick('Direction',[['right','Right'],['down','Down'],['left','Left'],['up','Up']]);directions.select.id='neighbor-direction';
   const place=button('Place shape',()=>setMode(mode==='place'?'select':'place'));
   const connect=button('Connect shapes',()=>setMode(mode==='connect'?'select':'connect'));
   const marquee=button('Select area',()=>setMode(mode==='marquee'?'select':'marquee'));
   const neighbor=button('Add connected shape',async()=>{const s=getState();if(!s.valid||!s.object)return;try{await submit(createConnectedNeighbor(s.source,s.scene,s.object,{type:kinds.select.value,label:'',direction:directions.select.value}),s); }catch(e){status(e.message);}});
   const center=button('Place at view center',()=>{const svg=host.querySelector('svg'),r=svg?.getBoundingClientRect()||host.getBoundingClientRect();placeAt({clientX:r.x+r.width/2,clientY:r.y+r.height/2});});
-  const cancelButton=button('Cancel tool',()=>cancel());
+  center.id='place-center';neighbor.id='add-neighbor';
   const toolState=element('span',{'role':'status'});
   const selectTool=button('Select',()=>setMode('select'));
   const panTool=button('Pan',()=>{cancel(false);document.querySelector('#pan-mode')?.click();sync();});
   const textTool=button('Text',()=>{kinds.select.value='text';setMode('place');});
   const palette=element('div',{class:'mode-palette',role:'toolbar','aria-label':'Canvas modes'});
-  const paths={Select:'M5 3l14 9-7 1-3 7z',Pan:'M8 12V6a2 2 0 014 0v5-6a2 2 0 014 0v7-4a2 2 0 014 0v7c0 4-3 6-7 6-3 0-5-2-7-5l-3-4a2 2 0 013-2l2 2',Shape:'M4 4h16v16H4z',Connector:'M4 19L20 5M12 5h8v8',Text:'M4 5h16M12 5v15M8 20h8','Select area':'M8 4H4v4M16 4h4v4M20 16v4h-4M8 20H4v-4'};
-  for(const [control,name] of [[selectTool,'Select'],[panTool,'Pan'],[place,'Shape'],[connect,'Connector'],[textTool,'Text'],[marquee,'Select area']]){control.textContent='';control.title=name;control.setAttribute('aria-label',name==='Shape'?'Place shape':name==='Connector'?'Connect shapes':name);const icon=svgElement('svg',{viewBox:'0 0 24 24',width:20,height:20,'aria-hidden':'true',fill:'none',stroke:'currentColor','stroke-width':'1.6','stroke-linecap':'round','stroke-linejoin':'round'});icon.append(svgElement('path',{d:paths[name]}));control.append(icon);palette.append(control);}
-  const options=element('details',{class:'tool-options'}),optionsTitle=element('summary'),optionsPanel=element('div',{class:'tool-options-panel'});optionsTitle.textContent='Tool options';options.append(optionsTitle,optionsPanel);optionsPanel.append(center,repeatLabel,directions.field,neighbor,cancelButton);
+  // Lucide paths (lucide.dev, ISC license): 24-unit, round joins, one stroke weight with the layout chrome.
+  const icons={
+    Select:[['path',{d:'M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z',fill:'currentColor'}]],
+    Pan:[['path',{d:'M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2'}],['path',{d:'M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2'}],['path',{d:'M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8'}],['path',{d:'M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15'}]],
+    Shape:[['rect',{x:'3',y:'3',width:'18',height:'18',rx:'2'}]],
+    Connector:[['path',{d:'M13 5h6v6'}],['path',{d:'M19 5 5 19'}]],
+    Text:[['path',{d:'M12 4v16'}],['path',{d:'M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2'}],['path',{d:'M9 20h6'}]],
+    'Select area':[['path',{d:'M5 3a2 2 0 0 0-2 2'}],['path',{d:'M19 3a2 2 0 0 1 2 2'}],['path',{d:'M21 19a2 2 0 0 1-2 2'}],['path',{d:'M5 21a2 2 0 0 1-2-2'}],['path',{d:'M9 3h1'}],['path',{d:'M9 21h1'}],['path',{d:'M14 3h1'}],['path',{d:'M14 21h1'}],['path',{d:'M3 9v1'}],['path',{d:'M21 9v1'}],['path',{d:'M3 14v1'}],['path',{d:'M21 14v1'}]],
+  };
+  for(const [control,name] of [[selectTool,'Select'],[panTool,'Pan'],[place,'Shape'],[connect,'Connector'],[textTool,'Text'],[marquee,'Select area']]){control.textContent='';control.title=name;control.setAttribute('aria-label',name==='Shape'?'Place shape':name==='Connector'?'Connect shapes':name);const icon=svgElement('svg',{viewBox:'0 0 24 24',width:20,height:20,'aria-hidden':'true',focusable:'false',fill:'none',stroke:'currentColor','stroke-width':'1.7','stroke-linecap':'round','stroke-linejoin':'round'});for(const [tag,attrs] of icons[name])icon.append(svgElement(tag,attrs));control.append(icon);palette.append(control);}
   place.onclick=()=>{const alreadyShape=mode==='place'&&kinds.select.value!=='text';if(kinds.select.value==='text')kinds.select.value='box';setMode(alreadyShape?'select':'place');};
   document.querySelector('#pan-mode')?.addEventListener('click',()=>sync());
-  toolbar.append(palette,kinds.field,options,toolState);
+  // The placement and neighbor controls are created here; the layout moves them into its own popovers.
+  toolbar.append(palette,kinds.field,center,repeatLabel,directions.field,neighbor,toolState);
   toolbar.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();cancel();selectTool.focus();}});
-  const quick=element('div',{'class':'canvas-context','aria-label':'Selected connector actions'});
-  const ends=pick('Arrowheads',[['none','None'],['start','Start'],['end','End'],['both','Both']]);
   // A direct reconnect is a canvas gesture: close the inspector so the
   // destination shapes are reachable, and say what is being picked.
   const closeInspector=()=>{for(const panel of document.querySelectorAll('.cl-popover:not([hidden])'))panel.opener?.click();host.focus({preventScroll:true});};
-  const reconnect=which=>button('Reconnect '+which,()=>reconnectStart(which==='start'?'from':'to'));
-  const reconnectFrom=reconnect('start');
-  const reconnectTo=reconnect('end');
-  const dock=element('div',{class:'canvas-context-dock'}),emptyContext=element('span',{class:'context-hint'});emptyContext.textContent='Select a shape to size it, or a line to edit its connections.';
-  const contextToggle=button('Size',()=>{const expanded=dock.classList.toggle('context-expanded');contextToggle.setAttribute('aria-expanded',String(expanded));});contextToggle.className='context-toggle';contextToggle.setAttribute('aria-expanded','false');dock.append(contextToggle);
-  dock.addEventListener('keydown',event=>{if(event.key==='Escape'){dock.classList.remove('context-expanded');contextToggle.setAttribute('aria-expanded','false');contextToggle.focus();}});
-  const reverse=button('Reverse direction',()=>{const s=snapshot();try{submit(reverseConnector(s.source,s.scene,s.object),s);}catch(error){status(error.message);}});
-  quick.append(ends.field,reconnectFrom,reconnectTo,reverse);toolbar.after(dock);dock.append(quick);
-  ends.select.onchange=()=>{const s=getState();try{submit(changeTermination(s.source,s.object,s.scene,ends.select.value),s);}catch(e){status(e.message);}};
-  const snap=element('input',{type:'checkbox',checked:''}),snapLabel=element('label');snapLabel.append(snap,' Snap resize to 0.1 in');optionsPanel.append(snapLabel);
-  const sizingBar=element('div',{'class':'canvas-sizing','aria-label':'Shape size'});
+  const snap=element('input',{type:'checkbox',id:'snap-resize',checked:''}),snapLabel=element('label');snapLabel.append(snap,' Snap resize to 0.1 in');toolbar.append(snapLabel);
+  // Sizing rows for the inspector: Text fit applies on click; Size applies on
+  // Enter or when focus leaves the pair, never per keystroke. The app places
+  // this group in the inspector; sync() keeps it truthful.
+  const sizing=element('div',{'class':'canvas-sizing',role:'group','aria-label':'Shape size'});
+  const row=(name,...items)=>{const r=element('div',{class:'inspector-row'}),n=element('span',{class:'row-name'});n.textContent=name;r.append(n,...items);return r;};
+  const fitGroup=element('div',{class:'cl-seg',role:'group','aria-label':'Text fit'});
+  const fitButtons=[['grow','Grow shape','The shape grows to fit its label'],['wrap','Wrap','The label wraps to the shape width; the height grows'],['fixed','Fixed','The size stays; the label may overflow']].map(([value,text,title])=>{const b=button(text,()=>fit(value));b.type='button';b.dataset.value=value;b.title=title;fitGroup.append(b);return b;});
+  const sizeWidth=element('input',{type:'number',min:'.1',max:'100',step:'.1','aria-label':'Shape width',inputmode:'decimal'}),sizeHeight=element('input',{type:'number',min:'.1',max:'100',step:'.1','aria-label':'Shape height',inputmode:'decimal'});
+  const times=element('span',{class:'cl-muted','aria-hidden':'true'});times.textContent='×';
+  const lockIcon=open=>{const svg=svgElement('svg',{viewBox:'0 0 24 24',width:18,height:18,'aria-hidden':'true',focusable:'false',fill:'none',stroke:'currentColor','stroke-width':'1.7','stroke-linecap':'round','stroke-linejoin':'round'});svg.append(svgElement('rect',{x:'5',y:'11',width:'14',height:'9',rx:'2'}),svgElement('path',{d:open?'M8 11V8a4 4 0 0 1 7.6-1.7':'M8 11V8a4 4 0 0 1 8 0v3'}));return svg;};
+  let locked=false;
+  const lock=element('button',{type:'button',class:'size-lock','aria-label':'Lock aspect ratio','aria-pressed':'false',title:'Keep the width-to-height ratio'});lock.append(lockIcon(true));
+  lock.onclick=()=>{locked=!locked;syncLock(getState().object);};
+  const syncLock=o=>{const on=locked||o?.kind==='circle';if(lock.getAttribute('aria-pressed')!==String(on)){lock.setAttribute('aria-pressed',String(on));lock.replaceChildren(lockIcon(!on));}lock.disabled=o?.kind==='circle';lock.title=lock.disabled?'A circle always keeps its ratio':'Keep the width-to-height ratio';};
+  const fields=element('div',{class:'size-fields'});fields.append(sizeWidth,times,sizeHeight,lock);
+  const sizeError=element('p',{class:'size-error',role:'alert'});sizeError.hidden=true;
   const sizeWarning=element('span',{'class':'size-warning','role':'status'});sizeWarning.hidden=true;
-  const sizeWidth=element('input',{type:'number',min:'.1',max:'100',step:'.1','aria-label':'Shape width'}),sizeHeight=element('input',{type:'number',min:'.1',max:'100',step:'.1','aria-label':'Shape height'});
-  const widthField=element('label'),heightField=element('label');widthField.append('Width (in) ',sizeWidth);heightField.append('Height (in) ',sizeHeight);
-  const sizePolicy=pick('Label behavior',[['grow','Grow to fit'],['wrap','Wrap to width'],['fixed','Fixed size']]);
-  const lock=element('input',{type:'checkbox','aria-label':'Lock aspect ratio'}),lockLabel=element('label');lockLabel.append(lock,' Lock ratio');
-  const applySize=button('Apply size',async()=>{const s=snapshot();try{const applied=await submit(await sizedCandidate(s,{width:Number(sizeWidth.value),height:Number(sizeHeight.value)},sizePolicy.select.value),s);if(applied){dock.classList.remove('context-expanded');contextToggle.setAttribute('aria-expanded','false');}}catch(error){status(error.message);}});
-  sizingBar.append(sizeWarning,widthField,heightField,sizePolicy.field,lockLabel,applySize);dock.append(sizingBar,emptyContext);
-  sizePolicy.select.onchange=()=>{const grow=sizePolicy.select.value==='grow';sizeWidth.disabled=grow;sizeHeight.disabled=grow||sizePolicy.select.value==='wrap';status(grow?'Grow computes the size from the label. Apply size to fit it.':sizePolicy.select.value==='wrap'?'Width is fixed; height grows to contain the wrapped label.':'Fixed size may overflow the label. Edit label to choose another policy.');};
-  sizeWidth.addEventListener('input',()=>{const o=getState().object;if(o&&(lock.checked||o.kind==='circle'))sizeHeight.value=(Number(sizeWidth.value)*o.bbox.height/o.bbox.width).toFixed(3);});
-  sizeHeight.addEventListener('input',()=>{const o=getState().object;if(o&&(lock.checked||o.kind==='circle'))sizeWidth.value=(Number(sizeHeight.value)*o.bbox.width/o.bbox.height).toFixed(3);});
+  sizing.append(row('Text fit',fitGroup),row('Size (in)',fields),sizeError,sizeWarning);
+  // typed: the object whose fields hold an unapplied (or rejected) value, so
+  // a sync never overwrites what the author is still correcting.
+  let typed=null,applying=false;
+  const fieldKey=s=>s.key+':'+s.object?.id;
+  const showError=text=>{sizeError.textContent=text||'';sizeError.hidden=!text;for(const f of [sizeWidth,sizeHeight])f.toggleAttribute('aria-invalid',!!text);};
+  const restoreSize=()=>{const o=getState().object;typed=null;showError('');if(o){sizeWidth.value=Number(o.bbox.width.toFixed(3));sizeHeight.value=Number(o.bbox.height.toFixed(3));}};
+  async function applySize(){
+    const s=snapshot(),o=s.object;if(applying||!s.valid||!o||sizing.hidden)return;
+    const width=Number(sizeWidth.value),height=Number(sizeHeight.value);
+    if(width===Number(o.bbox.width.toFixed(3))&&height===Number(o.bbox.height.toFixed(3))){restoreSize();return;}
+    applying=true;let reason='';
+    try{if(await submit(await sizedCandidate(s,{width,height}),s,text=>{reason=text;})){typed=null;showError('');}else showError(reason||'Size not applied.');}
+    catch(error){showError(error.message);status('Size not applied. '+error.message);}
+    finally{applying=false;}
+  }
+  async function fit(mode){
+    const s=snapshot(),o=s.object;if(!s.valid||!o){status('Render the current source before changing text fit.');return;}
+    restoreSize();
+    try{await submit(await sizedCandidate(s,{width:o.bbox.width,height:o.bbox.height},mode),s,showError);}catch(error){showError(error.message);status(error.message);}
+  }
+  for(const field of [sizeWidth,sizeHeight]){
+    field.addEventListener('keydown',e=>{
+      if(e.key==='Enter'){e.preventDefault();applySize();}
+      else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();restoreSize();}
+    });
+    // Moving between the two fields is still one edit; leaving the pair applies it.
+    field.addEventListener('blur',e=>{if(e.relatedTarget!==sizeWidth&&e.relatedTarget!==sizeHeight&&typed===fieldKey(snapshot()))applySize();});
+  }
+  sizeWidth.addEventListener('input',()=>{const o=getState().object;typed=fieldKey(snapshot());if(o&&(locked||o.kind==='circle'))sizeHeight.value=(Number(sizeWidth.value)*o.bbox.height/o.bbox.width).toFixed(3);});
+  sizeHeight.addEventListener('input',()=>{const o=getState().object;typed=fieldKey(snapshot());if(o&&(locked||o.kind==='circle'))sizeWidth.value=(Number(sizeHeight.value)*o.bbox.width/o.bbox.height).toFixed(3);});
 
   const dialog=element('dialog',{'class':'label-dialog','aria-labelledby':'canvas-label-title'});
   const heading=element('h2',{id:'canvas-label-title'});heading.textContent='Edit label';
@@ -85,7 +117,7 @@ export function canvasTools({host,toolbar,getState,render,propose,select,selectM
   for(const control of [input,policy.select,width])control.addEventListener('input',()=>{clearTimeout(timer);if(dialogSession){dialogSession.version++;dialogSession.candidate=null;}done.disabled=true;timer=setTimeout(previewText,180);widthLabel.hidden=policy.select.value!=='wrap';});
 
   function validSnapshot(s){const now=getState();return (s.toolEpoch===undefined||s.toolEpoch===epoch)&&now.valid&&now.key===s.key&&now.source===s.source;}
-  async function submit(option,s){if(!validSnapshot(s)){status('The document changed. Select the object again.');return false;}return propose(s.object,[option]);}
+  async function submit(option,s,reject){if(!validSnapshot(s)){status('The document changed. Select the object again.');reject?.('The document changed. Select the object again.');return false;}return propose(s.object,[option],{reject});}
   async function sizedCandidate(s,dimensions,mode=s.sizing?.mode||'fixed'){
     const original=s.sizing?.text??inspectProperties(s.source,s.object,s.scene).text;
     if(mode==='grow'){const result=await buildTextEdit(s.source,s.scene,s.object,{text:original,mode},render);return {...result,sizingPreference:{mode,text:original}};}
@@ -117,29 +149,22 @@ export function canvasTools({host,toolbar,getState,render,propose,select,selectM
     selectTool.setAttribute('aria-pressed',String(mode==='select'&&!panning));panTool.setAttribute('aria-pressed',String(panning));textTool.setAttribute('aria-pressed',String(mode==='place'&&kinds.select.value==='text'));
     place.setAttribute('aria-pressed',String(mode==='place'&&kinds.select.value!=='text'));connect.setAttribute('aria-pressed',String(mode==='connect'));
     marquee.setAttribute('aria-pressed',String(mode==='marquee'));
-    center.hidden=mode!=='place';cancelButton.hidden=mode==='select';
     kinds.field.hidden=mode!=='place'||kinds.select.value==='text';
     toolState.textContent=panning?'Pan':mode==='select'?'Select':mode==='marquee'?'Drag a selection area':mode==='connect'?(startShape?'Choose destination':'Choose first shape'):mode==='place'?'Place '+kinds.select.value:'Choose '+mode+' target';
     toolbar.dataset.mode=mode;host.dataset.tool=mode;
     neighbor.disabled=!s.valid||!o||arrow||!o.name;place.disabled=connect.disabled=!s.valid;
-    quick.hidden=!arrow;reconnectFrom.disabled=reconnectTo.disabled=!s.valid;
-    // Every dock control edits one object: sizing fields, the hint and the
-    // connector actions would silently act on the last-clicked member of a
-    // group, so the dock is shown only for a single selection.
-    dock.hidden=s.multiple;
-    if(arrow){try{ends.select.value=inspectProperties(s.source,o,s.scene).termination;ends.select.disabled=false;}catch{ends.select.disabled=true;}}
-    // Reconnecting needs an endpoint expression that can reference a shape;
-    // say so on the buttons instead of starting a pick that must be refused.
-    const endpoints=arrow&&!!connectorCapabilities({object:o,scene:s.scene,source:s.source})?.endpoints;
-    reconnectFrom.disabled=reconnectTo.disabled=!s.valid||!endpoints;
-    for(const b of [reconnectFrom,reconnectTo])b.title=endpoints?'':'This connector has no shape endpoint to reconnect. Edit it in source.';
+    // Sizing edits one object: with a group selected it would silently act on
+    // the last-clicked member, so it is offered only for a single selection.
     let resizable=false;if(s.valid&&o&&!s.multiple){try{resizeShape(s.source,s.scene,o,{width:o.bbox.width,height:o.bbox.height});resizable=true;}catch{}}
-    sizingBar.hidden=!resizable;
-    contextToggle.hidden=!resizable&&!arrow;contextToggle.textContent=resizable?'Size · '+Number(o.bbox.width.toFixed(2))+' × '+Number(o.bbox.height.toFixed(2))+' in':'Connector options';
-    emptyContext.hidden=resizable||arrow;
-    if(resizable){sizeWidth.value=Number(o.bbox.width.toFixed(3));sizeHeight.value=Number(o.bbox.height.toFixed(3));sizePolicy.select.querySelector('[value="wrap"]').disabled=o.kind!=='box';sizePolicy.select.value=s.sizing?.mode||'fixed';sizeWidth.disabled=sizePolicy.select.value==='grow';sizeHeight.disabled=sizePolicy.select.value!=='fixed';lock.disabled=o.kind==='circle';}
+    sizing.hidden=!resizable;
+    if(resizable){
+      const key=fieldKey(s),mode=s.sizing?.mode||'fixed';
+      if(typed!==key){typed=null;showError('');sizeWidth.value=Number(o.bbox.width.toFixed(3));sizeHeight.value=Number(o.bbox.height.toFixed(3));}
+      for(const b of fitButtons){b.setAttribute('aria-pressed',String(b.dataset.value===mode));b.disabled=b.dataset.value==='wrap'&&o.kind!=='box';}
+      fitButtons[1].title=o.kind==='box'?'The label wraps to the shape width; the height grows':'Only boxes wrap their label';
+      sizeWidth.disabled=mode==='grow';sizeHeight.disabled=mode!=='fixed';syncLock(o);
+    }
     sizeWarning.hidden=true;if(resizable){const a=drawPoint({x:o.bbox.x,y:o.bbox.y+o.bbox.height}),b=drawPoint({x:o.bbox.x+o.bbox.width,y:o.bbox.y});try{const overflow=[...host.querySelectorAll(`[data-pikchr-id="${o.id}"] text`)].some(text=>{const r=text.getBBox();return r.x<a.x-.5||r.y<a.y-.5||r.x+r.width>b.x+.5||r.y+r.height>b.y+.5;});if(overflow){sizeWarning.hidden=false;sizeWarning.textContent='Text exceeds shape: choose Grow or Wrap.';}}catch{}}
-    if(!sizeWarning.hidden)contextToggle.textContent+=' · Text overflows';
     drawHandles();
   }
   function drawHandles(){
@@ -159,7 +184,7 @@ export function canvasTools({host,toolbar,getState,render,propose,select,selectM
       handle.addEventListener('keydown',async e=>{
         const d={ArrowRight:[.1,0],ArrowLeft:[-.1,0],ArrowUp:[0,.1],ArrowDown:[0,-.1]}[e.key];if(!d)return;e.stopPropagation();e.preventDefault();
         const s2=snapshot();if(!s2.valid)return;
-        const r=resizeBox({box:o.bbox,handle:name,pointer:{x:at[name][0]+d[0],y:at[name][1]+d[1]},grid:0,ratio:o.kind==='circle'?1:lock.checked?o.bbox.width/o.bbox.height:null});
+        const r=resizeBox({box:o.bbox,handle:name,pointer:{x:at[name][0]+d[0],y:at[name][1]+d[1]},grid:0,ratio:o.kind==='circle'?1:locked?o.bbox.width/o.bbox.height:null});
         try{await submit(await sizedCandidate(s2,{width:r.width,height:r.height,center:r.center},dragPolicy(s2,name)),s2);}catch(error){status(error.message);}
       });
       return handle;
@@ -196,7 +221,7 @@ export function canvasTools({host,toolbar,getState,render,propose,select,selectM
     // Opposite side stays fixed; Shift keeps the aspect ratio, Alt resizes
     // from the center. Moving edges snap to other shapes, else to the grid.
     const others=s.scene.objects.filter(n=>n.id!==o.id&&n.bbox&&!['arrow','line','spline','arc','move'].includes(n.kind));
-    const ratio=o.kind==='circle'?1:(e.shiftKey||lock.checked)?b.width/b.height:null;
+    const ratio=o.kind==='circle'?1:(e.shiftKey||locked)?b.width/b.height:null;
     const r=resizeBox({box:b,handle,pointer:p,ratio,fromCenter:e.altKey,others:snap.checked?others:[],grid:snap.checked?.05:0});
     const w=r.width,h=r.height;
     resize.dimensions={width:w,height:h,center:r.center};
@@ -239,7 +264,7 @@ export function canvasTools({host,toolbar,getState,render,propose,select,selectM
   },true);
   host.addEventListener('pointercancel',()=>cancel(false));
   host.addEventListener('lostpointercapture',()=>{if(resize){resize=null;liveClear?.();host.querySelectorAll('.canvas-preview').forEach(node=>node.remove());sync();}});
-  host.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();cancel();}else if(e.key==='Enter'&&mode==='select'&&!e.target.closest('[data-resize]')){e.preventDefault();editText();}},true);
+  host.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();const idle=mode==='select'&&!resize&&!pending&&!dialogSession;cancel();if(idle)clearSelection?.();}else if(e.key==='Enter'&&mode==='select'&&!e.target.closest('[data-resize]')){e.preventDefault();editText();}},true);
   window.addEventListener('blur',()=>{if(resize||pending)cancel(false);});
 
   function editText(){
@@ -277,5 +302,5 @@ export function canvasTools({host,toolbar,getState,render,propose,select,selectM
   function closeText(){clearTimeout(timer);const session=dialogSession;if(!session)return;dialogSession=null;dialog.close();if(validSnapshot(session.s))host.innerHTML=session.original;host.focus({preventScroll:true});getState().rebind?.();sync();}
   async function finishText(){const session=dialogSession;if(!session?.candidate||done.disabled)return;const candidate=session.candidate;closeText();await submit(candidate,session.s);host.focus({preventScroll:true});}
   sync();
-  return {sync,cancel,editText,reconnect:which=>{closeInspector();setMode(which==='start'?'from':'to');},ownsPointer:()=>mode!=='select'||!!dialogSession,busy:()=>!!dialogSession};
+  return {sync,cancel,editText,sizing,reconnect:which=>reconnectStart(which==='start'?'from':'to'),ownsPointer:()=>mode!=='select'||!!dialogSession,busy:()=>!!dialogSession};
 }

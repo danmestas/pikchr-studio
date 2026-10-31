@@ -1,6 +1,6 @@
-import {routeCandidates,moveVertexCandidates,bendCandidates} from './edits.js?v=20260923c';
-import {routeStyleCandidates,connectorState,strokeCandidates,weightCandidates,colourCandidates,chopCandidates,labelCandidates,checkStyleResult,thumbnailBox,routeColours} from './route-styles.js?v=20260923c';
-import {lockDirection} from './constrain.js?v=20260923c';
+import {routeCandidates,moveVertexCandidates,bendCandidates} from './edits.js?v=20261031a';
+import {suggestedRoutes,connectorState,strokeCandidates,weightCandidates,colourCandidates,chopCandidates,labelCandidates,checkStyleResult,thumbnailBox,routeColours} from './route-styles.js?v=20261031a';
+import {lockDirection} from './constrain.js?v=20261031a';
 const ns='http://www.w3.org/2000/svg';
 const el=(tag,attrs)=>{const e=document.createElementNS(ns,tag);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,v);return e;};
 export function routeEditor({object,scene,source,svg,layer,propose,status,valid,clear,autoApply=()=>document.querySelector('#auto-apply')?.checked!==false}){
@@ -165,20 +165,27 @@ function thumbnail(option,objectId){
   svg.setAttribute('preserveAspectRatio','xMidYMid meet');svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');
   svg.classList.add('route-style-thumb');return svg;
 }
+// Two parts: the collapsed Suggested routes gallery (route shapes only, with a
+// count) and the style controls the inspector's Style section holds.
+let routesOpen=false;
 export function routeStyleGallery({object,scene,source,render,preview,accept,discard,status,valid}){
-  const section=document.createElement('section');section.className='route-styles';
+  const routes=document.createElement('details');routes.className='inspector-routes';routes.open=routesOpen;
+  routes.ontoggle=()=>{if(routes.isConnected)routesOpen=routes.open;};
   const headingId='route-styles-'+object.id;
-  const heading=document.createElement('h4');heading.id=headingId;heading.textContent='Route styles';
+  const summary=document.createElement('summary');summary.id=headingId;summary.append('Suggested routes ');
+  const count=document.createElement('span');count.className='cl-count';summary.append(count);
+  const section=document.createElement('section');section.className='route-styles';
   const hint=document.createElement('p');hint.className='route-style-hint';
-  hint.textContent='Each style is a Pikchr edit rendered before you see it. Choose one to preview; Enter or Accept applies it, Escape keeps the original, [ and ] cycle.';
+  hint.textContent='Each route is a Pikchr edit rendered before you see it. Choose one to preview; Enter or Accept applies it, Escape keeps the original, [ and ] cycle.';
   const list=document.createElement('div');list.className='route-style-gallery';
   list.setAttribute('role','listbox');list.setAttribute('aria-labelledby',headingId);list.setAttribute('aria-orientation','horizontal');
   const note=document.createElement('p');note.className='route-style-status';
-  section.append(heading,hint,list,note);
+  section.append(hint,list,note);routes.append(summary,section);
+  const style=document.createElement('div');style.className='route-style-controls';
   const state=connectorState(source,object,scene);
-  const {options,unavailable,reason}=routeStyleCandidates(source,object,scene);
-  section.dataset.state=state?'ready':'none';
-  if(!state){note.textContent=reason;list.hidden=true;return section;}
+  const {options,unavailable,reason}=suggestedRoutes(source,object,scene);
+  const parts={routes,style,ready:!!state};
+  if(!state){note.textContent=reason;list.hidden=true;routes.hidden=true;return parts;}
   const ctx={object,scene,render,valid};
   let shown=[],active=-1;
   const mark=i=>{active=i;shown.forEach((b,j)=>{b.setAttribute('aria-selected',String(j===i));b.tabIndex=j===(i<0?0:i)?0:-1;});};
@@ -192,10 +199,11 @@ export function routeStyleGallery({object,scene,source,render,preview,accept,dis
     if(!checked.good.length){status('Style not applied. '+(checked.rejected[0]?.problem||'Pikchr rejected it.'));return;}
     preview(checked.good,Math.min(index,checked.good.length-1),{onIndex:group?i=>mark(i):()=>mark(-1)});
   };
-  // Gallery: every shape, corner, arrowhead, bend, detour and loop option.
-  if(!options.length){list.hidden=true;note.textContent='No route styles apply to this connector.';}
+  // Gallery: every shape, corner, bend, detour and loop option.
+  count.textContent=String(options.length);
+  if(!options.length){list.hidden=true;routes.hidden=true;note.textContent='No suggested routes apply to this connector.';}
   else{
-    note.textContent='Rendering '+options.length+' styles…';
+    note.textContent='Rendering '+options.length+' routes…';
     validateAll(source+'\u0000'+object.id+'\u0000'+options.map(c=>c.id).join(','),options,ctx).then(checked=>{
       if(!checked||!section.isConnected)return;
       list.replaceChildren();
@@ -212,7 +220,8 @@ export function routeStyleGallery({object,scene,source,render,preview,accept,dis
       // Transfer only that pending focus; never steal it back from another control.
       if(document.activeElement===section)shown[0]?.focus({preventScroll:true});
       const hidden=[...unavailable,...checked.rejected];
-      note.textContent=(shown.length?shown.length+' styles.':'No style rendered cleanly.')+(hidden.length?' Not offered: '+hidden.map(h=>h.label).join(', ')+'. '+(hidden[0].reason||hidden[0].problem):'');
+      count.textContent=String(shown.length);
+      note.textContent=(shown.length?shown.length+(shown.length===1?' route.':' routes.'):'No route rendered cleanly.')+(hidden.length?' Not offered: '+hidden.map(h=>h.label).join(', ')+'. '+(hidden[0].reason||hidden[0].problem):'');
     });
   }
   list.onkeydown=e=>{
@@ -261,6 +270,6 @@ export function routeStyleGallery({object,scene,source,render,preview,accept,dis
   form.onsubmit=e=>{e.preventDefault();if(!text.value.trim()){status('Type a label first, or use Remove label.');return;}run(labelCandidates(source,object,scene,{text:text.value,placement:place.value}));};
   remove.onclick=()=>run(labelCandidates(source,object,scene,{text:''}));
   if(!state.labelEditable){for(const el of [text,place,apply,remove])el.disabled=true;const why=document.createElement('p');why.className='route-style-hint';why.textContent='This connector has several labels; edit them in source.';form.append(why);}
-  section.append(chips,form);
-  return section;
+  style.append(chips,form);
+  return parts;
 }

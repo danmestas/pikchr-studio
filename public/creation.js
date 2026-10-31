@@ -1,6 +1,6 @@
-import { applyPatch, byteOffsetToIndex, editability, safeAttributes } from './edits.js?v=20260923c';
-import {encodeLabel} from './properties.js?v=20260923c';
-import {duplicateObject} from './object-actions.js?v=20260923c';
+import { applyPatch, byteOffsetToIndex, editability, safeAttributes } from './edits.js?v=20261031a';
+import {encodeLabel} from './properties.js?v=20261031a';
+import {duplicateObject} from './object-actions.js?v=20261031a';
 
 const encoder = new TextEncoder();
 const bytes = text => encoder.encode(text).length;
