@@ -43,7 +43,10 @@ test('editing is reported only when blocked, in plain words',()=>{
   assert.match(editingBlocked({kind:'box',name:'',editable:false,reason:'Only supported named native shapes have movement suggestions'},null),/^Moving is blocked: this shape has no name/);
   assert.match(editingBlocked({kind:'file',name:'F',editable:false,reason:'Only supported named native shapes have movement suggestions'},null),/^Editing is blocked: .*file/);
   assert.match(editingBlocked({kind:'box',name:'H',editable:false,reason:'Nested object'},null),/^Editing is blocked: this object is inside a \[ \] block/);
-  assert.match(editingBlocked({kind:'box',name:'M',editable:false,reason:'Macro-expanded object'},null),/Its source may be shared by other instances/);
+  // Same advice as a blocked drag: Detach from macro, not "inspect the generating source".
+  const macro=editingBlocked({kind:'box',name:'M',editable:false,reason:'Macro-expanded object'},null);
+  assert.match(macro,/^Editing is blocked: this shape comes from a macro\b.*Choose Detach from macro to edit it on its own\.$/);
+  assert.doesNotMatch(macro,/generating source/);
 });
 
 test('suggested routes are route candidates only; arrowheads belong to Heads',async()=>{

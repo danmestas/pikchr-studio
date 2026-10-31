@@ -24,16 +24,15 @@ def rendered(page):
 
 
 def sheet_inside(page, width, height):
+    """The phone inspector is a bottom sheet: full width, flush with the bottom, about 45% tall."""
     box = page.locator(".cl-more").bounding_box()
-    assert box["x"] >= 15.5 and box["x"] + box["width"] <= width - 15.5, box
-    assert box["y"] >= 0 and box["y"] + box["height"] <= height, box
-    assert box["height"] < height * .65, box
+    assert abs(box["x"]) < .5 and abs(box["x"] + box["width"] - width) < .5, box
+    assert abs(box["y"] + box["height"] - height) < .5, box
+    assert abs(box["height"] - height * .45) < 2, box
     return box
 
 
 def open_objects(page):
-    page.locator(".cl-doc [aria-label='Menu']").click()
-    expect(page.locator(".cl-menu")).to_be_visible()
     page.locator("#mobile-objects").click()
     expect(page.locator(".cl-view-objects")).to_be_visible()
 
@@ -65,7 +64,7 @@ def inspect_macro_source(page):
     page.locator("#object-search").fill("Generated box")
     expect(page.locator("#objects button:visible")).to_have_count(2)
     page.locator("#objects button:visible").first.click()
-    expect(page.locator("#inspector")).to_contain_text("Its source may be shared by other instances")
+    expect(page.locator("#inspector")).to_contain_text("This shape comes from the macro tile, which other shapes may share. Detach it to edit it on its own.")
     advanced = page.locator("details.inspector-advanced")
     assert advanced.get_attribute("open") is None
     expect(page.get_by_role("button", name="Inspect generating source", exact=True)).to_be_visible()
@@ -119,10 +118,50 @@ with sync_playwright() as pw:
         # Common tasks have stable sections and keep the original controls.
         page.locator(".cl-doc [aria-label='Menu']").click()
         headings = page.locator(".cl-menu > section > h3").all_text_contents()
-        assert headings == ["Document", "Add", "Selection", "View", "Changes", "Advanced", "About"], headings
-        assert page.locator("#documents").is_visible()
-        assert page.locator("#mobile-add").locator("xpath=ancestor::section").get_attribute("aria-label") == "Add"
-        assert page.locator("#mobile-objects").locator("xpath=ancestor::section").get_attribute("aria-label") == "Selection"
+        assert headings == ["Document", "Preferences", "Advanced"], headings
+        assert page.locator(".cl-menu > section").last.get_attribute("aria-label") == "About"
+        menu = page.locator(".cl-menu")
+        # Document: New, Open file, Examples on one row; recent documents instead of a select.
+        row = menu.locator(".cl-section").first.locator(".cl-row").first
+        assert row.locator("button").all_inner_texts() == ["New", "Open file\u2026", "Examples\u2026"], row.inner_text()
+        assert page.locator("#documents").evaluate("e=>!!e.closest('.cl-offstage')"), "the Saved documents select is off-stage"
+        current = menu.locator(".cl-recent button[aria-current=true]")
+        expect(current).to_have_count(1)
+        assert re.search(r"just now|min ago", current.inner_text()), current.inner_text()
+        assert menu.get_by_text("Saved on this browser").count() == 0 or not menu.get_by_text("Saved on this browser").first.is_visible()
+        # Preferences: four checkboxes, Snap resize moved out of Tool options.
+        prefs = menu.locator("section[aria-label=Preferences] label").all_inner_texts()
+        assert [t.strip() for t in prefs] == ["Show anchors", "Apply accepted changes immediately", "Snap resize to 0.1 in", "Advanced tools"], prefs
+        assert menu.locator("section[aria-label=Preferences] #auto-apply").count() == 1
+        # Advanced items need Advanced tools; footer is one row of links plus the credit line.
+        assert menu.locator("section[aria-label=Advanced]").is_hidden()
+        footer = menu.locator("section[aria-label=About]")
+        assert footer.locator(".cl-footer-links a, .cl-footer-links button").all_inner_texts() == ["How it works", "Shortcuts", "Licenses", "Source"]
+        assert footer.get_by_role("link", name="Source").get_attribute("href") == "https://zeitforge.app/r/dmestas/pikchr-studio"
+        assert "github" not in footer.inner_html().lower()
+        assert footer.locator("p").inner_text() == "Rendered by Pikchr, 0BSD."
+        assert footer.locator("p a").get_attribute("href") == "https://pikchr.org"
+        for gone in ("#multi-select", "#clear-selection", "#mobile-objects", "#focus-selection", "#mobile-add", "#accept", "#undo-draft"):
+            assert menu.locator(gone).count() == 0, gone + " left the menu"
+        # The menu never scrolls at 1440x900, with or without Advanced tools.
+        def no_scroll(label):
+            fits = page.evaluate("(()=>{const m=document.querySelector('.cl-menu');return [m.scrollHeight,m.clientHeight]})()")
+            assert fits[0] <= fits[1], (label, "menu scrolls", fits)
+        no_scroll("basic")
+        page.locator("#advanced-mode").check()
+        expect(menu.locator("section[aria-label=Advanced]")).to_be_visible()
+        assert menu.locator("section[aria-label=Advanced] button").all_inner_texts() == ["Components\u2026", "Back up documents\u2026", "Restore\u2026"]
+        no_scroll("advanced")
+        page.locator("#advanced-mode").uncheck()
+        # Shortcuts in the footer opens the panel with the three groups.
+        footer.get_by_role("button", name="Shortcuts").click()
+        help_panel = page.locator(".cl-help")
+        expect(help_panel).to_be_visible()
+        expect(menu).to_be_hidden()
+        assert help_panel.locator("h3").evaluate_all("hs=>hs.map(h=>h.textContent)") == ["Tools", "Editing", "View"]
+        assert help_panel.locator(".canvas-help").count() == 0
+        text = help_panel.text_content()
+        assert "V  M  H" in text and "B  C  D  R  T" in text and "Find object" in text
         close_popovers(page)
 
         # Search includes names, rendered labels, kinds and connector endpoints.
@@ -240,7 +279,7 @@ with sync_playwright() as pw:
                 if device == "phone":
                     sheet_inside(sample, width, height)
                     gb = grid.bounding_box()
-                    assert gb["x"] >= 15.5 and gb["x"] + gb["width"] <= width - 15.5, gb
+                    assert gb["x"] >= 13.5 and gb["x"] + gb["width"] <= width - 13.5, gb
                 assert not sample.evaluate("document.documentElement.scrollWidth>innerWidth")
                 screenshot(sample, device + "-" + theme + "-connector")
                 sample.keyboard.press("Escape")

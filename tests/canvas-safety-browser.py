@@ -27,7 +27,7 @@ with sync_playwright() as pw:
     after=diagram.bounding_box()
     assert abs(before['y']-after['y'])<1, (before,after)
 
-    open_document_menu(page);page.get_by_role('button',name='Select area',exact=True).click()
+    page.get_by_role('toolbar',name='Tools').get_by_role('button',name='Select area',exact=True).click()
     boxes=[page.locator(f'#diagram [data-pikchr-id="o{i}"]').bounding_box() for i in [1,2,3]]
     x=min(b['x'] for b in boxes)-5;y=min(b['y'] for b in boxes)-5
     right=max(b['x']+b['width'] for b in boxes)+5;bottom=max(b['y']+b['height'] for b in boxes)+5

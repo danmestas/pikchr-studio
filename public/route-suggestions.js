@@ -1,4 +1,4 @@
-import { routeCandidates, applyPatch } from './edits.js?v=20260923c';
+import { routeCandidates, applyPatch } from './edits.js?v=20261031a';
 
 const directions = { e: [1, 0], w: [-1, 0], n: [0, 1], s: [0, -1] };
 const epsilon = 1e-8;

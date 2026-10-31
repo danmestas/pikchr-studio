@@ -1,5 +1,5 @@
-import {inspectProperties} from './properties.js?v=20260923c';
-import {changeAppearance} from './object-actions.js?v=20260923c';
+import {inspectProperties} from './properties.js?v=20261031a';
+import {changeAppearance} from './object-actions.js?v=20261031a';
 let appearanceOpen=false;
 // The inspector's Label row, Style section and error line, for the caller to
 // place in order. Connector style controls join Style through its slot.

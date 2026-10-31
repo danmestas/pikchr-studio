@@ -26,8 +26,8 @@
 <meta name="twitter:title" content="Pikchr Studio">
 <meta name="twitter:description" content="Draw and edit Pikchr diagrams on a canvas. Every drag, resize and connection becomes a clean Pikchr source edit you can read, diff and keep.">
 <meta name="twitter:image" content="https://pikchr-studio.daniel-mestas.workers.dev/og-image.png">
-<link rel="stylesheet" href="style.css?v=20260923c">
-<link rel="stylesheet" href="canvas-layout.css?v=20260923c">
+<link rel="stylesheet" href="style.css?v=20261031a">
+<link rel="stylesheet" href="canvas-layout.css?v=20261031a">
 </head>
 <body class="layout-canvas">
 <noscript><div class="noscript">Pikchr Studio needs JavaScript and WebAssembly to render and edit diagrams. Enable JavaScript and reload the page.</div></noscript>
@@ -36,9 +36,10 @@
 <button id="new-document">New diagram</button><button id="open-document">Open file</button><input id="file-input" type="file" accept=".pikchr,.txt" hidden>
 <label>Saved documents <select id="documents" aria-label="Saved documents"><option>Current diagram</option></select></label>
 <button id="render" title="Source renders automatically as you type; use this if a render was interrupted">Render</button><button id="undo" disabled>Undo</button><button id="redo" disabled>Redo</button>
-<button id="download">Download source</button>
-<button id="export-svg">Download SVG</button><span id="save-state" role="status">Not saved yet</span>
-<button id="export-png">Download PNG</button><button id="export-selection">Download selection region SVG</button>
+<button id="download">Source (.pikchr)</button>
+<button id="export-svg">SVG</button><span id="save-state" role="status">Not saved yet</span>
+<button id="export-png">PNG</button><label><input id="selection-only" type="checkbox" disabled> Selection only</label>
+<button id="copy-link">Copy share link</button><button id="copy-source">Copy Pikchr source</button><button id="copy-svg">Copy SVG</button>
 <button id="backup-workspace">Backup documents</button><button id="restore-workspace">Restore document copies</button><input id="backup-input" type="file" accept=".json" hidden>
 <span id="state">Loading Pikchr…</span>
 </nav></details>
@@ -61,7 +62,7 @@
 <button id="duplicate-selected" disabled>Duplicate</button>
 <button id="delete-selected" disabled>Delete</button>
 <button id="show-source-selected" disabled>Show source</button>
-<button id="multi-select" aria-pressed="false">Select multiple</button><button id="clear-selection">Clear</button>
+<button id="multi-select" aria-pressed="false">Select multiple</button><button id="clear-selection" disabled>Clear</button>
 <span class="move-selection" aria-label="Move selected objects"><button id="move-left" aria-label="Move selection left">←</button><button id="move-right" aria-label="Move selection right">→</button><button id="move-up" aria-label="Move selection up">↑</button><button id="move-down" aria-label="Move selection down">↓</button></span>
 <label class="arrange-selection">Arrange <select id="layout-mode" aria-label="Arrange selected objects"><option value="align-x">Align centers vertically</option><option value="align-y">Align centers horizontally</option><option value="equal-width">Equal width</option><option value="equal-height">Equal height</option><option value="distribute-x">Distribute horizontally</option><option value="distribute-y">Distribute vertically</option></select></label><button id="arrange" disabled>Arrange</button>
 </div>
@@ -83,7 +84,6 @@
 <div id="creation-tools" aria-label="Add objects"></div>
 <details class="component-tools"><summary>Reusable components</summary><p>Stored on this browser, separately from document backups.</p><label>Name <input id="component-name" maxlength="80" placeholder="Three-step flow"></label><button id="save-component" disabled>Save selection</button><label>Components <select id="components"></select></label><button id="insert-component" disabled>Insert component</button></details>
 <p class="navigation-hint">Drag empty canvas to pan · Pinch with two fingers to zoom · Space-drag to pan over shapes</p>
-<details class="canvas-help"><summary>Canvas gestures &amp; shortcuts</summary><p>Drag empty canvas to pan. Two fingers pan and pinch to zoom. Mouse wheel/trackpad scroll pans; Ctrl/⌘ + scroll zooms at the pointer. Hold Space or use the middle mouse button to pan over shapes.</p><p>Ctrl/⌘ Z: Undo · Ctrl/⌘ Shift Z (or Ctrl Y): Redo · Ctrl/⌘ D: Duplicate · Ctrl/⌘ A: Select movable shapes · Delete: Remove selection · Escape: Cancel drag / clear selection.</p><p>When the canvas is focused: + / − zoom · 0 / 1 fit diagram · F focus selection · Arrow keys move 0.1 inch, Shift moves 1 inch, Alt moves 0.01 inch. Text fields keep their normal shortcuts. Navigation does not change your source or undo history.</p></details>
 <p class="hint">Drag a shape to preview ranked source edits. Accepted changes queue here; Apply all commits them, Discard all restores the original.</p>
 <p id="impact"></p>
 </section>
@@ -103,6 +103,6 @@
 <div class="example-actions"><a data-guide hidden>Read the Gitflow guide</a><button data-use disabled>Open a copy</button></div>
 </dialog>
 <footer>Ordinary Pikchr source stays editable. Geometry comes from the local WebAssembly renderer.</footer>
-<script type="module" src="app.js?v=20260923c"></script>
-<script type="module" src="canvas-layout.js?v=20260923c"></script>
+<script type="module" src="app.js?v=20261031a"></script>
+<script type="module" src="canvas-layout.js?v=20261031a"></script>
 </body></html>

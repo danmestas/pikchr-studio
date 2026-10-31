@@ -14,7 +14,7 @@ def deadline(*_):
 
 signal.signal(signal.SIGALRM, deadline)
 signal.alarm(300)
-from browser_helpers import (object_button, open_document_menu, close_popovers, open_more,
+from browser_helpers import (select_multiple, clear_selection, object_button, open_document_menu, close_popovers, open_more,
                              reveal, set_source, show_source, hide_source)
 from playwright.sync_api import sync_playwright, expect
 
@@ -80,15 +80,13 @@ with sync_playwright() as pw:
 
     def reset_selection():
         """Clear ends both the selection and multiple-select mode."""
-        reveal(page, "#clear-selection").click()
+        clear_selection(page)
         page.wait_for_function("document.querySelector('#selection-count').textContent==='No selection'")
 
     def select_group(*names):
         """Clear, turn on Select multiple from ☰, then tap each named shape."""
         reset_selection()
-        open_document_menu(page)
-        page.locator(".cl-menu #multi-select").click()
-        close_popovers(page)
+        select_multiple(page)
         for name in names:
             click(name)
         page.wait_for_function("count => document.body.classList.contains('has-multiple') && pikchrStudio.state().selectedIds.length === count", arg=len(names))
@@ -170,9 +168,7 @@ with sync_playwright() as pw:
     set_source(page, nested)
     rendered()
     reset_selection()
-    open_document_menu(page)
-    page.locator(".cl-menu #multi-select").click()
-    close_popovers(page)
+    select_multiple(page)
     object_button(page, "A").click()
     object_button(page, "N").click()
     page.wait_for_function("pikchrStudio.state().selectedIds.length === 2")
@@ -194,9 +190,7 @@ with sync_playwright() as pw:
     set_source(page, mixed_names)
     rendered()
     reset_selection()
-    open_document_menu(page)
-    page.locator(".cl-menu #multi-select").click()
-    close_popovers(page)
+    select_multiple(page)
     object_button(page, "A").click()
     object_button(page, "box o2").click()
     object_button(page, "B").click()
@@ -222,9 +216,7 @@ with sync_playwright() as pw:
     set_source(page, anonymous)
     rendered()
     reset_selection()
-    open_document_menu(page)
-    page.locator(".cl-menu #multi-select").click()
-    close_popovers(page)
+    select_multiple(page)
     object_button(page, "box o1").click()
     object_button(page, "box o2").click()
     page.wait_for_function("pikchrStudio.state().selectedIds.length === 2")
@@ -287,9 +279,7 @@ with sync_playwright() as pw:
     set_source(page, curves)
     rendered()
     reset_selection()
-    open_document_menu(page)
-    page.locator(".cl-menu #multi-select").click()
-    close_popovers(page)
+    select_multiple(page)
     object_button(page, "A").click()
     object_button(page, "S").click()
     object_button(page, "R").click()

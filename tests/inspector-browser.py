@@ -165,6 +165,30 @@ with sync_playwright() as pw:
     expect(page.locator(".cl-more")).to_be_visible()
     assert source(page) == before
 
+    # A size inside 0.1-100 that Pikchr itself rejects (the program asserts the
+    # width) comes back through the validation path and is explained the same way.
+    close_popovers(page)
+    asserted = 'Client: box "Client" at (0,0)\nassert(Client.wid == 0.75)\n'
+    set_source(page, asserted)
+    object_button(page, "Client").click()
+    open_more(page)
+    width = page.get_by_label("Shape width", exact=True)
+    expect(width).to_have_value("0.75")
+    width.fill("1.5")
+    width.press("Enter")
+    error = page.locator(".cl-more .size-error")
+    expect(error).to_be_visible()
+    expect(error).to_contain_text("1.5 != 0.75")
+    expect(width).to_have_value("1.5")
+    expect(width).to_have_attribute("aria-invalid", "")
+    assert source(page) == asserted and page.evaluate("pikchrStudio.state().queued") == 0
+    width.press("Escape")
+    expect(error).to_be_hidden()
+    close_popovers(page)
+    set_source(page, before)
+    object_button(page, "Client").click()
+    open_more(page)
+
     # Shape segments: the current kind is pressed; another is one edit.
     shapes = inspector.get_by_role("group", name="Shape type", exact=True)
     expect(shapes.get_by_role("button")).to_have_text(["Box", "Circle", "Cylinder", "Diamond"])

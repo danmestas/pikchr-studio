@@ -76,10 +76,13 @@ server works; the app is plain HTML, ES modules, and a Web Worker.
 
 ## Interface
 
-One full-window canvas with floating controls: ☰ (documents, examples, view,
-queued changes, tools), `</>` (the source drawer), ⤓ (export), a tool palette,
+One full-window canvas with floating controls: ☰ (documents, preferences,
+advanced tools), `</>` (the source drawer), ⤓ (export), a tool palette,
 a status chip, and undo/zoom chips. Selecting an object shows a toolbar above
-it whose ⋯ opens the inspector. `public/help.html` describes every gesture.
+it whose ⋯ opens the inspector (a bottom sheet on phones). ⤓ offers Copy
+(share link, Pikchr source, SVG) and Download (SVG, PNG, source), with a
+"Selection only" switch for the SVG and PNG items. A share link carries the
+source in the `#z=` fragment. `public/help.html` describes every gesture.
 The controls are declared in `index.html`; `canvas-layout.js` arranges them
 into the floating chrome.
 

@@ -4,7 +4,7 @@ import re
 import struct
 import tempfile
 from pathlib import Path
-from browser_helpers import show_source, reveal, set_source, set_auto_apply, open_document_menu, object_button
+from browser_helpers import show_source, reveal, set_selection_only, set_source, set_auto_apply, open_document_menu, object_button, open_components
 from playwright.sync_api import sync_playwright, expect
 import os
 STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
@@ -78,12 +78,13 @@ with sync_playwright() as pw, tempfile.TemporaryDirectory(prefix="pikchr-reuse-t
 
     select("A")
     select("B", additive=True)
-    open_details(".component-tools")
+    open_components(page)
     reveal(page, "#component-name").fill("Start and finish")
     reveal(page, "#save-component").click()
     expect(page.locator("#components option")).to_have_count(1)
     expect(page.locator("#components option")).to_have_text("Start and finish")
     reveal(page, "#insert-component").click()
+    page.locator("#components-dialog").get_by_role("button", name="Close", exact=True).click()
     expect(page.locator("#objects button")).to_have_count(7)
     assert 'O2: arrow "flow" from A2.e to B2.w' in source.input_value()
     reveal(page, "#canvas-undo").click()
@@ -100,8 +101,10 @@ with sync_playwright() as pw, tempfile.TemporaryDirectory(prefix="pikchr-reuse-t
     width, height = struct.unpack(">II", png[16:24])
     assert width > 0 and height > 0
     select("A")
+    set_selection_only(page, True)
     with page.expect_download() as svg_event:
-        reveal(page, "#export-selection").click()
+        reveal(page, "#export-svg").click()
+    assert svg_event.value.suggested_filename == "selection.svg"
     svg_path = Path(directory) / "selection.svg"
     svg_event.value.save_as(svg_path)
     svg = svg_path.read_text()

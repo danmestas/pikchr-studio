@@ -24,8 +24,14 @@ with sync_playwright() as pw:
     source.press('Control+Enter')
     page.wait_for_function("document.querySelector('#embed-output').textContent.includes('Recovered')")
     assert page.locator('#embed-error').inner_text() == ''
+    # The embed page takes its source only from its own textarea. A URL cannot supply one,
+    # which is why Studio's Export menu offers no embed-code snippet.
+    for suffix in ("?source=box%20%22FromQuery%22", "#z=SsqvUFAqLE0sKqpUslZILCrKL7dWAAsWl5SmZOYrKaRl5uQoGFSkWqQZpBgBBgA"):
+        page.goto(STUDIO + "/embed.html" + suffix)
+        page.wait_for_function("document.querySelector('#embed-state').textContent === 'Rendered 3 objects.'")
+        assert "FromQuery" not in page.locator('#embed-source').input_value() and "quarry" not in page.locator('#embed-source').input_value()
     page.set_viewport_size({"width":390,"height":844})
     assert not page.evaluate('document.documentElement.scrollWidth > innerWidth')
     assert not errors, errors
     browser.close()
-    print('PASS: embed valid render, stale marking, native error, last output retention, keyboard recovery, Unicode, mobile')
+    print('PASS: embed valid render, stale marking, native error, last output retention, keyboard recovery, Unicode, no source from URL, mobile')

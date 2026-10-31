@@ -1,4 +1,4 @@
-import {createShape,createConnector,changeShape,connectableShapes,repeatPosition,repeatShape} from './creation.js?v=20260923c';
+import {createShape,createConnector,changeShape,connectableShapes,repeatPosition,repeatShape} from './creation.js?v=20261031a';
 const kinds=['box','circle','ellipse','oval','cylinder','diamond','text'];
 const creationState={kind:'box',label:'New shape',fit:true,width:'',height:'',fill:'none',color:'black',thickness:'',shapeOpen:false,styleOpen:false,connectorOpen:false,fromAnchor:'e',toAnchor:'w',connector:'arrow',repeat:false,dx:'0',dy:'-1',lastName:null,pending:null,includeText:false};
 const anchors=['c','n','ne','e','se','s','sw','w','nw'];
