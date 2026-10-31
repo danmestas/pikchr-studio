@@ -58,6 +58,52 @@ def screenshot(page, name):
         page.screenshot(path=str(Path(SHOTS) / (name + ".png")))
 
 
+def inspect_macro_source(page):
+    macro_source = 'define tile { box "Generated" }\ntile\ntile\nN: box "Native" at (3,0)\n'
+    set_source(page, macro_source)
+    open_objects(page)
+    page.locator("#object-search").fill("Generated box")
+    expect(page.locator("#objects button:visible")).to_have_count(2)
+    page.locator("#objects button:visible").first.click()
+    expect(page.locator("#inspector")).to_contain_text("Its source may be shared by other instances")
+    advanced = page.locator("details.inspector-advanced")
+    assert advanced.get_attribute("open") is None
+    expect(page.get_by_role("button", name="Inspect generating source", exact=True)).to_be_visible()
+    width, height = page.viewport_size["width"], page.viewport_size["height"]
+    if width < 600:
+        sheet_inside(page, width, height)
+    theme = "dark" if page.evaluate("document.body.classList.contains('cl-dark')") else "light"
+    screenshot(page, str(width) + "-" + theme + "-macro")
+    selected_id = page.evaluate("pikchrStudio.state().object.id")
+    for control in ("#delete-selected", "#duplicate-selected"):
+        page.locator(control).click()
+        expect(page.locator("#state")).to_contain_text("read-only")
+        assert page.locator("#source").input_value() == macro_source
+        assert page.evaluate("pikchrStudio.state().selectedIds") == [selected_id]
+        assert page.evaluate("pikchrStudio.state().queued") == 0
+    open_more(page)
+    span = page.evaluate("pikchrStudio.state().object.span")
+    generating_source = macro_source.encode("utf-8")[span["start"]:span["end"]].decode("utf-8")
+    assert 'box "Generated"' in generating_source
+    page.get_by_role("button", name="Inspect generating source", exact=True).click()
+    expect(page.locator(".cl-more")).to_be_hidden()
+    expect(page.locator("#source")).to_be_visible()
+    expect(page.locator("#source")).to_be_focused()
+    assert page.locator("#source").input_value() == macro_source
+    assert page.locator("#source").evaluate("e=>e.value.slice(e.selectionStart,e.selectionEnd)") == generating_source
+    page.keyboard.press("ControlOrMeta+A")
+    page.keyboard.press("ArrowRight")
+    page.keyboard.type("# inspected via source\n")
+    page.wait_for_function("s=>pikchrStudio.state().source===s&&pikchrStudio.state().valid", arg=macro_source + "# inspected via source\n")
+    page.locator(".cl-doc [aria-label='Source']").click()
+    choose_object(page, "Native", "N")
+    expect(page.locator(".cl-more")).to_be_visible()
+    expect(page.get_by_role("button", name="Inspect generating source", exact=True)).to_have_count(0)
+    open_objects(page)
+    page.locator("#object-search").fill("")
+    close_popovers(page)
+
+
 with sync_playwright() as pw:
     browser = pw.chromium.launch(channel="chrome")
     try:
@@ -65,6 +111,7 @@ with sync_playwright() as pw:
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.goto(BASE)
+        inspect_macro_source(page)
         set_source(page, SOURCE)
         original = page.locator("#source").input_value()
         rendered(page)
@@ -194,6 +241,7 @@ with sync_playwright() as pw:
                 screenshot(sample, device + "-" + theme + "-connector")
                 sample.keyboard.press("Escape")
                 expect(sample.locator(".cl-more")).to_be_hidden()
+                inspect_macro_source(sample)
                 sample.close()
         assert not errors, errors
         print("PASS: task menus; searchable Objects; action-first properties; source facts;")
