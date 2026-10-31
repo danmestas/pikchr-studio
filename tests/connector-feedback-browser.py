@@ -28,10 +28,10 @@ def aria(page, name):
 
 
 def editing(page, name):
+    """The inspector's Editing note: present only when editing is blocked."""
     object_button(page, name).click()
-    page.wait_for_function("document.querySelector('#inspector dt')")
-    return page.evaluate("""()=>{const d=[...document.querySelectorAll('#inspector dt')]
-      .find(n=>n.textContent==='Editing');return d?d.nextElementSibling.textContent:''}""")
+    page.wait_for_function("document.querySelector('#inspector .label-row')")
+    return page.evaluate("document.querySelector('#inspector .inspector-status')?.textContent||''")
 
 
 with sync_playwright() as pw:
@@ -54,15 +54,18 @@ with sync_playwright() as pw:
     # A free line has no shape endpoint, so its direct reconnect buttons are
     # disabled rather than offered and then refused.
     object_button(page, 'Q').click()
-    for name in ('Change start', 'Change end'):
+    expect(page.locator('.cl-context .cl-endpoint-label')).to_have_text('Reconnect')
+    for name, text in (('Reconnect start', 'Start'), ('Reconnect end', 'End')):
         button = page.locator('.cl-context').get_by_role('button', name=name, exact=True)
         expect(button).to_be_visible()
+        expect(button).to_have_text(text)
         expect(button).to_be_disabled()
         assert 'no editable shape endpoint' in (button.get_attribute('title') or '')
     assert page.locator('.arrow-overlay').count() == 0
     open_more(page)
     for name in ('Reconnect start', 'Reconnect end'):
-        button = page.get_by_role('button', name=name, exact=True)
+        button = page.locator('.cl-more').get_by_role('button', name=name, exact=True)
+        expect(button).to_have_text('Reconnect')
         expect(button).to_be_disabled()
         assert 'no shape endpoint' in (button.get_attribute('title') or ''), button.get_attribute('title')
     close_popovers(page)
@@ -72,20 +75,20 @@ with sync_playwright() as pw:
     page.mouse.down()
     page.mouse.move(box['x'] + box['width'] / 2 + 8, box['y'] + box['height'] / 2 + 6, steps=3)
     page.mouse.up()
-    expect(page.locator('#state')).to_contain_text('handles in Endpoints')
+    expect(page.locator('#state')).to_have_text('Drag a blue end handle to reconnect. Dragging the line only selects it.')
 
-    # The inspector separates styling from endpoint reconnection truthfully.
-    e = editing(page, 'E')
-    assert 'Endpoints' in e and 'routing' in e and 'styles' in e, e
-    q = editing(page, 'Q')
-    assert 'styles' in q.lower() and 'Endpoints' not in q, q
+    # Editable connectors carry no Editing note; it appears only when blocked.
+    assert editing(page, 'E') == ''
+    assert editing(page, 'Q') == ''
+    for retired in ('Editable here', 'Placement suggestions'):
+        assert retired not in page.locator('#inspector').inner_text(), retired
     close_popovers(page)
 
     # Selecting a connector and choosing a direct reconnect closes the
     # inspector (so the canvas is uncovered) and names the active action.
     object_button(page, 'E').click()
     open_more(page)
-    page.get_by_role('button', name='Reconnect start', exact=True).click()
+    page.locator('.cl-more').get_by_role('button', name='Reconnect start', exact=True).click()
     expect(page.locator('.cl-more')).to_be_hidden()
     status = page.locator('#state').inner_text()
     assert 'Reconnecting the start' in status, status
@@ -103,7 +106,7 @@ with sync_playwright() as pw:
     # Escape cancels a reconnect and says so; the source is unchanged.
     object_button(page, 'E').click()
     open_more(page)
-    page.get_by_role('button', name='Reconnect end', exact=True).click()
+    page.locator('.cl-more').get_by_role('button', name='Reconnect end', exact=True).click()
     expect(page.locator('.cl-more')).to_be_hidden()
     page.keyboard.press('Escape')
     expect(page.locator('#state')).to_contain_text('Cancelled. No change applied.')
@@ -117,7 +120,7 @@ with sync_playwright() as pw:
                           ('Reconnect end', r'L: arrow from Z\.\w+ to \w[\w.]*')):
         object_button(page, 'L').click()
         open_more(page)
-        page.get_by_role('button', name=name, exact=True).click()
+        page.locator('.cl-more').get_by_role('button', name=name, exact=True).click()
         expect(page.locator('.cl-more')).to_be_hidden()
         before = page.locator('#source').input_value()
         page.locator('#diagram [data-pikchr-id="' + canvas_id(page, 'Z') + '"]').click()  # defined after L
@@ -133,7 +136,7 @@ with sync_playwright() as pw:
     set_source(page, SOURCE + 'Group1: [ H: box "H" at (0,6) ]\n')
     object_button(page, 'E').click()
     open_more(page)
-    page.get_by_role('button', name='Reconnect start', exact=True).click()
+    page.locator('.cl-more').get_by_role('button', name='Reconnect start', exact=True).click()
     expect(page.locator('.cl-more')).to_be_hidden()
     kept = page.locator('#source').input_value()
     page.locator('#diagram [data-pikchr-id="' + canvas_id(page, 'H') + '"]').click()

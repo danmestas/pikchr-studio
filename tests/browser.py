@@ -1,7 +1,7 @@
 import os
 import tempfile
 from playwright.sync_api import sync_playwright
-from browser_helpers import prepare_legacy, object_button, open_example, open_document_menu, show_source
+from browser_helpers import prepare_legacy, object_button, open_example, open_document_menu, show_source, connector_editor
 
 with sync_playwright() as pw:
     browser = pw.chromium.launch(channel="chrome")
@@ -14,7 +14,9 @@ with sync_playwright() as pw:
     source = page.locator("#source")
     original = source.input_value()
     object_button(page, "Database").click()
-    assert "Placement suggestions available" in page.locator("#inspector").inner_text()
+    # Editing is reported only when blocked: an editable shape shows no note.
+    assert page.locator("#inspector .inspector-status").count() == 0
+    assert "Editing" not in page.locator("#inspector").inner_text()
     assert page.locator(".studio-overlay circle").count() >= 4
     page.locator("#diagram").focus()
     page.keyboard.press("ArrowDown")
@@ -53,6 +55,7 @@ with sync_playwright() as pw:
     assert source.input_value() == changed
     # Reconnect either end through the compass controls and actual SVG handles.
     object_button(page, "arrow o4").click()
+    connector_editor(page)
     page.get_by_role("button", name="Endpoints", exact=True).click()
     assert page.get_by_label("Endpoint target", exact=True).input_value() == "o2"
     page.get_by_label("Endpoint target", exact=True).select_option("o3")
@@ -171,7 +174,8 @@ with sync_playwright() as pw:
     prepare_legacy(page)
     page.wait_for_function("!document.querySelector('#diagram').classList.contains('stale')")
     page.locator("#objects button").first.click()
-    assert "Placement suggestions available" not in page.locator("#inspector").inner_text()
+    blocked = page.locator("#inspector .inspector-status").inner_text()
+    assert blocked.startswith("Editing is blocked: this object is inside a [ ] block."), blocked
     source.fill("# Empty diagram")
     open_document_menu(page)
     page.locator("#render").click()

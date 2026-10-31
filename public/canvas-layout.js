@@ -4,7 +4,7 @@
 // ordinary candidate edits.
 import {attachPoints,nearestAnchor,targetAnchor,hitShape,connectCandidate,connectionLabel,elbowRoute} from './connect-drag.js?v=20260923c';
 import {connectableShapes} from './creation.js?v=20260923c';
-import {connectorCapabilities} from './arrow-ui.js?v=20260923c';
+import {connectorCapabilities,connectorTitle} from './arrow-ui.js?v=20260923c';
 import {freeLineCandidate,pointText,snapToGrid,literalRoute,lineEnds,translateLineCandidate,moveEndpointCandidate} from './free-lines.js?v=20260923c';
 import {lockDirection} from './constrain.js?v=20260923c';
 import {inspectProperties} from './properties.js?v=20260923c';
@@ -284,11 +284,12 @@ function install(studio){
   const moreButton=el('button',{type:'button',class:'cl-more-button','aria-label':'More options',title:'Inspector and more','aria-expanded':'false'},iconMarkup(MORE_ICON));
   // Direct reconnect actions for a selected connector: they arm the same
   // canvas anchors the inspector offers, without opening it over the target.
-  const changeStart=el('button',{type:'button',class:'cl-endpoint-action',title:'Reconnect the connector start'},'Change start');
-  const changeEnd=el('button',{type:'button',class:'cl-endpoint-action',title:'Reconnect the connector end'},'Change end');
+  const reconnectLabel=el('span',{class:'cl-muted cl-endpoint-label','aria-hidden':'true'},'Reconnect');
+  const changeStart=el('button',{type:'button',class:'cl-endpoint-action','aria-label':'Reconnect start',title:'Reconnect the connector start'},'Start');
+  const changeEnd=el('button',{type:'button',class:'cl-endpoint-action','aria-label':'Reconnect end',title:'Reconnect the connector end'},'End');
   changeStart.onclick=()=>changeEndpoint('from');
   changeEnd.onclick=()=>changeEndpoint('to');
-  context.append(changeStart,changeEnd,moreButton);document.body.append(context);
+  context.append(reconnectLabel,changeStart,changeEnd,moreButton);document.body.append(context);
   const more=popover('cl-more','Inspector');
   const moreTitle=el('strong',{class:'cl-more-title','aria-live':'polite','aria-atomic':'true'},'Selection');
   const moreKind=el('span',{class:'cl-muted cl-popover-kind'});
@@ -325,11 +326,6 @@ function install(studio){
     }
   }
   backButton.onclick=()=>{showMoreView('properties');syncMoreHead();closeMore.focus();};
-  // Label text is edited on the canvas; this dialog adds the sizing choice
-  // (grow the shape, wrap inside it, or keep a fixed size).
-  const labelOptions=el('button',{type:'button',class:'cl-label-options'},'Label options…');
-  labelOptions.onclick=()=>{toggle(more,moreButton,false);studio.editLabelDialog?.();};
-  propertiesView.append(labelOptions);
   // Group actions keep their shared editor in the properties view.
   // Style uses the same guarded group form as the contextual action.
   const groupCount=el('span',{class:'cl-muted'});
@@ -354,7 +350,9 @@ function install(studio){
   // write is conditional: layout() is driven by DOM observers.
   const syncMoreTitle=()=>{
     const s=studio.state(),o=s.object,count=(s.selectedIds||[]).length;
-    return count>1?count+' selected':o?.name||(o?o.kind:'Selection');
+    // Unnamed objects read by kind; a connector adds the shapes it joins.
+    if(count>1)return count+' selected';if(!o)return 'Selection';if(o.name)return o.name;
+    return ['arrow','line','spline','arc'].includes(o.kind)?connectorTitle({object:o,scene:s.scene,source:s.source}):o.kind[0].toUpperCase()+o.kind.slice(1);
   };
   const syncMoreHead=()=>{
     const s=studio.state(),o=s.object,count=(s.selectedIds||[]).length,group=count>1;
@@ -363,7 +361,6 @@ function install(studio){
     if(moreTitle.textContent!==title)moreTitle.textContent=title;
     if(moreKind.textContent!==kind)moreKind.textContent=kind;
     if(groupSection.hidden!==!group)groupSection.hidden=!group;
-    if(labelOptions.hidden!==group)labelOptions.hidden=group;
     const note=group?'Move, arrange or style every selected object as one change.':'';
     if(groupCount.textContent!==note)groupCount.textContent=note;
   };
@@ -447,7 +444,7 @@ function install(studio){
     const visible=!inline&&!targeting&&!!box&&box.right>0&&box.left<innerWidth&&box.bottom>0&&box.top<innerHeight;
     const connector=!!selectedLine();
     const endpoints=connector&&s.valid&&connectorCapabilities(s)?.endpoints;
-    changeStart.hidden=changeEnd.hidden=!connector;
+    changeStart.hidden=changeEnd.hidden=reconnectLabel.hidden=!connector;
     changeStart.disabled=changeEnd.disabled=!endpoints;
     changeStart.title=changeEnd.title=endpoints?'':'This connector has no editable shape endpoint.';
     context.hidden=!visible;

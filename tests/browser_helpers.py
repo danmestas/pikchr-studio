@@ -89,9 +89,10 @@ def reveal(page, selector):
     return target
 
 def open_label_dialog(page):
-    """The label sizing dialog opens from ⋯ › Label options…"""
-    open_more(page)
-    page.locator('.cl-label-options').click()
+    """The label sizing dialog: Edit opens it where the canvas cannot edit the
+    label in place; the studio API opens it for the selected object directly."""
+    close_popovers(page)
+    page.evaluate("window.pikchrStudio.editLabelDialog()")
     dialog = page.locator('[aria-labelledby="canvas-label-title"]')
     expect(dialog).to_be_visible()
     return dialog
@@ -104,6 +105,19 @@ def edit_label(page, text, mode='grow'):
     expect(done).to_be_enabled()
     done.click()
     expect(dialog).not_to_be_visible()
+
+def inspector_section(page, title):
+    """Open a collapsible inspector section (Style, Suggested routes, Advanced
+    & source) in the ⋯ popover and return it."""
+    open_more(page)
+    section = page.locator('#inspector details').filter(has=page.locator(':scope > summary', has_text=re.compile('^' + re.escape(title))))
+    if section.get_attribute('open') is None:
+        section.locator(':scope > summary').click()
+    return section
+
+def connector_editor(page):
+    """Show the connector's Routing/Endpoints editor, under Advanced & source."""
+    return reveal(page, '.arrow-editor .connector-tabs')
 
 def object_button(page, name):
     if not page.locator('#objects').is_visible():

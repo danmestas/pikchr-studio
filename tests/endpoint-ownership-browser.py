@@ -8,6 +8,7 @@ hides the selection toolbar and inspector so they cannot cover the target.
 from playwright.sync_api import sync_playwright, expect
 import os
 import browser_helpers  # noqa: F401  (PIKCHR_STUDIO_DIAG failure diagnostics)
+from browser_helpers import connector_editor
 
 STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 URL = STUDIO + "/index.html"
@@ -136,7 +137,6 @@ with sync_playwright() as pw:
 
     # 6. Chrome that covers the target hides while reconnect targeting is on:
     #    a drag clears the selection toolbar, inspector and text bar.
-    change_end = page.locator(".cl-context button", has_text="Change end")
     select_arrow(page)
     head = page.evaluate(HANDLE, "arrowhead")
     page.wait_for_function("!document.querySelector('.cl-context').hidden")
@@ -157,6 +157,7 @@ with sync_playwright() as pw:
     select_arrow(page)
     page.locator(".cl-context [aria-label='More options']").click()
     expect(page.locator(".cl-more")).to_be_visible()
+    connector_editor(page)
     page.get_by_role("button", name="Reconnect on canvas", exact=True).click()
     page.wait_for_timeout(120)
     assert page.evaluate("getComputedStyle(document.querySelector('.cl-context')).display==='none'")
@@ -166,11 +167,11 @@ with sync_playwright() as pw:
     expect(page.locator(".cl-more")).to_be_visible()
     page.keyboard.press("Escape")
 
-    # 7. Direct selection actions: Change start / Change end arm the canvas
+    # 7. Direct selection actions: Reconnect Start / End arm the canvas
     #    anchors; clicking one reconnects the endpoint.
     select_arrow(page)
-    change_end = page.locator(".cl-context button", has_text="Change end")
-    assert change_end.is_visible(), "Change end must be offered for a selected connector"
+    change_end = page.locator(".cl-context").get_by_role("button", name="Reconnect end", exact=True)
+    assert change_end.is_visible(), "Reconnect End must be offered for a selected connector"
     change_end.click()
     page.wait_for_function("!!document.querySelector('.arrow-overlay .anchor-target[data-anchor=\"API.n\"]')")
     page.wait_for_function("[...document.querySelectorAll('.arrow-overlay .anchor-target')].some(d=>d.style.pointerEvents==='all')")
@@ -216,4 +217,4 @@ with sync_playwright() as pw:
 
     assert not errors, errors
     browser.close()
-    print("PASS: endpoint handles own their hit regions, reconnect never creates shapes, invalid drops and Escape are inert, chrome clears while targeting, Change start/end actions work, connect tool still creates")
+    print("PASS: endpoint handles own their hit regions, reconnect never creates shapes, invalid drops and Escape are inert, chrome clears while targeting, Reconnect Start/End actions work, connect tool still creates")

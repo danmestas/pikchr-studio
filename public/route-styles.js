@@ -449,6 +449,13 @@ export function routeStyleCandidates(source, object, scene) {
   return { options, unavailable, reason:'' };
 }
 
+// What the Suggested routes gallery offers: route shapes only. Arrowheads are
+// the inspector's Heads control, so they are not repeated as thumbnails.
+export function suggestedRoutes(source, object, scene) {
+  const all = routeStyleCandidates(source, object, scene);
+  return { ...all, options:all.options.filter(o => o.group !== 'Arrowheads'), unavailable:all.unavailable.filter(o => o.group !== 'Arrowheads') };
+}
+
 // Rendered-result guard: the connector keeps its identity, nothing else moves,
 // and bend ties keep the route's vertices where they were.
 export function checkStyleResult(baseScene, object, option, result) {

@@ -123,7 +123,8 @@ with sync_playwright() as pw:
     assert panel.get_by_label("Line thickness (pixels)", exact=True).is_visible()
     assert panel.get_by_label("Fill color", exact=True).is_visible()
     assert page.locator("#inspector dt", has_text="Name").count() == 0
-    assert page.locator(".cl-more .cl-label-options").is_hidden()
+    assert page.locator(".cl-more .cl-label-options").count() == 0
+    assert page.locator("#inspector .label-row").count() == 0
     panel.get_by_label("Stroke / text color", exact=True).fill("#123456")
     panel.get_by_label("Line thickness (pixels)", exact=True).fill("1.5")
     panel.get_by_role("button", name="Style 3 objects", exact=True).click()

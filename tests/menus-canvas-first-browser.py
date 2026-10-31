@@ -150,13 +150,17 @@ with sync_playwright() as pw:
         more = page.locator(".cl-more")
         expect(more).to_be_visible()
         expect(more.get_by_role("button", name="Close inspector")).to_be_visible()
-        expect(page.locator("#inspector")).to_contain_text("Placement suggestions available")
+        # An editable shape carries no Editing line: the panel speaks only
+        # when editing is blocked.
+        expect(page.locator("#inspector .inspector-status")).to_have_count(0)
+        for retired in ("Placement suggestions", "Editable here", "Editing"):
+            assert retired not in page.locator("#inspector").inner_text(), retired
         assert "Bounds" not in page.locator("#inspector").inner_text()
         assert "connector expression" not in page.locator("#inspector").inner_text()
         advanced = more.locator("details.inspector-advanced")
         assert advanced.get_attribute("open") is None
         assert page.evaluate("document.querySelector('#inspector').lastElementChild.classList.contains('inspector-advanced')")
-        assert page.locator(".inspector-status").bounding_box()["y"] < advanced.bounding_box()["y"]
+        assert page.locator("#inspector .label-row").bounding_box()["y"] < advanced.bounding_box()["y"]
         advanced.locator("summary").click()
         expect(page.locator("#inspector")).to_contain_text("Bounds")
         expect(more.get_by_role("button", name="Show source")).to_be_visible()

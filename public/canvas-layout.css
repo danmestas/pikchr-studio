@@ -299,6 +299,41 @@ body.layout-canvas .cl-more .canvas-context>label:first-child{display:none}
 body.layout-canvas .cl-more .context-hint{color:var(--cl-muted);font-size:12px}
 body.layout-canvas .cl-more .route-style-thumb,body.layout-canvas .route-style-thumb{background:var(--cl-canvas)}
 body.layout-canvas .cl-more [role=listbox] button,body.layout-canvas .cl-more .route-styles button{flex-direction:column;height:auto;padding:6px;white-space:normal;line-height:1.25;font-size:11px}
+/* Inspector rows: a muted name, the value, then its action. */
+body.layout-canvas .cl-more .inspector-row{display:grid;grid-template-columns:68px minmax(0,1fr) auto;align-items:center;gap:8px;min-height:32px}
+body.layout-canvas .cl-more .row-name{font-size:12px;color:var(--cl-muted)}
+body.layout-canvas .cl-more .inspector-row>:is(.cl-seg,.size-fields){grid-column:2/-1;justify-self:start}
+body.layout-canvas .cl-more .label-preview{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.layout-canvas .cl-more .connector-rows{display:flex;flex-direction:column;gap:8px}
+body.layout-canvas .cl-more .connector-rows code{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;justify-self:start;max-width:100%;padding:2px 6px;border-radius:5px;background:var(--cl-canvas);border:1px solid var(--cl-line);font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}
+body.layout-canvas .cl-more .connector-reverse{align-self:flex-start}
+body.layout-canvas .cl-more .cl-seg{display:inline-flex;max-width:100%}
+body.layout-canvas .cl-more .cl-seg>button{min-height:30px;padding:0 9px;border-radius:0;margin-left:-1px;font-size:12px}
+body.layout-canvas .cl-more .cl-seg>button:first-child{margin-left:0;border-radius:7px 0 0 7px}
+body.layout-canvas .cl-more .cl-seg>button:last-child{border-radius:0 7px 7px 0}
+body.layout-canvas .cl-more .cl-seg>button[aria-pressed=true]{position:relative;z-index:1;background:var(--cl-accent-bg);border-color:var(--cl-accent);color:var(--cl-accent);font-weight:600}
+body.layout-canvas .cl-more .canvas-sizing{display:flex;flex-direction:column;align-items:stretch;flex-wrap:nowrap;overflow:visible;gap:8px;margin:0;padding:0}
+body.layout-canvas .cl-more .canvas-sizing[hidden]{display:none}
+body.layout-canvas .cl-more .size-fields{display:flex;align-items:center;gap:6px}
+body.layout-canvas .cl-popover .size-fields input[type=number]{width:68px}
+body.layout-canvas .cl-more .size-fields input[aria-invalid]{border-color:var(--cl-bad)}
+body.layout-canvas .cl-more .size-lock{min-width:32px;padding:0}
+body.layout-canvas .cl-more .size-lock[aria-pressed=true]{background:var(--cl-accent-bg);border-color:var(--cl-accent);color:var(--cl-accent)}
+body.layout-canvas .cl-more .size-error{margin:0 0 0 76px;color:var(--cl-bad)}
+body.layout-canvas .cl-more .size-error[hidden],body.layout-canvas .cl-more .size-warning[hidden]{display:none}
+body.layout-canvas .cl-more .size-warning{margin-left:76px;font-size:12px;color:var(--cl-warn)}
+body.layout-canvas .cl-more #inspector>.inspector-status{color:var(--cl-ink);padding:6px 10px;border-left:3px solid var(--cl-warn);background:var(--cl-canvas)}
+body.layout-canvas .cl-more .inspector-routes .cl-count{font-weight:400;color:var(--cl-muted)}
+body.layout-canvas .cl-more .inspector-routes[hidden]{display:none}
+body.layout-canvas .cl-more .inspector-routes-slot:empty,body.layout-canvas .cl-more .inspector-editor-slot:empty{display:none}
+body.layout-canvas .cl-more .route-style-controls{margin-top:8px}
+/* Style, Suggested routes and Advanced read as one stack of disclosures. */
+body.layout-canvas .cl-more #inspector>:is(.appearance-editor,.inspector-routes-slot,.inspector-advanced){margin:8px 0 0!important;padding:2px 0 0!important;border-top:1px solid var(--cl-line)!important}
+body.layout-canvas .cl-more #inspector :is(.appearance-editor,.inspector-routes,.inspector-advanced)>summary{padding:0;margin:0}
+body.layout-canvas .cl-more #inspector :is(.appearance-editor,.inspector-routes,.inspector-advanced)[open]>summary{margin-bottom:6px}
+body.layout-canvas .cl-more #inspector>.property-error:empty{display:none}
+body.layout-canvas .cl-context .cl-endpoint-label{font-size:12px;padding:0 2px 0 6px}
+body.layout-canvas .cl-context .cl-endpoint-label[hidden]{display:none}
 
 /* Export menu: left-aligned rows */
 body.layout-canvas .cl-export{padding:8px}

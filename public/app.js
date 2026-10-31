@@ -4,7 +4,7 @@ import {correspondingObject} from './candidate-target.js?v=20260923c';
 import {alignmentGuides,gapMarks} from './guides.js?v=20260923c';
 import {constrainDrag,smartSnap} from './constrain.js?v=20260923c';
 const params=new URL(location.href).searchParams;
-import {arrowEditor,connectorCapabilities,connectorLabel} from './arrow-ui.js?v=20260923c';
+import {arrowEditor,connectorCapabilities,connectorLabel,connectorRows,editingBlocked} from './arrow-ui.js?v=20260923c';
 import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20260923c';
 import {propertyEditor} from './property-ui.js?v=20260923c';
 import {fitText,canFitText,inspectProperties,readProperties} from './properties.js?v=20260923c';
@@ -42,7 +42,7 @@ let requestedSelectionIds=null;
 let requestedSelectionId=null,applied=false;
 let selectedIds=new Set(),zoom=1,pan={x:0,y:0},panMode=false;
 let multiSelect=false;
-let directTools=null;
+let directTools=null,advancedOpen=false;
 let routeReview=null,clipboardFragment=null,pasteCount=0;
 let sizingPreferences={};
 let viewportDocumentId=null;
@@ -310,39 +310,35 @@ function select(id,highlight=false,additive=false,preserve=false){
     'Referenced by':scene.objects.filter(n=>n.dependencies?.includes(o.id)).map(n=>n.name||n.kind).join(', ')||'Nothing yet'
   };
   for(const [key,value]of Object.entries(details)){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=key;dd.textContent=value;dl.append(dt,dd);}
-  // Editing is the one fact the panel must show up front: it says whether the
-  // actions above can change this object at all. Everything else is reference
-  // material and lives under one Advanced disclosure.
-  const statusDl=document.createElement('dl');statusDl.className='inspector-status';
-  const statusDt=document.createElement('dt'),statusDd=document.createElement('dd');
-  statusDt.textContent='Editing';
-  statusDd.textContent=o.editable?'Placement suggestions available':o.reason||'Inspect only';
-  statusDl.append(statusDt,statusDd);
-  const advanced=document.createElement('details');advanced.className='inspector-advanced';
+  // The panel speaks about editing only when it is blocked, and says why.
+  // Rows follow in a fixed order; reference material stays under Advanced.
+  const ins=$('inspector'),ready=()=>source.value===renderedSource&&!$('diagram').classList.contains('stale');
+  const capabilities=connectorCapabilities({object:o,scene,source:renderedSource}),blocked=editingBlocked(o,capabilities);
+  const advanced=document.createElement('details');advanced.className='inspector-advanced';advanced.open=advancedOpen;
+  advanced.ontoggle=()=>{if(advanced.isConnected)advancedOpen=advanced.open;};
   const advancedSummary=document.createElement('summary');advancedSummary.textContent='Advanced & source';
   const sourceButton=document.createElement('button');sourceButton.type='button';sourceButton.textContent='Show source';
   sourceButton.disabled=$('show-source-selected').disabled;
   sourceButton.onclick=()=>$('show-source-selected')?.click();
-  advanced.append(advancedSummary,dl);
-  $('inspector').append(statusDl);
-  if(o.reason==='Macro-expanded object'){
-    const origin=document.createElement('p');origin.className='inspector-origin';
-    origin.textContent='Its source may be shared by other instances, so direct canvas edits are disabled. Inspect the generating source to change the program.';
-    sourceButton.textContent='Inspect generating source';
-    $('inspector').append(origin,sourceButton);
-  }else advanced.append(sourceButton);
+  const editorSlot=document.createElement('div');editorSlot.className='inspector-editor-slot';
+  advanced.append(advancedSummary,editorSlot,dl);
+  if(blocked){const note=document.createElement('p');note.className='inspector-status';note.setAttribute('role','note');note.textContent=blocked;ins.append(note);}
+  if(o.reason==='Macro-expanded object'){sourceButton.textContent='Inspect generating source';ins.append(sourceButton);}
+  else advanced.append(sourceButton);
   if(sourceButton.disabled){const reason=document.createElement('p');reason.textContent='No independent source span is available. Open the source drawer to inspect the generating program.';advanced.append(reason);}
-  $('inspector').append(advanced);
-  shapeTypeEditor({object:o,scene,source:renderedSource,inspector:$('inspector'),propose:options=>validateSuggestions(o,options),status,
-    valid:()=>source.value===renderedSource&&!$('diagram').classList.contains('stale')});
+  const propose=options=>validateSuggestions(o,options);
+  const parts=propertyEditor({object:o,scene,source:renderedSource,propose,status,valid:ready});
+  if(parts?.label)ins.append(parts.label);
+  if(directTools?.sizing)ins.append(directTools.sizing);
+  const rows=connectorRows({object:o,scene,source:renderedSource,capabilities,propose,status,valid:ready,reconnect:reconnectSelected});if(rows)ins.append(rows);
+  const shape=shapeTypeEditor({object:o,scene,source:renderedSource,propose,status,valid:ready});if(shape)ins.append(shape);
+  const chooser=routeChooser(o);if(chooser)ins.append(chooser);
+  if(parts?.style)ins.append(parts.style);
+  if(capabilities){const routes=document.createElement('div');routes.className='inspector-routes-slot';ins.append(routes);}
+  if(parts?.error)ins.append(parts.error);
+  ins.append(advanced);
   drawOverlay();
   installArrowEditor();
-  propertyEditor({object:o,scene,source:renderedSource,inspector:$('inspector'),propose:options=>validateSuggestions(o,options),status,
-    valid:()=>source.value===renderedSource&&!$('diagram').classList.contains('stale')});
-  const chooser=routeChooser(o);if(chooser)$('inspector').insertBefore(chooser,$('inspector').querySelector('.arrow-editor')||advanced);
-  // Advanced is the reference tail of the panel whatever the other editors
-  // prepended or inserted above it.
-  $('inspector').append(advanced);
   directTools?.sync();
 }
 // Visual route choices for a connector: each button reads the same candidate
@@ -402,6 +398,8 @@ function routeChooser(o){
     ()=>{
       const tab=[...$('inspector').querySelectorAll('.arrow-editor .connector-tabs button')].find(b=>b.textContent==='Routing');
       if(!tab){note.textContent='Waypoint editing is unavailable: this route keeps its endpoints in a form Studio cannot rewrite. Edit it in source.';return;}
+      // The route editor lives under Advanced; open it rather than click blind.
+      const details=tab.closest('details');if(details&&!details.open)details.open=true;
       tab.click();
       const panel=$('inspector').querySelector('.route-controls');
       panel?.scrollIntoView({block:'nearest'});panel?.querySelector('.route-handle')?.focus?.({preventScroll:true});
@@ -473,10 +471,11 @@ $('route-selected').onclick=()=>{
   // The layout opens the popover after this click. Scroll only once it is
   // visible, directly to the visual choices rather than the inspector fields.
   requestAnimationFrame(()=>{
-    const section=$('inspector').querySelector('.route-styles')||$('inspector').querySelector('.arrow-editor');
+    const ins=$('inspector'),section=ins.querySelector('.inspector-routes:not([hidden]) .route-styles')||ins.querySelector('.cl-route-choices');
     if(!section)return;
+    const details=section.closest('details');if(details&&!details.open)details.open=true;
     section.tabIndex=-1;section.scrollIntoView({block:'start'});
-    (section.querySelector('.route-style-option')||section).focus({preventScroll:true});
+    (section.querySelector('.route-style-option,.cl-route-option[aria-pressed=true]')||section).focus({preventScroll:true});
   });
 };
 // Direct reconnect for a selected connector. canvas-layout's contextual
@@ -493,26 +492,15 @@ $('fit-text').onclick=()=>{
   try{validateSuggestions(o,[fitText(renderedSource,o,scene)]);}catch(error){status(error.message);}
 };
 function installArrowEditor(){
-  const svg=$('diagram').querySelector('svg'),o=current();
+  const svg=$('diagram').querySelector('svg'),o=current(),ins=$('inspector');
   if(!svg||!o||source.value!==renderedSource||$('diagram').classList.contains('stale'))return;
   svg.querySelector('.arrow-overlay')?.remove();
-  $('inspector').querySelector('.arrow-editor')?.remove();
-  const supported=arrowEditor({object:o,scene,source:source.value,svg,inspector:$('inspector'),
+  arrowEditor({object:o,scene,source:source.value,svg,
+    slots:{routes:ins.querySelector('.inspector-routes-slot'),style:ins.querySelector('.connector-style-slot'),editor:ins.querySelector('.inspector-editor-slot')},
     autoApply:()=>$('auto-apply').checked,
     propose:options=>validateSuggestions(o,options),status,render,
     preview:(options,index,hooks)=>previewValidated(o,options,index,hooks),accept:acceptPreview,discard:discardPreview,
     valid:()=>source.value===renderedSource&&!$('diagram').classList.contains('stale'),clear:clearProposal});
-  const routable=!!$('inspector').querySelector('.arrow-editor .connector-tabs');
-  const capabilities=connectorCapabilities({object:o,scene,source:source.value});
-  // The connector editor speaks only for connectors. For a box it must not
-  // replace the Editing fact with connector wording: the object keeps its own
-  // placement/source verdict.
-  if(['arrow','line','spline','arc'].includes(o.kind)){
-    const description=capabilities&&(capabilities.endpoints||capabilities.route||capabilities.styles)
-      ?'Editable here: '+[capabilities.endpoints&&'endpoint reconnection (Endpoints)',capabilities.route&&'routing',capabilities.styles&&'styles'].filter(Boolean).join(', ')+'.'
-      :o.reason||'Inspect only: this connector expression cannot be safely rewritten. Edit it in source.';
-    for(const dt of $('inspector').querySelectorAll('dt'))if(dt.textContent==='Editing')dt.nextElementSibling.textContent=description;
-  }
 }
 const matrix=()=>{const t=scene.transform;return new DOMMatrix([t.a,t.b,t.c,t.d,t.e,t.f]);};
 const svgPoint=p=>new DOMPoint(p.x,p.y).matrixTransform(matrix());
@@ -597,6 +585,17 @@ $('focus-selection').onclick=()=>{
   const [x,y,bw,bh]=svg.dataset.baseViewBox.split(/[ ,]+/).map(Number);
   zoom=clampZoom(Math.min(3,bw/Math.max(w*2,30),bh/Math.max(h*2,30)));pan={x:left+w/2-x-bw/2,y:top+h/2-y-bh/2};applyViewport();refreshHandles();
 };
+// Why a press on an object cannot drag it, in plain words with the way out.
+// Reasons come from the scene (native) or editability() (edit engine).
+function dragBlocked(o){
+  const reason=o?.reason||'';
+  if(/macro/i.test(reason))return 'This shape comes from a macro, so it can’t be dragged. Edit the macro in the source (S).';
+  if(/nested|group/i.test(reason))return 'This shape is inside a group, so it can’t be dragged on its own. Edit it in the source (S).';
+  if(/repeated names/i.test(reason))return 'Another object has the same name, so this one can’t be dragged. Rename it in the source (S).';
+  if(/origin/i.test(reason))return 'Studio can’t find where this object is written, so it can’t be dragged. Edit it in the source (S).';
+  if(o&&!o.name&&['box','circle','ellipse','oval','cylinder','diamond','text'].includes(o.kind))return 'This shape has no name, so it can’t be dragged. Name it in the source (S), for example A: box.';
+  return 'Only boxes, circles, ellipses, ovals, cylinders, diamonds and text can be dragged. Edit this '+(o?.kind||'object')+' in the source (S).';
+}
 function bindDiagram(svg){
   svg.ondblclick=e=>{
     // Pointer capture can retarget dblclick to the SVG root. Hit-test the
@@ -672,11 +671,11 @@ function bindDiagram(svg){
       const connector=capabilities&&['arrow','line','spline','arc'].includes(o.kind);
       const message=/nested/i.test(o?.reason||'')
         ?'This shape is inside a group and is inspect-only. Choose Pipeline and Load example to try dragging editable shapes.'
-        :connector&&(capabilities.endpoints||capabilities.route)
-          ?'Use the connector handles in '+(capabilities.endpoints?'Endpoints':'Routing')+'; dragging the connector body only selects it.'
-          :connector&&capabilities.styles?'Use Route styles in the inspector; dragging the connector body only selects it.'
+        :connector&&capabilities.endpoints?'Drag a blue end handle to reconnect. Dragging the line only selects it.'
+          :connector&&capabilities.route?'Use Waypoints in the inspector to move a bend. Dragging the line only selects it.'
+          :connector&&capabilities.styles?'Use Style or Suggested routes in the inspector. Dragging the line only selects it.'
           :connector?'This connector is inspect-only here: edit its endpoints or route in source.'
-          :'This object is inspect-only: '+(o?.reason||'its source cannot be safely rewritten.');
+          :dragBlocked(o);
       status(message);document.querySelector('.diagram-pane .hint').textContent=message;return;
     }
     document.querySelector('.diagram-pane .hint').textContent='Release to preview ranked source edits. Accept one, or press Escape to keep the original.';
@@ -1019,8 +1018,8 @@ function discardPreview(){
 $('preview-accept').onclick=acceptPreview;
 $('preview-prev').onclick=()=>cyclePreview(-1);$('preview-next').onclick=()=>cyclePreview(1);
 $('preview-discard').onclick=discardPreview;
-async function validateSuggestions(o,options){
-  if(rendering||source.value!==renderedSource||$('diagram').classList.contains('stale')){status('Wait for a valid diagram before editing.');return false;}
+async function validateSuggestions(o,options,{reject}={}){
+  if(rendering||source.value!==renderedSource||$('diagram').classList.contains('stale')){status('Wait for a valid diagram before editing.');reject?.('Wait for a valid diagram before editing.');return false;}
   clearProposal();const g=gesture,rev=revision,base=source.value;
   status('Validating '+options.length+' source suggestions…');
   const valid=[],failures=[];
@@ -1059,7 +1058,7 @@ async function validateSuggestions(o,options){
     return true;
   }else{
     const message=failures[0]||'The edited object could not be identified safely.';
-    $('suggestions').textContent=message;status('Edit not applied. '+message);drawOverlay();installArrowEditor();
+    $('suggestions').textContent=message;status('Edit not applied. '+message);reject?.(message);drawOverlay();installArrowEditor();
     return false;
   }
 }

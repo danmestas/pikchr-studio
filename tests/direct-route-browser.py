@@ -28,7 +28,7 @@ with sync_playwright() as pw:
             panel = page.locator(".cl-more").bounding_box()
             tile = first.bounding_box()
             assert panel and tile and tile["y"] >= panel["y"] and tile["y"] + tile["height"] <= panel["y"] + panel["height"], (panel, tile)
-            heading = page.locator(".route-styles h4").bounding_box()
+            heading = page.locator(".inspector-routes > summary").bounding_box()
             header = page.locator(".cl-more .cl-popover-head").bounding_box()
             assert heading and header and heading["y"] >= header["y"] + header["height"], (heading, header)
             assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")

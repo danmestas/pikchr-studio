@@ -1,6 +1,6 @@
 """Browser regression for the single-canvas, validated draft queue."""
 import re
-from browser_helpers import prepare_legacy, object_button, shape_option, show_source, set_source, reveal, menu_click, open_menu_details, close_popovers
+from browser_helpers import prepare_legacy, object_button, shape_option, show_source, set_source, reveal, menu_click, open_menu_details, close_popovers, connector_editor
 from playwright.sync_api import sync_playwright
 import os
 STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
@@ -100,6 +100,7 @@ with sync_playwright() as pw:
     queued(3)
     assert "Link1: arrow from A.e to Shape1.w" in source.input_value()
     select("Link1")
+    connector_editor(page)
     page.get_by_role("button", name="Routing", exact=True).click()
     page.get_by_role("button", name="Horizontal first", exact=True).click()
     queued(4)

@@ -75,7 +75,8 @@ with sync_playwright() as pw:
     inspector = page.locator("#inspector")
     expect(inspector).to_contain_text("2 objects selected")
     assert inspector.locator("dt", has_text="Name").count() == 0
-    assert page.locator(".cl-more .cl-label-options").is_hidden()
+    assert page.locator(".cl-more .cl-label-options").count() == 0
+    assert page.locator("#inspector .label-row").count() == 0
     assert page.locator(".cl-textbar").is_hidden()
     assert page.locator(".cl-context #edit-selected").is_hidden()
     assert page.locator(".cl-context .cl-endpoint-action").first.is_hidden()
@@ -109,8 +110,8 @@ with sync_playwright() as pw:
 
     # A group mixing a shape and a connector offers no single-object connector
     # actions: Reverse and Reconnect would edit only the last-clicked
-    # connector, and the sizing hint addresses one object. These controls live
-    # in the canvas-context dock inside ⋯, not in .cl-context.
+    # connector, and sizing addresses one object. These controls are the
+    # single-object inspector's rows inside ⋯, not in .cl-context.
     open_document_menu(page)
     page.locator(".cl-menu #multi-select").click()
     close_popovers(page)
@@ -121,11 +122,11 @@ with sync_playwright() as pw:
     open_more(page)
     expect(page.locator(".cl-more .cl-more-title")).to_have_text("2 selected")
     expect(page.locator(".cl-more .cl-group")).to_be_visible()
-    dock = page.locator(".cl-more .canvas-context-dock")
-    expect(dock).to_be_hidden()
+    rows = page.locator(".cl-more .connector-rows")
+    expect(rows).to_have_count(0)
+    expect(page.locator(".cl-more .canvas-sizing")).to_be_hidden()
     for name in ("Reverse direction", "Reconnect start", "Reconnect end"):
-        expect(page.locator(".cl-more button", has_text=re.compile(r"^" + name + r"$"))).to_be_hidden()
-    expect(page.locator(".cl-more .context-hint")).to_be_hidden()
+        expect(page.locator(".cl-more").get_by_role("button", name=name, exact=True)).to_have_count(0)
     assert page.locator("#source").input_value() == BASE
     close_popovers(page)
 
@@ -135,13 +136,13 @@ with sync_playwright() as pw:
     object_button(page, "Link").click()
     page.wait_for_function("document.querySelector('#selection-count').textContent==='1 selected'")
     open_more(page)
-    expect(dock).to_be_visible()
-    expect(page.locator(".cl-more .context-hint")).to_be_hidden()
-    reverse = page.get_by_role("button", name="Reverse direction", exact=True)
+    expect(rows).to_be_visible()
+    expect(page.locator(".cl-more .canvas-sizing")).to_be_hidden()
+    reverse = page.locator(".cl-more").get_by_role("button", name="Reverse direction", exact=True)
     expect(reverse).to_be_visible()
     expect(reverse).to_be_enabled()
     for name in ("Reconnect start", "Reconnect end"):
-        expect(page.get_by_role("button", name=name, exact=True)).to_be_visible()
+        expect(page.locator(".cl-more").get_by_role("button", name=name, exact=True)).to_be_visible()
     reverse.click()
     changed(BASE)
     reversed_source = page.locator("#source").input_value()

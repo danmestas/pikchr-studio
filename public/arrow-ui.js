@@ -1,6 +1,8 @@
-import {endpointCandidates,moveVertexCandidates,routeCandidates} from './edits.js?v=20260923c';
+import {endpointCandidates,moveVertexCandidates,routeCandidates,byteOffsetToIndex} from './edits.js?v=20260923c';
 import {routeEditor,routeStyleGallery} from './route-ui.js?v=20260923c';
 import {connectorState,routeStyleCandidates} from './route-styles.js?v=20260923c';
+import {inspectProperties,changeTermination} from './properties.js?v=20260923c';
+import {reverseConnector} from './reverse-connector.js?v=20260923c';
 const ns='http://www.w3.org/2000/svg';
 let preferredMode='endpoints';
 const names={n:'North',ne:'Northeast',e:'East',se:'Southeast',s:'South',sw:'Southwest',w:'West',nw:'Northwest',c:'Center'};
@@ -20,6 +22,69 @@ export function connectorCapabilities({object,scene,source}){
   try{styles=connectorState(source,object,scene)!==null&&routeStyleCandidates(source,object,scene).options.length>0;}catch{}
   return {endpoints,route,styles};
 }
+// Each end as the source writes it ("Client.e", "(1,2)"), so the inspector
+// shows code rather than the arrowhead-shortened rendered point. An end the
+// source does not spell (no "to") falls back to that rendered point.
+const fmt=n=>String(Number(n.toFixed(2)));
+export function connectorEnds({object,scene,source}){
+  if(!object||!['arrow','line','spline','arc'].includes(object.kind))return null;
+  let text='';try{text=source.slice(byteOffsetToIndex(source,object.span.start),byteOffsetToIndex(source,object.span.end));}catch{}
+  const masked=text.replace(/"(?:[^"\\]|\\.)*"/g,m=>' '.repeat(m.length)),term='([A-Z]\\w*(?:\\.\\w+)?|\\([^()"]*\\))';
+  const code=m=>m?text.slice(m.index+m[0].length-m[1].length,m.index+m[0].length):null;
+  const path=object.path||[];
+  const end=(m,p)=>{
+    const c=code(m);if(!c)return p?{code:'('+fmt(p.x)+', '+fmt(p.y)+')',name:null}:null;
+    const name=/^[A-Z]/.test(c)?c.split('.')[0]:null;
+    return {code:c,name:name&&scene.objects.some(o=>o.name===name)?name:null};
+  };
+  return {from:end(new RegExp('\\bfrom\\s+'+term).exec(masked),path[0]),to:end([...masked.matchAll(new RegExp('\\bto\\s+'+term,'g'))].at(-1),path.at(-1))};
+}
+export function connectorTitle({object,scene,source}){
+  const kind=object.kind[0].toUpperCase()+object.kind.slice(1),ends=connectorEnds({object,scene,source});
+  return ends?.from?.name&&ends?.to?.name?kind+' · '+ends.from.name+' → '+ends.to.name:kind;
+}
+// The inspector speaks about editing only when it is blocked, and then says why.
+export function editingBlocked(object,capabilities){
+  if(!object)return null;
+  if(object.reason==='Macro-expanded object')return 'Editing is blocked: this object is expanded from a macro. Its source may be shared by other instances, so direct canvas edits are disabled. Inspect the generating source to change the program.';
+  if(object.reason==='Nested object')return 'Editing is blocked: this object is inside a [ ] block. Edit it in source.';
+  if(capabilities)return capabilities.endpoints||capabilities.route||capabilities.styles?null:'Editing is blocked: Studio cannot safely rewrite this connector’s source expression. Edit it in source.';
+  if(object.editable)return null;
+  if(['box','circle','ellipse','oval','cylinder','diamond','text'].includes(object.kind)&&!object.name)return 'Moving is blocked: this shape has no name. Name it in source (for example A: box) to move it here.';
+  return 'Editing is blocked: Studio moves boxes, circles, ellipses, ovals, cylinders, diamonds and text. Edit this '+object.kind+' in source.';
+}
+// Inspector rows for one connector: Start and End as code with Reconnect,
+// Reverse direction, and Heads. Every change is one validated candidate.
+const lineIcon=paths=>{const svg=element('svg',{viewBox:'0 0 24 24',width:18,height:18,'aria-hidden':'true',focusable:'false',fill:'none',stroke:'currentColor','stroke-width':'1.7','stroke-linecap':'round','stroke-linejoin':'round'});for(const d of paths)svg.append(element('path',{d}));return svg;};
+const row=(name,...items)=>{const r=document.createElement('div');r.className='inspector-row';const n=document.createElement('span');n.className='row-name';n.textContent=name;r.append(n,...items);return r;};
+export function segmented(label,items,current,choose){
+  const group=document.createElement('div');group.className='cl-seg';group.setAttribute('role','group');group.setAttribute('aria-label',label);
+  for(const [value,text,title]of items){const b=document.createElement('button');b.type='button';b.textContent=text;b.dataset.value=value;b.setAttribute('aria-pressed',String(value===current));if(title)b.title=title;b.onclick=()=>{if(b.getAttribute('aria-pressed')!=='true')choose(value);};group.append(b);}
+  return group;
+}
+export function connectorRows({object,scene,source,capabilities,propose,status,valid,reconnect}){
+  if(!['arrow','line','spline','arc'].includes(object.kind))return null;
+  const routable=['arrow','line'].includes(object.kind),ends=connectorEnds({object,scene,source});
+  const box=document.createElement('div');box.className='connector-rows';
+  const request=make=>{if(!valid()){status('Render the current source before editing.');return;}try{propose([make()]);}catch(error){status(error.message);}};
+  for(const [name,end,which]of [['Start',ends.from,'start'],['End',ends.to,'end']]){
+    const code=document.createElement('code');code.textContent=end?.code||'—';
+    const b=document.createElement('button');b.type='button';b.textContent='Reconnect';b.setAttribute('aria-label','Reconnect '+which);
+    b.disabled=!capabilities?.endpoints;b.title=b.disabled?'This connector has no shape endpoint to reconnect. Edit it in source.':'Choose the shape for the '+which+' on the canvas';
+    b.onclick=()=>{if(valid())reconnect(which);else status('Render the current source before editing.');};
+    box.append(row(name,code,b));
+  }
+  if(!routable)return box;
+  const reverse=document.createElement('button');reverse.type='button';reverse.className='connector-reverse';
+  reverse.append(lineIcon(['M5 8h13','m15 5 3 3-3 3','M19 16H6','m9 13-3 3 3 3']),'Reverse direction');
+  try{reverseConnector(source,scene,object);}catch(error){reverse.disabled=true;reverse.title=error.message;}
+  reverse.onclick=()=>request(()=>reverseConnector(source,scene,object));
+  box.append(reverse);
+  let termination=null;try{termination=inspectProperties(source,object,scene).termination;}catch{}
+  if(termination!==null)box.append(row('Heads',segmented('Heads',[['none','None'],['end','End'],['start','Start'],['both','Both']],termination,
+    mode=>request(()=>changeTermination(source,object,scene,mode)))));
+  return box;
+}
 export function connectorLabel(capabilities){
   if(!capabilities)return 'inspect only';
   const parts=[];
@@ -28,26 +93,23 @@ export function connectorLabel(capabilities){
   if(capabilities.styles)parts.push('styles editable');
   return parts.join(', ')||'inspect only';
 }
-export function arrowEditor({object,scene,source,svg,inspector,propose,status,valid,clear,autoApply,render,preview,accept,discard}){
-  if(!['arrow','line','spline','arc'].includes(object.kind))return false;
+// The editor fills the inspector's slots: suggested routes, the connector's
+// style controls (inside Style) and the endpoint/routing panels (inside
+// Advanced). Each slot is replaced whole, so a refresh never duplicates.
+export function arrowEditor({object,scene,source,svg,slots,propose,status,valid,clear,autoApply,render,preview,accept,discard}){
+  if(!['arrow','line','spline','arc'].includes(object.kind)||!slots)return false;
   const routable=['arrow','line'].includes(object.kind);
   const targets=scene.objects.filter(o=>o.name&&o.id!==object.id&&o.anchors&&!['arrow','line','spline','arc','move'].includes(o.kind));
   const available=routable?targets.filter(t=>endpointCandidates(source,object,scene,'to',t,'n').length):[];
   const vertexEditable=routable&&(object.path||[]).some((p,i)=>moveVertexCandidates(source,object,scene,i,p).length);
   const styles=render&&preview?routeStyleGallery({object,scene,source,render,preview,accept,discard,status,valid}):null;
-  const styled=styles?.dataset.state==='ready';
-  if(!available.length&&!vertexEditable&&!styled)return false;
+  const styled=!!styles?.ready;
+  slots.routes?.replaceChildren(...(styled?[styles.routes]:[]));
+  slots.style?.replaceChildren(...(styled?[styles.style]:[]));
+  slots.editor?.replaceChildren();
+  if(!available.length&&!vertexEditable)return styled;
   let active='to',armed=false,dragActive=false;
-  const previous=inspector.querySelector('.arrow-editor');
-  const position=previous?.nextSibling;previous?.remove();
   const section=document.createElement('div');section.className='arrow-editor';
-  const heading=document.createElement('h3');heading.textContent='Connector';
-  if(!available.length&&!vertexEditable){
-    // Style-only: splines, arcs and routes the endpoint editor cannot rewrite.
-    section.append(heading,styles);
-    if(position?.parentNode===inspector)inspector.insertBefore(section,position);else inspector.append(section);
-    return true;
-  }
   const instructions=document.createElement('p');instructions.textContent='Drag an endpoint to reconnect. Or choose a target and anchor below. Canvas anchors are inactive until Reconnect is enabled.';
   const reconnect=document.createElement('button');reconnect.textContent='Reconnect on canvas';reconnect.setAttribute('aria-pressed','false');
   const side=document.createElement('div');side.className='endpoint-tabs';
@@ -84,8 +146,7 @@ export function arrowEditor({object,scene,source,svg,inspector,propose,status,va
   if(!available.length)endpoints.title='Endpoint reconnection is not supported for this route expression.';
   const endpointPanel=document.createElement('div');endpointPanel.className='endpoint-controls';
   endpointPanel.append(instructions,reconnect,side,label,textLabel,buttons);
-  section.append(heading,...(styled?[styles]:[]),modes,endpointPanel);
-  if(position?.parentNode===inspector)inspector.insertBefore(section,position);else inspector.append(section);
+  section.append(modes,endpointPanel);slots.editor?.append(section);
   const t=scene.transform,m=new DOMMatrix([t.a,t.b,t.c,t.d,t.e,t.f]);
   const point=p=>new DOMPoint(p.x,p.y).matrixTransform(m);
   const layer=element('g',{class:'arrow-overlay'});svg.append(layer);

@@ -190,7 +190,8 @@ with sync_playwright() as pw:
             check_icons(page, scheme, signatures)
             check_no_glyphs(page)
             change = page.locator('.cl-context .cl-endpoint-action:visible').first
-            expect(change).to_have_text(re.compile(r"Change (start|end)"))
+            expect(change).to_have_text(re.compile(r"^(Start|End)$"))
+            expect(change).to_have_attribute("aria-label", re.compile(r"^Reconnect (start|end)$"))
 
         assert not errors, errors
         context.close()
