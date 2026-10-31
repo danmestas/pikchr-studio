@@ -1,8 +1,9 @@
 """User-visible setup for browser tests; no hidden application-state changes.
 
 Studio has one layout: a full-viewport canvas with floating chrome. Controls
-live in the ☰ menu, the ⋯ selection popover, the export menu or the source
-drawer. These helpers open whichever container holds a control, the way a
+live in the ☰ menu, the ⋯ selection popover, the export menu, the source
+drawer, the status chip's Changes popover or the palette's Adding shapes
+popover. These helpers open whichever container holds a control, the way a
 person would, before the test interacts with it.
 """
 import re
@@ -11,6 +12,8 @@ from playwright.sync_api import expect
 MENU = '.cl-menu'
 MORE = '.cl-more'
 EXPORT = '.cl-export'
+CHANGES = '.cl-changes'
+ADDING = '.cl-adding'
 DRAWER = '.cl-drawer'
 
 def _open(page, panel, button):
@@ -37,12 +40,48 @@ def open_more(page):
         if button.is_visible():
             button.click()
         else:
-            open_document_menu(page)
             page.locator('#mobile-objects').click()
     expect(page.locator(MORE)).to_be_visible()
     if page.locator('.cl-view-objects').is_visible():
         page.locator('.cl-back').click()
     expect(page.locator('.cl-view-properties')).to_be_visible()
+
+def open_changes(page):
+    """Review queued changes from the status chip (enabled only when there is something to review)."""
+    _open(page, CHANGES, '.cl-status .cl-summary')
+
+def open_adding(page):
+    """The palette chevron's Adding shapes popover."""
+    _open(page, ADDING, '.cl-palette [aria-label="Adding shapes"]')
+
+def open_components(page):
+    """☰ › Advanced › Components… (turns on Advanced tools first)."""
+    dialog = page.locator('#components-dialog')
+    if dialog.is_visible():
+        return dialog
+    open_document_menu(page)
+    if not page.locator('#advanced-mode').is_checked():
+        page.locator('#advanced-mode').check()
+    page.locator('#open-components').click()
+    expect(dialog).to_be_visible()
+    return dialog
+
+def open_document(page, title=None, id=None):
+    """Switch documents the way a person does: click a row in ☰ › Document."""
+    open_document_menu(page)
+    row = page.locator('.cl-recent button[data-id="' + id + '"]') if id else page.locator('.cl-recent button').filter(has_text=title)
+    row.first.click()
+
+def select_multiple(page):
+    """Toggle Select multiple. The palette button is shown on touch screens only;
+    on a desktop pointer it is hidden, so use the control itself."""
+    page.evaluate("document.getElementById('multi-select').click()")
+
+def clear_selection(page):
+    """Escape on the canvas clears the selection and multi-select mode."""
+    close_popovers(page)
+    page.locator('#diagram').focus()
+    page.keyboard.press('Escape')
 
 def open_export(page):
     _open(page, EXPORT, '.cl-doc [aria-label="Export"]')
@@ -56,6 +95,7 @@ def show_source(page):
 def hide_source(page):
     if 'open' in (page.locator(DRAWER).get_attribute('class') or ''):
         page.locator('.cl-doc [aria-label="Source"]').click()
+        page.wait_for_function("getComputedStyle(document.querySelector('.cl-drawer')).visibility==='hidden'")
 
 def set_source(page, text):
     """Type a whole program through the source drawer, wait for its render
@@ -70,9 +110,16 @@ def set_source(page, text):
 def reveal(page, selector):
     """Open the menu, popover, drawer and <details> that contain selector."""
     where = page.evaluate("""sel=>{const e=document.querySelector(sel);if(!e)return null;
-      return {menu:!!e.closest('.cl-menu'),more:!!e.closest('.cl-more'),exp:!!e.closest('.cl-export'),drawer:!!e.closest('.cl-drawer')}}""", selector)
+      return {menu:!!e.closest('.cl-menu'),more:!!e.closest('.cl-more'),exp:!!e.closest('.cl-export'),drawer:!!e.closest('.cl-drawer'),
+        changes:!!e.closest('.cl-changes'),adding:!!e.closest('.cl-adding'),components:!!e.closest('#components-dialog')}}""", selector)
     if where:
-        if where['menu']:
+        if where['components']:
+            open_components(page)
+        elif where['changes']:
+            open_changes(page)
+        elif where['adding']:
+            open_adding(page)
+        elif where['menu']:
             open_document_menu(page)
         elif where['more']:
             open_more(page)
@@ -152,8 +199,9 @@ def render_source(page):
     page.locator('.cl-drawer-head').get_by_role('button', name='Render', exact=True).click()
 
 def open_menu_details(page, title, within='#creation-tools'):
-    """Open a named <details> section inside the ☰ menu."""
-    open_document_menu(page)
+    """Open a named <details> section of the add-by-coordinates form
+    (palette chevron › Adding shapes › Add by coordinates…)."""
+    open_adding(page)
     if within == '#creation-tools' and not page.locator('#creation-tools').is_visible():
         page.locator('#mobile-add').click()   # "Add by coordinates" reveals the form
     summary = page.locator(within + ' summary').filter(has_text=re.compile('^' + re.escape(title) + '$'))
@@ -167,7 +215,7 @@ def menu_click(page, selector):
     close_popovers(page)
 
 def set_auto_apply(page, on):
-    """☰ › Changes › Auto-apply, then close the menu."""
+    """☰ › Preferences › Apply accepted changes immediately, then close the menu."""
     box = reveal(page, '#auto-apply')
     box.check() if on else box.uncheck()
     close_popovers(page)

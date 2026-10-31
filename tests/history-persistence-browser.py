@@ -10,7 +10,7 @@ import os
 import re
 from playwright.sync_api import sync_playwright
 from browser_helpers import (object_button, open_more, close_popovers, set_source, show_source,
-                             open_document_menu, set_auto_apply, reveal)
+                             open_document_menu, set_auto_apply, reveal, open_document)
 
 STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 INITIAL = (
@@ -71,8 +71,7 @@ with sync_playwright() as pw:
         page.locator("#preview-accept").click()
 
     def opened_document(title):
-        open_document_menu(page)
-        reveal(page, "#documents").select_option(label=title)
+        open_document(page, title=title)
         page.wait_for_function("t => document.querySelector('.cl-title')?.textContent === t", arg=title)
 
     show_source(page)

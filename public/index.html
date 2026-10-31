@@ -61,7 +61,7 @@
 <button id="duplicate-selected" disabled>Duplicate</button>
 <button id="delete-selected" disabled>Delete</button>
 <button id="show-source-selected" disabled>Show source</button>
-<button id="multi-select" aria-pressed="false">Select multiple</button><button id="clear-selection">Clear</button>
+<button id="multi-select" aria-pressed="false">Select multiple</button><button id="clear-selection" disabled>Clear</button>
 <span class="move-selection" aria-label="Move selected objects"><button id="move-left" aria-label="Move selection left">←</button><button id="move-right" aria-label="Move selection right">→</button><button id="move-up" aria-label="Move selection up">↑</button><button id="move-down" aria-label="Move selection down">↓</button></span>
 <label class="arrange-selection">Arrange <select id="layout-mode" aria-label="Arrange selected objects"><option value="align-x">Align centers vertically</option><option value="align-y">Align centers horizontally</option><option value="equal-width">Equal width</option><option value="equal-height">Equal height</option><option value="distribute-x">Distribute horizontally</option><option value="distribute-y">Distribute vertically</option></select></label><button id="arrange" disabled>Arrange</button>
 </div>
@@ -83,7 +83,6 @@
 <div id="creation-tools" aria-label="Add objects"></div>
 <details class="component-tools"><summary>Reusable components</summary><p>Stored on this browser, separately from document backups.</p><label>Name <input id="component-name" maxlength="80" placeholder="Three-step flow"></label><button id="save-component" disabled>Save selection</button><label>Components <select id="components"></select></label><button id="insert-component" disabled>Insert component</button></details>
 <p class="navigation-hint">Drag empty canvas to pan · Pinch with two fingers to zoom · Space-drag to pan over shapes</p>
-<details class="canvas-help"><summary>Canvas gestures &amp; shortcuts</summary><p>Drag empty canvas to pan. Two fingers pan and pinch to zoom. Mouse wheel/trackpad scroll pans; Ctrl/⌘ + scroll zooms at the pointer. Hold Space or use the middle mouse button to pan over shapes.</p><p>Ctrl/⌘ Z: Undo · Ctrl/⌘ Shift Z (or Ctrl Y): Redo · Ctrl/⌘ D: Duplicate · Ctrl/⌘ A: Select movable shapes · Delete: Remove selection · Escape: Cancel drag / clear selection.</p><p>When the canvas is focused: + / − zoom · 0 / 1 fit diagram · F focus selection · Arrow keys move 0.1 inch, Shift moves 1 inch, Alt moves 0.01 inch. Text fields keep their normal shortcuts. Navigation does not change your source or undo history.</p></details>
 <p class="hint">Drag a shape to preview ranked source edits. Accepted changes queue here; Apply all commits them, Discard all restores the original.</p>
 <p id="impact"></p>
 </section>

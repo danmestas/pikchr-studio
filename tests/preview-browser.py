@@ -69,11 +69,15 @@ with sync_playwright() as pw:
     assert "API" in page.locator("#inspector").inner_text()
     # Advanced tools are hidden by default, even inside the ☰ menu.
     open_document_menu(page)
+    assert not page.locator("#open-components").is_visible()
     assert not page.locator(".component-tools").is_visible()
     page.goto(STUDIO + "/?advanced=1")
     page.wait_for_function("document.querySelector('#state').textContent.startsWith('Rendered')")
     open_document_menu(page)
-    assert page.locator(".component-tools").is_visible()
+    assert page.locator("#open-components").is_visible()
+    page.locator("#open-components").click()
+    assert page.locator("#components-dialog .component-tools").is_visible()
+    page.locator("#components-dialog").get_by_role("button", name="Close", exact=True).click()
     assert not errors, errors
     browser.close()
     print("PASS: error alert with the source closed, ranked relational preview, keyboard cycling, escape, accept, apply, undo/redo, focusable objects, advanced flag")

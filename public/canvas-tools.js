@@ -15,28 +15,36 @@ const pick=(label,items)=>{const field=element('label'),select=element('select',
 
 // The canvas controller does not own source, history, or document persistence.
 // It submits one validated candidate through the app's existing edit pipeline.
-export function canvasTools({host,toolbar,getState,render,propose,select,selectMany,status,stopPan,invalidate,livePreview,liveClear}){
+export function canvasTools({clearSelection,host,toolbar,getState,render,propose,select,selectMany,status,stopPan,invalidate,livePreview,liveClear}){
   let mode='select',modeKey=null,startShape=null,pending=null,resize=null,dialogSession=null,epoch=0;
   const snapshot=()=>({...getState(),toolEpoch:epoch});
   const kinds=pick('Shape',shapeKinds.map(k=>[k,k[0].toUpperCase()+k.slice(1)]));
   kinds.field.className='active-shape-kind';
   // Changing the kind while placing (e.g. Text → Box) updates the tool state.
   kinds.select.addEventListener('change',()=>sync());
-  const repeat=element('input',{type:'checkbox','aria-label':'Keep placing shapes'}),repeatLabel=element('label');repeatLabel.append(repeat,' Keep adding');
-  const directions=pick('Direction',[['right','Right'],['down','Down'],['left','Left'],['up','Up']]);
+  const repeat=element('input',{type:'checkbox',id:'keep-adding','aria-label':'Keep placing shapes'}),repeatLabel=element('label');repeatLabel.append(repeat,' Keep adding');
+  const directions=pick('Direction',[['right','Right'],['down','Down'],['left','Left'],['up','Up']]);directions.select.id='neighbor-direction';
   const place=button('Place shape',()=>setMode(mode==='place'?'select':'place'));
   const connect=button('Connect shapes',()=>setMode(mode==='connect'?'select':'connect'));
   const marquee=button('Select area',()=>setMode(mode==='marquee'?'select':'marquee'));
   const neighbor=button('Add connected shape',async()=>{const s=getState();if(!s.valid||!s.object)return;try{await submit(createConnectedNeighbor(s.source,s.scene,s.object,{type:kinds.select.value,label:'',direction:directions.select.value}),s); }catch(e){status(e.message);}});
   const center=button('Place at view center',()=>{const svg=host.querySelector('svg'),r=svg?.getBoundingClientRect()||host.getBoundingClientRect();placeAt({clientX:r.x+r.width/2,clientY:r.y+r.height/2});});
-  const cancelButton=button('Cancel tool',()=>cancel());
+  const cancelButton=button('Cancel tool',()=>cancel());center.id='place-center';neighbor.id='add-neighbor';
   const toolState=element('span',{'role':'status'});
   const selectTool=button('Select',()=>setMode('select'));
   const panTool=button('Pan',()=>{cancel(false);document.querySelector('#pan-mode')?.click();sync();});
   const textTool=button('Text',()=>{kinds.select.value='text';setMode('place');});
   const palette=element('div',{class:'mode-palette',role:'toolbar','aria-label':'Canvas modes'});
-  const paths={Select:'M5 3l14 9-7 1-3 7z',Pan:'M8 12V6a2 2 0 014 0v5-6a2 2 0 014 0v7-4a2 2 0 014 0v7c0 4-3 6-7 6-3 0-5-2-7-5l-3-4a2 2 0 013-2l2 2',Shape:'M4 4h16v16H4z',Connector:'M4 19L20 5M12 5h8v8',Text:'M4 5h16M12 5v15M8 20h8','Select area':'M8 4H4v4M16 4h4v4M20 16v4h-4M8 20H4v-4'};
-  for(const [control,name] of [[selectTool,'Select'],[panTool,'Pan'],[place,'Shape'],[connect,'Connector'],[textTool,'Text'],[marquee,'Select area']]){control.textContent='';control.title=name;control.setAttribute('aria-label',name==='Shape'?'Place shape':name==='Connector'?'Connect shapes':name);const icon=svgElement('svg',{viewBox:'0 0 24 24',width:20,height:20,'aria-hidden':'true',fill:'none',stroke:'currentColor','stroke-width':'1.6','stroke-linecap':'round','stroke-linejoin':'round'});icon.append(svgElement('path',{d:paths[name]}));control.append(icon);palette.append(control);}
+  // Lucide paths (lucide.dev, ISC license): 24-unit, round joins, one stroke weight with the layout chrome.
+  const icons={
+    Select:[['path',{d:'M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z',fill:'currentColor'}]],
+    Pan:[['path',{d:'M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2'}],['path',{d:'M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2'}],['path',{d:'M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8'}],['path',{d:'M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15'}]],
+    Shape:[['rect',{x:'3',y:'3',width:'18',height:'18',rx:'2'}]],
+    Connector:[['path',{d:'M13 5h6v6'}],['path',{d:'M19 5 5 19'}]],
+    Text:[['path',{d:'M12 4v16'}],['path',{d:'M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2'}],['path',{d:'M9 20h6'}]],
+    'Select area':[['path',{d:'M5 3a2 2 0 0 0-2 2'}],['path',{d:'M19 3a2 2 0 0 1 2 2'}],['path',{d:'M21 19a2 2 0 0 1-2 2'}],['path',{d:'M5 21a2 2 0 0 1-2-2'}],['path',{d:'M9 3h1'}],['path',{d:'M9 21h1'}],['path',{d:'M14 3h1'}],['path',{d:'M14 21h1'}],['path',{d:'M3 9v1'}],['path',{d:'M21 9v1'}],['path',{d:'M3 14v1'}],['path',{d:'M21 14v1'}]],
+  };
+  for(const [control,name] of [[selectTool,'Select'],[panTool,'Pan'],[place,'Shape'],[connect,'Connector'],[textTool,'Text'],[marquee,'Select area']]){control.textContent='';control.title=name;control.setAttribute('aria-label',name==='Shape'?'Place shape':name==='Connector'?'Connect shapes':name);const icon=svgElement('svg',{viewBox:'0 0 24 24',width:20,height:20,'aria-hidden':'true',focusable:'false',fill:'none',stroke:'currentColor','stroke-width':'1.7','stroke-linecap':'round','stroke-linejoin':'round'});for(const [tag,attrs] of icons[name])icon.append(svgElement(tag,attrs));control.append(icon);palette.append(control);}
   const options=element('details',{class:'tool-options'}),optionsTitle=element('summary'),optionsPanel=element('div',{class:'tool-options-panel'});optionsTitle.textContent='Tool options';options.append(optionsTitle,optionsPanel);optionsPanel.append(center,repeatLabel,directions.field,neighbor,cancelButton);
   place.onclick=()=>{const alreadyShape=mode==='place'&&kinds.select.value!=='text';if(kinds.select.value==='text')kinds.select.value='box';setMode(alreadyShape?'select':'place');};
   document.querySelector('#pan-mode')?.addEventListener('click',()=>sync());
@@ -56,7 +64,7 @@ export function canvasTools({host,toolbar,getState,render,propose,select,selectM
   const reverse=button('Reverse direction',()=>{const s=snapshot();try{submit(reverseConnector(s.source,s.scene,s.object),s);}catch(error){status(error.message);}});
   quick.append(ends.field,reconnectFrom,reconnectTo,reverse);toolbar.after(dock);dock.append(quick);
   ends.select.onchange=()=>{const s=getState();try{submit(changeTermination(s.source,s.object,s.scene,ends.select.value),s);}catch(e){status(e.message);}};
-  const snap=element('input',{type:'checkbox',checked:''}),snapLabel=element('label');snapLabel.append(snap,' Snap resize to 0.1 in');optionsPanel.append(snapLabel);
+  const snap=element('input',{type:'checkbox',id:'snap-resize',checked:''}),snapLabel=element('label');snapLabel.append(snap,' Snap resize to 0.1 in');optionsPanel.append(snapLabel);
   const sizingBar=element('div',{'class':'canvas-sizing','aria-label':'Shape size'});
   const sizeWarning=element('span',{'class':'size-warning','role':'status'});sizeWarning.hidden=true;
   const sizeWidth=element('input',{type:'number',min:'.1',max:'100',step:'.1','aria-label':'Shape width'}),sizeHeight=element('input',{type:'number',min:'.1',max:'100',step:'.1','aria-label':'Shape height'});
@@ -117,7 +125,7 @@ export function canvasTools({host,toolbar,getState,render,propose,select,selectM
     selectTool.setAttribute('aria-pressed',String(mode==='select'&&!panning));panTool.setAttribute('aria-pressed',String(panning));textTool.setAttribute('aria-pressed',String(mode==='place'&&kinds.select.value==='text'));
     place.setAttribute('aria-pressed',String(mode==='place'&&kinds.select.value!=='text'));connect.setAttribute('aria-pressed',String(mode==='connect'));
     marquee.setAttribute('aria-pressed',String(mode==='marquee'));
-    center.hidden=mode!=='place';cancelButton.hidden=mode==='select';
+    cancelButton.hidden=mode==='select';
     kinds.field.hidden=mode!=='place'||kinds.select.value==='text';
     toolState.textContent=panning?'Pan':mode==='select'?'Select':mode==='marquee'?'Drag a selection area':mode==='connect'?(startShape?'Choose destination':'Choose first shape'):mode==='place'?'Place '+kinds.select.value:'Choose '+mode+' target';
     toolbar.dataset.mode=mode;host.dataset.tool=mode;
@@ -239,7 +247,7 @@ export function canvasTools({host,toolbar,getState,render,propose,select,selectM
   },true);
   host.addEventListener('pointercancel',()=>cancel(false));
   host.addEventListener('lostpointercapture',()=>{if(resize){resize=null;liveClear?.();host.querySelectorAll('.canvas-preview').forEach(node=>node.remove());sync();}});
-  host.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();cancel();}else if(e.key==='Enter'&&mode==='select'&&!e.target.closest('[data-resize]')){e.preventDefault();editText();}},true);
+  host.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();const idle=mode==='select'&&!resize&&!pending&&!dialogSession;cancel();if(idle)clearSelection?.();}else if(e.key==='Enter'&&mode==='select'&&!e.target.closest('[data-resize]')){e.preventDefault();editText();}},true);
   window.addEventListener('blur',()=>{if(resize||pending)cancel(false);});
 
   function editText(){

@@ -76,8 +76,8 @@ server works; the app is plain HTML, ES modules, and a Web Worker.
 
 ## Interface
 
-One full-window canvas with floating controls: ☰ (documents, examples, view,
-queued changes, tools), `</>` (the source drawer), ⤓ (export), a tool palette,
+One full-window canvas with floating controls: ☰ (documents, preferences,
+advanced tools), `</>` (the source drawer), ⤓ (export), a tool palette,
 a status chip, and undo/zoom chips. Selecting an object shows a toolbar above
 it whose ⋯ opens the inspector. `public/help.html` describes every gesture.
 The controls are declared in `index.html`; `canvas-layout.js` arranges them

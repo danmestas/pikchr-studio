@@ -59,10 +59,31 @@ function install(studio){
   // so the panel scrolls under a heading that never leaves the screen.
 
   // ---- document chip + menu --------------------------------------------------
-  const menuButton=el('button',{type:'button',class:'cl-icon','aria-label':'Menu',title:'Menu','aria-expanded':'false'},'☰');
-  const sourceButton=el('button',{type:'button',class:'cl-icon','aria-label':'Source','aria-pressed':'false',title:'Source (S)'},'</>');
+  // Chrome icons: 24-unit line art in currentColor, like the selection toolbar.
+  // Paths are Lucide (lucide.dev, ISC license): 24-unit, round caps and joins,
+  // drawn at the one stroke weight iconMarkup sets.
+  const CHROME_ICONS={
+    menu:[['path',{d:'M4 5h16'}],['path',{d:'M4 12h16'}],['path',{d:'M4 19h16'}]],
+    source:[['path',{d:'m18 16 4-4-4-4'}],['path',{d:'m6 8-4 4 4 4'}],['path',{d:'m14.5 4-5 16'}]],
+    export:[['path',{d:'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'}],['path',{d:'m7 10 5 5 5-5'}],['path',{d:'M12 15V3'}]],
+    out:[['path',{d:'M5 12h14'}]],
+    in:[['path',{d:'M5 12h14'}],['path',{d:'M12 5v14'}]],
+    help:[['circle',{cx:'12',cy:'12',r:'10'}],['path',{d:'M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3'}],['path',{d:'M12 17h.01'}]],
+    focus:[['circle',{cx:'12',cy:'12',r:'3'}],['path',{d:'M3 7V5a2 2 0 0 1 2-2h2'}],['path',{d:'M17 3h2a2 2 0 0 1 2 2v2'}],['path',{d:'M21 17v2a2 2 0 0 1-2 2h-2'}],['path',{d:'M7 21H5a2 2 0 0 1-2-2v-2'}]],
+    find:[['circle',{cx:'11',cy:'11',r:'8'}],['path',{d:'m21 21-4.3-4.3'}]],
+    chevron:[['path',{d:'m6 9 6 6 6-6'}]],
+    box:[['rect',{x:'2',y:'6',width:'20',height:'12',rx:'2'}]],
+    circle:[['circle',{cx:'12',cy:'12',r:'10'}]],
+    cylinder:[['ellipse',{cx:'12',cy:'5',rx:'9',ry:'3'}],['path',{d:'M3 5v14a9 3 0 0 0 18 0V5'}]],
+    diamond:[['path',{d:'M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41L13.7 2.71a2.41 2.41 0 0 0-3.41 0z'}]],
+    line:[['path',{d:'M5 19 19 5'}]],
+    multi:[['rect',{x:'3',y:'3',width:'12',height:'12',rx:'2'}],['rect',{x:'9',y:'9',width:'12',height:'12',rx:'2'}]],
+  };
+
+  const menuButton=el('button',{type:'button',class:'cl-icon','aria-label':'Menu',title:'Menu','aria-expanded':'false'},iconMarkup(CHROME_ICONS.menu));
+  const sourceButton=el('button',{type:'button',class:'cl-icon','aria-label':'Source','aria-pressed':'false',title:'Source (S)'},iconMarkup(CHROME_ICONS.source));
   const title=el('strong',{class:'cl-title'},'Untitled');
-  const exportButton=el('button',{type:'button',class:'cl-icon','aria-label':'Export',title:'Export','aria-expanded':'false'},'⤓');
+  const exportButton=el('button',{type:'button',class:'cl-icon','aria-label':'Export',title:'Export','aria-expanded':'false'},iconMarkup(CHROME_ICONS.export));
   const chip=el('div',{class:'cl-float cl-doc'},menuButton,title,el('span',{class:'cl-sep'}),sourceButton,exportButton);
   document.body.append(chip);
   const menu=popover('cl-menu','Document menu');
@@ -71,60 +92,80 @@ function install(studio){
   const statusText=$('state');
   // The menu is built as flat sections from controls declared in index.html. Elements
   // are moved, not cloned, so every id and handler keeps working.
-  const section=(name,...nodes)=>el('section',{class:'cl-section','aria-label':name},el('h3',{class:'cl-section-title'},name),...nodes.filter(Boolean));
+  const section=(name,...nodes)=>el('section',{class:'cl-section','aria-label':name},name&&el('h3',{class:'cl-section-title'},name),...nodes.filter(Boolean));
   const row=(...nodes)=>el('div',{class:'cl-row'},...nodes.filter(Boolean));
   const labelled=(id,text)=>{const input=$(id);if(!input)return null;const label=input.closest('label')||el('label',{},input);label.classList.add('cl-check-row');label.replaceChildren(input,el('span',{},text));return label;};
-  const docLabel=$('documents')?.closest('label');
-  if(docLabel){docLabel.classList.add('cl-field');docLabel.replaceChildren(el('span',{class:'cl-field-name'},'Saved documents'),$('documents'));}
-  const saveState=$('save-state');saveState?.classList.add('cl-muted');
+  // Saved documents: the select stays (off-stage, in nav) as the source of
+  // truth for app.js; the menu shows it as recent rows that drive the same
+  // change event.
+  const documents=$('documents');
+  const recent=el('div',{class:'cl-recent','aria-label':'Saved documents'});
+  const ago=t=>{const s=Math.max(0,(Date.now()-t)/1000);return s<45?'just now':s<3600?Math.round(s/60)+' min ago':s<86400?Math.round(s/3600)+' h ago':s<604800?Math.round(s/86400)+' d ago':new Date(t).toLocaleDateString();};
+  function syncRecent(){
+    if(!documents)return;
+    const all=[...documents.options],keep=all.slice(0,5);
+    const active=all.find(o=>o.value===documents.value);if(active&&!keep.includes(active))keep.push(active);
+    recent.replaceChildren(...keep.map(o=>{
+      const on=o===active,b=el('button',{type:'button','data-id':o.value,'aria-current':on?'true':null},el('span',{class:'cl-recent-name'},o.textContent),el('span',{class:'cl-muted'},o.dataset.updated?ago(+o.dataset.updated):''));
+      b.onclick=()=>{toggle(menu,menuButton,false);if(on)return;documents.value=o.value;documents.dispatchEvent(new Event('change',{bubbles:true}));};
+      return b;
+    }));
+  }
+  const saveState=$('save-state');saveState?.classList.add('cl-muted','cl-save-state');
   const newDoc=$('new-document'),openDoc=$('open-document');
   if(newDoc)newDoc.textContent='New';if(openDoc)openDoc.textContent='Open file…';
-  const examples=$('choose-example');if(examples)examples.textContent='Browse examples…';
-  if(help){help.textContent='How it works';help.classList.add('cl-link');}
-  const docSection=section('Document',row(newDoc,openDoc,$('file-input')),docLabel,saveState,row(examples,help));
-  const addSection=section('Add',row($('mobile-add')),$('creation-tools'));
-  const view=q('.canvas-view-options');
-  const viewSection=section('View',labelled('anchors','Show anchors'),$('pan-mode'),labelled('advanced-mode','Advanced tools'));
-  if(view)view.hidden=true;
-  // Changes: one status line, one row of actions, the auto-apply switch, then
-  // the queue and the latest diff (moved out of the inspector).
+  const examples=$('choose-example');if(examples)examples.textContent='Examples…';
+  const docSection=section('Document',row(newDoc,openDoc,examples,$('file-input')),recent,saveState);
+  const prefsSection=section('Preferences',labelled('anchors','Show anchors'),labelled('auto-apply','Apply accepted changes immediately'),labelled('snap-resize','Snap resize to 0.1 in'),labelled('advanced-mode','Advanced tools'));
+  const view=q('.canvas-view-options');if(view)view.hidden=true;
+  // Changes live in a popover opened from the status chip (see syncStatus).
   const draft=q('.draft-toolbar'),queueStatus=$('queue-status');
   const applyAll=$('accept'),discardAll=$('cancel'),undoDraft=$('undo-draft');
   if(applyAll)applyAll.textContent='Apply all';if(discardAll)discardAll.textContent='Discard all';if(undoDraft)undoDraft.textContent='Undo last';
   const queuePanel=q('main aside .queue-panel');
   if(queuePanel){for(const h of queuePanel.querySelectorAll(':scope>h2,:scope>h3'))h.remove();const latest=$('diff');if(latest)latest.before(el('div',{class:'cl-field-name'},'Latest change'));}
-  const changesSection=section('Changes',row(queueStatus&&el('span',{class:'cl-queue-text'},queueStatus),applyAll,discardAll,undoDraft),labelled('auto-apply','Auto-apply accepted changes'),queuePanel);
+  const changes=popover('cl-changes','Queued changes');
+  changes.append(section('Changes',row(queueStatus&&el('span',{class:'cl-queue-text'},queueStatus),applyAll,discardAll,undoDraft),queuePanel));
   if(draft)draft.hidden=true;
-  const components=q('.component-tools');if(components){components.open=true;components.classList.add('cl-components');}
+  // Components open in a dialog (styled like the example picker) with the
+  // existing controls laid out as two aligned rows.
+  const components=q('.component-tools');
+  const componentsDialog=el('dialog',{id:'components-dialog','aria-labelledby':'components-title'});
+  if(components){
+    components.open=true;components.classList.add('cl-components');
+    const field=(text,control)=>el('label',{class:'cl-field'},el('span',{class:'cl-field-name'},text),control);
+    const sum=components.querySelector(':scope>summary');
+    components.replaceChildren(sum,
+      el('div',{class:'cl-component-row'},field('Name',$('component-name')),$('save-component')),
+      el('div',{class:'cl-component-row'},field('Components',$('components')),$('insert-component')));
+    const closeComponents=el('button',{type:'button'},'Close');closeComponents.onclick=()=>componentsDialog.close();
+    componentsDialog.append(el('div',{class:'example-heading'},el('h2',{id:'components-title'},'Reusable components'),closeComponents),el('p',{},'Saved on this browser, separately from document backups. Save the current selection, then insert it into any document.'),components);
+    document.body.append(componentsDialog);
+  }
+  const componentsButton=el('button',{type:'button',id:'open-components'},'Components…');
+  componentsButton.onclick=()=>{toggle(menu,menuButton,false);componentsDialog.showModal();};
   const backup=$('backup-workspace'),restore=$('restore-workspace');
-  const advancedSection=section('Advanced',row(backup,restore,$('backup-input')),components);
+  if(backup)backup.textContent='Back up documents…';if(restore)restore.textContent='Restore…';
+  const advancedSection=section('Advanced',row(componentsButton,backup,restore,$('backup-input')));
   advancedSection.classList.add('cl-advanced-only');
-  // About: where the code lives, and credit for the Pikchr renderer.
+  // Footer: where the code lives, and credit for the Pikchr renderer.
   const link=(href,text)=>{const a=el('a',{href,class:'cl-link'},text);if(/^https?:/.test(href)){a.target='_blank';a.rel='noopener';}return a;};
-  const aboutSection=section('About',
-    el('p',{class:'cl-about'},'Pikchr Studio edits diagrams by editing their Pikchr source.'),
-    row(link('https://github.com/danmestas/pikchr-studio','Source on GitHub'),link('licenses.html','Licenses')),
-    el('p',{class:'cl-about'},'Diagrams are rendered by ',link('https://pikchr.org','Pikchr'),', used under the 0BSD license.'));
-  menu.append(docSection,addSection,viewSection,changesSection,advancedSection,aboutSection);
-  // Selecting more than one object has to be discoverable without a keyboard:
-  // the toggle and Clear sit in the menu, where they are reachable even with
-  // nothing selected yet.
-  const selectionSection=section('Selection',
-    row($('mobile-objects'),$('focus-selection')),
-    row($('multi-select'),$('clear-selection')),
-    el('p',{class:'cl-muted'},'Turn on Select multiple, then tap shapes to add or remove them.'));
-  menu.insertBefore(selectionSection,viewSection);
-  // Remaining toolbar controls (render, undo, redo, downloads) stay
-  // reachable by id but off-stage; the export menu below takes the downloads.
+  if(help){help.textContent='How it works';help.classList.add('cl-link');}
+  const shortcutsLink=el('button',{type:'button',class:'cl-link'},'Shortcuts');
+  const footer=section('',el('div',{class:'cl-footer-links'},help,shortcutsLink,link('licenses.html','Licenses'),link('https://zeitforge.app/r/dmestas/pikchr-studio','Source')),
+    el('p',{class:'cl-about'},'Rendered by ',link('https://pikchr.org','Pikchr'),', 0BSD.'));
+  footer.setAttribute('aria-label','About');footer.classList.add('cl-footer');
+  menu.append(docSection,prefsSection,advancedSection,footer);
+  // Remaining toolbar controls (render, undo, redo, downloads, the documents
+  // select) stay reachable by id but off-stage; the export menu takes the downloads.
   if(nav){nav.classList.add('cl-offstage');document.body.append(nav);}
-  menuButton.onclick=()=>toggle(menu,menuButton);
+  menuButton.onclick=()=>{syncRecent();toggle(menu,menuButton);};
   const exportMenu=popover('cl-export','Export');
   exportMenu.append(el('strong',{},'Export'),...['export-svg','export-png','export-selection','download'].map(id=>$(id)).filter(Boolean));
   exportButton.onclick=()=>toggle(exportMenu,exportButton);
-  const documents=$('documents');
   const syncTitle=()=>{const own=studio.title?.();const text=own||documents?.selectedOptions?.[0]?.textContent?.trim();const next=text&&text!=='Current diagram'?text:'Untitled';if(title.textContent!==next)title.textContent=next;};
-  documents?.addEventListener('change',syncTitle);syncTitle();
-  if(documents)new MutationObserver(syncTitle).observe(documents,{childList:true,subtree:true,characterData:true});
+  documents?.addEventListener('change',()=>{syncTitle();syncRecent();});syncTitle();syncRecent();
+  if(documents)new MutationObserver(()=>{syncTitle();syncRecent();}).observe(documents,{childList:true,subtree:true,characterData:true});
 
   // ---- source drawer ---------------------------------------------------------
   const drawer=el('section',{class:'cl-drawer','aria-label':'Source drawer'});
@@ -145,7 +186,7 @@ function install(studio){
 
   // ---- status chip -----------------------------------------------------------
   const dot=el('i',{class:'cl-dot-state','aria-hidden':'true'});
-  const summary=el('span',{class:'cl-summary'},'Loading');
+  const summary=el('button',{type:'button',class:'cl-summary','aria-haspopup':'dialog','aria-expanded':'false',title:'Queued changes'},'Loading');summary.onclick=()=>toggle(changes,summary);
   const apply=el('button',{type:'button',disabled:''},'Apply');apply.onclick=()=>$('accept')?.click();
   const discard=el('button',{type:'button',disabled:''},'Discard');discard.onclick=()=>$('cancel')?.click();
   const statusChip=el('div',{class:'cl-float cl-status'},el('div',{class:'cl-status-line'},dot,summary,apply,discard));
@@ -169,6 +210,10 @@ function install(studio){
     statusChip.dataset.state=invalid||diagram.classList.contains('renderer-down')?'invalid':queued?'queued':'ok';
     apply.disabled=$('accept')?.disabled??true;discard.disabled=$('cancel')?.disabled??true;
     apply.hidden=discard.hidden=!queued;
+    // The queue and Undo last are reachable only while there is something to review.
+    const review=!!queued||!$('auto-apply')?.checked;
+    if(summary.disabled===review)summary.disabled=!review;
+    if(!review&&!changes.hidden)toggle(changes,summary,false);
   }
 
   // ---- tool palette ----------------------------------------------------------
@@ -178,11 +223,10 @@ function install(studio){
   const selectTool=tool('Select'),panTool=tool('Pan'),placeTool=tool('Place shape'),connectTool=tool('Connect shapes'),textTool=tool('Text'),marquee=tool('Select area');
   const kindSelect=q('#direct-tools .active-shape-kind select');
   const key=(button,letter)=>{if(button){button.dataset.key=letter;button.title=(button.title||button.getAttribute('aria-label'))+' ('+letter+')';}return button;};
-  const glyph=(label,letter,text)=>key(el('button',{type:'button','aria-label':label,class:'cl-tool','aria-pressed':'false'},el('span',{'aria-hidden':'true'},text)),letter);
-  const shapeButtons={box:glyph('Box','B','▭'),circle:glyph('Circle','C','◯'),cylinder:glyph('Cylinder','D','⛁'),diamond:glyph('Diamond','',  '◇')};
-  shapeButtons.diamond.title='Diamond';
+  const glyph=(label,letter,icon)=>key(el('button',{type:'button','aria-label':label,class:'cl-tool','aria-pressed':'false'},iconMarkup(CHROME_ICONS[icon])),letter);
+  const shapeButtons={box:glyph('Box','B','box'),circle:glyph('Circle','C','circle'),cylinder:glyph('Cylinder','D','cylinder'),diamond:glyph('Diamond','R','diamond')};
   let connectKind='arrow';
-  const lineButton=glyph('Line','L','╱');
+  const lineButton=glyph('Line','L','line');
   function placeShape(kind){
     if(!kindSelect||!placeTool)return;
     const on=placeTool.getAttribute('aria-pressed')==='true';
@@ -202,18 +246,22 @@ function install(studio){
     connectKind=kind;syncPalette();
   }
   lineButton.onclick=()=>setConnect('line');
-  key(selectTool,'V');key(panTool,'H');key(textTool,'T');key(connectTool,'A');
+  key(selectTool,'V');key(marquee,'M');key(panTool,'H');key(textTool,'T');key(connectTool,'A');
   if(connectTool)connectTool.setAttribute('aria-label','Arrow');
   const sep=()=>el('span',{class:'cl-sep','aria-hidden':'true'});
-  const options=q('#direct-tools .tool-options');
-  palette.append(...[selectTool,panTool,sep(),shapeButtons.box,shapeButtons.circle,shapeButtons.cylinder,shapeButtons.diamond,textTool,sep(),connectTool,lineButton].filter(Boolean));
-  // Tool options and the area-select tool live in the menu; dragging on empty
-  // canvas with the Select tool also selects an area. Picking a tool here
-  // closes the menu so the next gesture reaches the canvas.
-  const extras=el('div',{class:'cl-menu-tools'});
-  if(marquee){marquee.textContent='Select area';marquee.dataset.key='';marquee.addEventListener('click',()=>toggle(menu,menuButton,false));selectionSection.append(marquee);}
-  if(options)extras.append(options);
-  viewSection.append(extras);
+  // Select multiple is a touch aid (no Shift-click): CSS shows it on coarse pointers only.
+  const multi=$('multi-select');
+  if(multi){multi.replaceChildren(iconMarkup(CHROME_ICONS.multi));multi.setAttribute('aria-label','Select multiple');multi.title='Select multiple';multi.classList.add('cl-tool','cl-multi');}
+  // The chevron opens "Adding shapes": placement and connected-shape options
+  // that used to sit in the menu's Tool options.
+  const adding=popover('cl-adding','Adding shapes');
+  const chevron=el('button',{type:'button',class:'cl-chevron','aria-label':'Adding shapes',title:'Adding shapes','aria-haspopup':'dialog','aria-expanded':'false'},iconMarkup(CHROME_ICONS.chevron));
+  chevron.onclick=()=>toggle(adding,chevron);
+  const addCoords=$('mobile-add');if(addCoords)addCoords.textContent='Add by coordinates…';
+  adding.append(el('h3',{class:'cl-section-title'},'Adding shapes'),row($('place-center')),row($('mobile-add')),$('creation-tools'),el('div',{class:'cl-row'},$('add-neighbor'),$('neighbor-direction')?.closest('label')),labelled('keep-adding','Keep adding'));
+  palette.append(...[selectTool,marquee,panTool,sep(),shapeButtons.box,shapeButtons.circle,shapeButtons.cylinder,shapeButtons.diamond,chevron,textTool,sep(),connectTool,lineButton,multi].filter(Boolean));
+  // Shift-drag on empty canvas with the Select tool also selects an area.
+  q('#direct-tools .tool-options')?.remove();
   // The canvas-tools status text and shape select stay available but off-stage.
   const toolsHost=$('direct-tools');if(toolsHost){toolsHost.classList.add('cl-offstage');palette.append(toolsHost);}
   if(placeTool)placeTool.classList.add('cl-offstage');
@@ -236,17 +284,26 @@ function install(studio){
   // ---- history, zoom, help, feedback -----------------------------------------
   const history=q('.canvas-history');if(history){history.classList.add('cl-float','cl-history');document.body.append(history);}
   const zoom=q('.canvas-navigation');
-  const helpButton=el('button',{type:'button','aria-label':'Shortcuts',title:'Shortcuts (?)','aria-expanded':'false'},'?');
-  if(zoom){zoom.classList.add('cl-float','cl-zoom');zoom.append(helpButton);document.body.append(zoom);}
+  const helpButton=el('button',{type:'button','aria-label':'Shortcuts',title:'Shortcuts (?)','aria-expanded':'false'},iconMarkup(CHROME_ICONS.help));
+  const iconButton=(id,name,title,icon)=>{const b=$(id);if(!b)return null;b.replaceChildren(iconMarkup(CHROME_ICONS[icon]));b.setAttribute('aria-label',name);b.title=title;return b;};
+  iconButton('zoom-out','Zoom out','Zoom out (−)','out');iconButton('zoom-in','Zoom in','Zoom in (+)','in');
+  const focusButton=iconButton('focus-selection','Focus selection','Focus selection (F)','focus');
+  const findButton=iconButton('mobile-objects','Find object','Find object (/)','find');
+  if(zoom){
+    zoom.classList.add('cl-float','cl-zoom');
+    $('fit-view')?.after(...[sep(),focusButton,findButton,sep()].filter(Boolean));
+    zoom.append(helpButton);document.body.append(zoom);
+  }
   const helpPanel=popover('cl-help','Shortcuts');
-  helpPanel.append(el('h2',{},'Shortcuts'),el('dl',{},...[
-    ['V','Select'],['H','Pan'],['B / C / D','Box, circle, cylinder'],['T','Text'],['A / L','Arrow, line'],['S','Source drawer'],['?','This panel'],
-    ['Drag a blue dot','Connect to a shape, or drop on empty canvas for a new shape'],['A / L then drag','Draw a free arrow or line; ends attach to shapes they touch'],
-    ['Double-click · Enter','Edit text on the canvas (Shift+Enter: new line)'],['Shift','Straight lines, 45°, align to shapes'],['[ ]  Enter  Esc','Cycle, accept or discard a preview'],
-    ['⌘Z  ⇧⌘Z','Undo, redo'],['Arrows','Nudge selection (Shift: 1 in)'],['+  −  0','Zoom in, out, fit'],
-  ].flatMap(([k,v])=>[el('dt',{},k),el('dd',{},v)])));
-  const gestures=q('.canvas-help');if(gestures){gestures.open=false;helpPanel.append(gestures);}
+  // One list under three headings; keep in step with public/help.html.
+  const keys=[
+    ['Tools',[['V  M  H','Select, area, pan'],['B  C  D  R  T','Box, circle, cylinder, diamond, text'],['A  L','Arrow, line (drag to draw)']]],
+    ['Editing',[['Enter · double-click','Edit text (Shift+Enter: new line)'],['⌘D  Del','Duplicate, delete'],['⌘A  Shift-drag','Select all, select area'],['Arrows','Nudge 0.1 in (Shift 1 in, Alt 0.01 in)'],['[  ]  Enter  Esc','Cycle, accept, discard a preview'],['⌘Z  ⇧⌘Z','Undo, redo']]],
+    ['View',[['+  −  0  F','Zoom in, out, fit, focus selection'],['Space-drag','Pan over shapes'],['⌘-scroll · pinch','Zoom at pointer'],['/','Find object'],['S  ?','Source drawer, this panel']]],
+  ];
+  helpPanel.append(el('h2',{},'Shortcuts'),...keys.flatMap(([name,rows])=>[el('h3',{},name),el('dl',{},...rows.flatMap(([k,v])=>[el('dt',{},k),el('dd',{},v)]))]));
   helpButton.onclick=()=>toggle(helpPanel,helpButton);
+  shortcutsLink.onclick=()=>{toggle(menu,menuButton,false);toggle(helpPanel,helpButton,true);};
   const feedback=$('canvas-feedback');if(feedback){feedback.classList.add('cl-toast');document.body.append(feedback);}
 
   // ---- contextual toolbar ----------------------------------------------------
@@ -606,7 +663,7 @@ function install(studio){
   });
   diagram.addEventListener('pointerleave',()=>{if(!connect&&hovered){hovered=null;drawDots();}});
 
-  // Shift+drag on empty canvas selects an area (the tool itself is in the menu).
+  // Shift+drag on empty canvas selects an area (the tool is in the palette).
   diagram.addEventListener('pointerdown',e=>{
     if(e.button!==0||!e.shiftKey||connect||!marquee||e.target.closest?.('[data-pikchr-id],.cl-dots,.canvas-overlay,.arrow-overlay'))return;
     if(selectTool?.getAttribute('aria-pressed')!=='true'||!studio.state().valid)return;
@@ -951,10 +1008,10 @@ function install(studio){
     if(e.target.closest?.('input,textarea,select,[contenteditable="true"],dialog'))return;
     if(document.querySelector('dialog[open]'))return;
     const k=e.key;
-    const actions={v:()=>selectTool?.click(),h:()=>panTool?.click(),b:()=>placeShape('box'),c:()=>placeShape('circle'),d:()=>placeShape('cylinder'),
+    const actions={v:()=>selectTool?.click(),m:()=>marquee?.click(),h:()=>panTool?.click(),b:()=>placeShape('box'),c:()=>placeShape('circle'),d:()=>placeShape('cylinder'),r:()=>placeShape('diamond'),'/':()=>$('mobile-objects')?.click(),
       t:()=>textTool?.click(),a:()=>setConnect('arrow'),l:()=>setConnect('line'),s:()=>setDrawer(!drawer.classList.contains('open')),'?':()=>toggle(helpPanel,helpButton)};
     const action=actions[k==='?'?'?':k.toLowerCase()];
-    if(!action||(e.shiftKey&&k!=='?'))return;
+    if(!action||(e.shiftKey&&k!=='?'&&k!=='/'))return;
     e.preventDefault();action();
   });
 

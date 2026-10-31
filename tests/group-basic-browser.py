@@ -5,7 +5,7 @@ Runs on the plain URL with no Advanced tools.
 """
 import os
 import re
-from browser_helpers import object_button, open_document_menu, close_popovers, open_more, reveal, set_source
+from browser_helpers import select_multiple, clear_selection, object_button, open_document_menu, close_popovers, open_more, reveal, set_source
 from playwright.sync_api import sync_playwright, expect
 
 STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
@@ -44,9 +44,7 @@ with sync_playwright() as pw:
 
     def select_two():
         click("A")
-        open_document_menu(page)
-        page.locator(".cl-menu #multi-select").click()
-        close_popovers(page)
+        select_multiple(page)
         click("B")
         page.wait_for_function("document.body.classList.contains('has-multiple')")
         assert page.locator("#selection-count").inner_text() == "2 selected"
@@ -57,11 +55,10 @@ with sync_playwright() as pw:
     set_source(page, BASE)
     rendered()
 
-    # Select multiple lives in the basic ☰ menu, so it is reachable with no
-    # selection and needs no modifier key.
-    open_document_menu(page)
-    assert page.locator(".cl-menu #multi-select").count() == 1
-    close_popovers(page)
+    # Select multiple is a palette toggle on touch screens (hidden for a
+    # fine pointer, where Shift-click does the same); it never lives in the menu.
+    assert page.locator(".cl-palette #multi-select").count() == 1
+    assert page.locator(".cl-menu #multi-select").count() == 0
     select_two()
 
     # ⋯ states the group and offers its actions; no single-object inspector.
@@ -103,7 +100,7 @@ with sync_playwright() as pw:
     page.wait_for_function("text => document.querySelector('#source').value === text", arg=BASE)
 
     # Clear leaves group mode.
-    reveal(page, "#clear-selection").click()
+    clear_selection(page)
     page.wait_for_function("!document.body.classList.contains('has-multiple')")
     assert page.locator("#selection-count").inner_text() == "No selection"
 
@@ -111,9 +108,7 @@ with sync_playwright() as pw:
     # actions: Reverse and Reconnect would edit only the last-clicked
     # connector, and the sizing hint addresses one object. These controls live
     # in the canvas-context dock inside ⋯, not in .cl-context.
-    open_document_menu(page)
-    page.locator(".cl-menu #multi-select").click()
-    close_popovers(page)
+    select_multiple(page)
     object_button(page, "A").click()
     object_button(page, "Link").click()
     page.wait_for_function("document.body.classList.contains('has-multiple')")
@@ -130,7 +125,7 @@ with sync_playwright() as pw:
     close_popovers(page)
 
     # The same connector alone keeps its actions, and they act on it.
-    reveal(page, "#clear-selection").click()
+    clear_selection(page)
     page.wait_for_function("document.querySelector('#selection-count').textContent==='No selection'")
     object_button(page, "Link").click()
     page.wait_for_function("document.querySelector('#selection-count').textContent==='1 selected'")
@@ -148,15 +143,13 @@ with sync_playwright() as pw:
     assert "Link: arrow from B.w to A.e" in reversed_source, reversed_source
     undo()
     page.wait_for_function("text => document.querySelector('#source').value === text", arg=BASE)
-    reveal(page, "#clear-selection").click()
+    clear_selection(page)
     page.wait_for_function("document.querySelector('#selection-count').textContent==='No selection'")
 
     # Phone width: the group section is reachable inside the viewport, and the
     # page never scrolls sideways.
     page.set_viewport_size({"width": 390, "height": 844})
-    open_document_menu(page)
-    page.locator(".cl-menu #multi-select").click()
-    close_popovers(page)
+    select_multiple(page)
     object_button(page, "A").click()
     object_button(page, "B").click()
     page.wait_for_function("document.body.classList.contains('has-multiple')")

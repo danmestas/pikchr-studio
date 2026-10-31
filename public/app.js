@@ -60,7 +60,8 @@ $('mobile-add').onclick=()=>document.body.classList.toggle('creation-open');
 $('multi-select').onclick=()=>{multiSelect=!multiSelect;$('multi-select').setAttribute('aria-pressed',String(multiSelect));status(multiSelect?'Tap objects to add or remove them from the selection.':'Single selection. Drag selected objects to move them.');};
 // Clear ends group editing as well as the selection, so the next tap selects
 // one object instead of adding to an invisible set.
-$('clear-selection').onclick=()=>{multiSelect=false;$('multi-select').setAttribute('aria-pressed','false');select(null);};
+const clearSelection=()=>{multiSelect=false;$('multi-select').setAttribute('aria-pressed','false');select(null);};
+$('clear-selection').onclick=clearSelection;
 for(const [id,dx,dy]of [['left',-.1,0],['right',.1,0],['up',0,.1],['down',0,-.1]])$('move-'+id).onclick=()=>{const o=current();if(o)suggest(o,{x:o.center.x+dx,y:o.center.y+dy});};
 let storageReady=false,saveTimer=null,activeDocumentId=null,activeDocumentTitle=null;
 const documents=createDocumentStore();
@@ -76,7 +77,7 @@ function persistDocument(){
 function scheduleSave(){if(!storageReady)return;$('save-state').textContent='Saving…';clearTimeout(saveTimer);saveTimer=setTimeout(persistDocument,200);}
 function refreshDocuments(){
   const active=activeDocumentId;const entries=documents.list();
-  $('documents').replaceChildren();for(const item of entries){const option=document.createElement('option');option.value=item.id;option.textContent=item.title;$('documents').append(option);}
+  $('documents').replaceChildren();for(const item of entries){const option=document.createElement('option');option.value=item.id;option.textContent=item.title;option.dataset.updated=item.updated;$('documents').append(option);}
   if(entries.some(item=>item.id===active))$('documents').value=active;
 }
 let statusTimer=null;
@@ -291,7 +292,7 @@ function select(id,highlight=false,additive=false,preserve=false){
   $('copy-selection').disabled=$('save-component').disabled=!selectedIds.size;
   $('show-source-selected').disabled=!o?.span||!single;
   $('arrange').disabled=selectedIds.size<2;
-  $('focus-selection').disabled=!selectedIds.size;
+  $('focus-selection').disabled=$('clear-selection').disabled=!selectedIds.size;
   $('inspector').replaceChildren();
   if(!o){$('inspector').textContent='Select an object in the diagram or object list.';drawOverlay();directTools?.sync();return;}
   if(!single){
@@ -732,7 +733,7 @@ $('diagram').addEventListener('keydown',e=>{
 },true);
 $('diagram').addEventListener('keydown',e=>{
   if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();$('delete-selected').click();return;}
-  if(e.key==='Escape'){panMode=false;$('pan-mode').setAttribute('aria-pressed','false');$('diagram').style.cursor='';cancelCanvasEdit();clearProposal();select(null);return;}
+  if(e.key==='Escape'){panMode=false;$('pan-mode').setAttribute('aria-pressed','false');$('diagram').style.cursor='';cancelCanvasEdit();clearProposal();clearSelection();return;}
   const delta={ArrowLeft:[-.1,0],ArrowRight:[.1,0],ArrowUp:[0,.1],ArrowDown:[0,-.1]}[e.key],o=current();
   // Focus on a rendered object: arrows walk the object list. Focus on the
   // canvas itself: arrows nudge the selection.
@@ -1210,7 +1211,7 @@ $('insert-component').onclick=()=>action(()=>pasteSelection(source.value,scene,c
 $('backup-workspace').onclick=()=>{const saved=persistDocument();if(!saved.ok){status('Backup stopped: '+saved.error);return;}try{downloadFile(exportWorkspace(documents.records()),'pikchr-workspace.json','application/json');status('Document backup downloaded, including queued changes and history. Components are separate local data.');}catch(e){status(e.message);}};
 $('restore-workspace').onclick=()=>$('backup-input').click();
 $('backup-input').onchange=async e=>{const file=e.target.files[0];if(!file)return;const originalId=activeDocumentId;let count=0;try{if(file.size>16*1024*1024)throw Error('Backup exceeds 16 MB.');const records=parseWorkspace(await file.text());const saved=persistDocument();if(!saved.ok)throw Error(saved.error);clearTimeout(saveTimer);for(const record of records){documents.create();const result=documents.save(record.state);if(!result.ok)throw Error(result.error);count++;}status('Restored '+count+' document copies. Your current diagram is unchanged.');}catch(error){status('Restored '+count+' copies. '+error.message+' Existing documents were not replaced.');}finally{try{documents.open(originalId);activeDocumentId=originalId;refreshDocuments();}catch(error){status('Reopen your current document: '+error.message);}e.target.value='';}};
-directTools=canvasTools({host:$('diagram'),toolbar:$('direct-tools'),render,livePreview:liveSourcePreview,liveClear:liveSourceClear,propose:validateSuggestions,select,selectMany:ids=>{selectedIds=new Set(ids);select(ids[0]||null,false,false,true);},status,invalidate:clearProposal,
+directTools=canvasTools({clearSelection,host:$('diagram'),toolbar:$('direct-tools'),render,livePreview:liveSourcePreview,liveClear:liveSourceClear,propose:validateSuggestions,select,selectMany:ids=>{selectedIds=new Set(ids);select(ids[0]||null,false,false,true);},status,invalidate:clearProposal,
   stopPan:()=>{panMode=false;$('pan-mode').setAttribute('aria-pressed','false');$('diagram').style.cursor='';},
   getState:()=>({source:source.value,scene,object:current(),sizing:sizingFor(current()),multiple:selectedIds.size>1,key:activeDocumentId+':'+revision,
     valid:!!scene&&!rendering&&source.value===renderedSource&&!$('diagram').classList.contains('stale'),

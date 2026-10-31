@@ -1,6 +1,6 @@
 """Browser regressions for saved documents and the multi-object canvas workflow."""
 import re
-from browser_helpers import object_button, open_document_menu, show_source, reveal, set_source, menu_click, set_auto_apply
+from browser_helpers import object_button, open_document_menu, show_source, reveal, set_source, menu_click, set_auto_apply, open_document
 from playwright.sync_api import sync_playwright
 import os
 STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
@@ -65,7 +65,7 @@ with sync_playwright() as pw:
     saved()
     second_id = page.locator("#documents").input_value()
     assert second_id != doc_id
-    reveal(page, "#documents").select_option(doc_id)
+    open_document(page, id=doc_id)
     page.wait_for_function("text => document.querySelector('#source').value === text", arg=base)
     rendered()
     saved()

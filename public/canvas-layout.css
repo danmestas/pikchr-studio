@@ -88,19 +88,15 @@ body.layout-canvas .cl-candidate #preview-accept:hover{background:var(--cl-accen
 /* Popovers */
 body.layout-canvas .cl-popover{z-index:40;display:block;padding:12px;overflow:auto}
 body.layout-canvas .cl-menu{top:60px;left:12px;width:min(380px,calc(100vw - 24px));max-height:calc(100dvh - 130px)}
-body.layout-canvas .cl-menu nav.toolbar{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
 body.layout-canvas .cl-menu>*+*{margin-top:10px}
 body.layout-canvas .cl-menu-row{display:flex;gap:10px;align-items:center}
 body.layout-canvas .cl-menu details>summary{cursor:pointer;font-weight:600}
-body.layout-canvas .cl-menu .canvas-view-options>div{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
 body.layout-canvas .cl-more{top:60px;right:12px;width:min(360px,calc(100vw - 24px));max-height:calc(100dvh - 130px)}
 body.layout-canvas .cl-more aside{display:block!important;position:static!important;padding:0;border:0;width:auto;height:auto;transform:none!important;box-shadow:none}
 
 body.layout-canvas .cl-more .canvas-context-dock{display:block;margin:0 0 12px;position:static}
 body.layout-canvas .cl-export{top:60px;left:12px;flex-direction:column;align-items:stretch;gap:6px;width:min(260px,calc(100vw - 24px))}
 body.layout-canvas .cl-export:not([hidden]){display:flex}
-body.layout-canvas .cl-menu-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start}
-body.layout-canvas .cl-menu-tools .tool-options[open]>.tool-options-panel{position:static;transform:none;box-shadow:none;padding:8px 0;display:flex;flex-wrap:wrap;gap:8px}
 body.layout-canvas .cl-help{bottom:64px;right:12px;width:min(360px,calc(100vw - 24px));max-height:calc(100dvh - 140px)}
 body.layout-canvas .cl-help h2{font-size:14px;margin:0 0 8px}
 body.layout-canvas .cl-help dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;font-size:12px;margin:0 0 10px}
@@ -171,8 +167,7 @@ body.layout-canvas .cl-badge[hidden]{display:none}
   body.layout-canvas .cl-note{bottom:124px;max-width:calc(100vw - 24px)}
   body.layout-canvas .cl-candidate{flex-wrap:wrap}
   body.layout-canvas .cl-drawer{top:60px;bottom:124px}
-  body.layout-canvas .cl-palette .tool-options{display:none}
-}
+  }
 @media (prefers-reduced-motion:reduce){body.layout-canvas :is(.cl-drawer,.cl-note){transition:none}}
 
 /* ---- Panel kit: one flat visual language for every popover and dialog ----
@@ -219,19 +214,9 @@ body.layout-canvas .cl-field{display:flex!important;flex-direction:column;align-
 body.layout-canvas .cl-field select{width:100%}
 body.layout-canvas .cl-field-name{font-size:12px;color:var(--cl-muted);margin-top:4px}
 body.layout-canvas .cl-queue-text{flex:1 1 100%;font-size:13px;font-weight:600}
-body.layout-canvas .cl-menu #queue-list{margin:0;padding-left:18px;font-size:12px}
-body.layout-canvas .cl-menu #queue-list:empty{display:none}
-body.layout-canvas .cl-menu #suggestions{display:none}
-body.layout-canvas .cl-menu .canvas-view-options{display:none}
-body.layout-canvas .cl-menu #creation-tools{display:none}
-body.layout-canvas.creation-open .cl-menu #creation-tools{display:block!important;position:static!important;inset:auto!important;max-height:none!important;background:transparent!important;border:0!important;padding:0!important}
-body.layout-canvas .cl-menu #mobile-add[aria-pressed=true],body.layout-canvas.creation-open .cl-menu #mobile-add{background:var(--cl-accent-bg);border-color:var(--cl-accent)}
-body.layout-canvas .cl-menu .cl-components>summary{display:none}
-body.layout-canvas .cl-menu .cl-components{display:flex!important;flex-direction:column;gap:8px}
-body.layout-canvas .cl-menu .cl-components label{flex-direction:column;align-items:stretch}
-body.layout-canvas .cl-menu-tools{display:flex;flex-direction:column;gap:8px;align-items:stretch}
-body.layout-canvas .cl-menu-tools>button{justify-content:flex-start}
-body.layout-canvas .cl-menu .tool-options>summary{font-weight:400}
+body.layout-canvas .cl-adding #creation-tools{display:none}
+body.layout-canvas.creation-open .cl-adding #creation-tools{display:block!important;position:static!important;inset:auto!important;max-height:none!important;background:transparent!important;border:0!important;padding:0!important}
+body.layout-canvas .cl-adding #mobile-add[aria-pressed=true],body.layout-canvas.creation-open .cl-adding #mobile-add{background:var(--cl-accent-bg);border-color:var(--cl-accent)}
 
 /* ⋯ inspector popover */
 body.layout-canvas .cl-more{width:min(340px,calc(100vw - 24px));padding-top:8px}
@@ -308,7 +293,6 @@ body.layout-canvas .cl-export button{justify-content:flex-start;border-color:tra
 /* Shortcuts sheet */
 body.layout-canvas .cl-help dt{font-family:inherit}
 body.layout-canvas .cl-help dt kbd,body.layout-canvas .cl-help dt{font-size:11px}
-body.layout-canvas .cl-help .canvas-help p{font-size:12px}
 
 /* Source drawer */
 body.layout-canvas .cl-drawer{border-radius:10px;box-shadow:var(--cl-shadow);background:var(--cl-chip)}
@@ -352,10 +336,6 @@ body.layout-canvas .cl-note{border-radius:8px}
   body.layout-canvas .cl-route-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
 }
 body.layout-canvas .cl-more .canvas-context-dock{height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important}
-body.layout-canvas .cl-menu .queue-panel .cl-field-name:has(+ #diff:empty){display:none}
-body.layout-canvas .cl-menu .cl-menu-tools>button,body.layout-canvas .cl-popover.cl-export button{justify-content:flex-start}
-body.layout-canvas .cl-menu .tool-options>summary{background:transparent;border:0;padding:0;color:var(--cl-ink)}
-body.layout-canvas .cl-menu .tool-options[open]>.tool-options-panel{background:transparent;border:0}
 body.layout-canvas .cl-more .canvas-context-dock input[type=checkbox]{width:16px}
 body.layout-canvas .cl-popover .cl-more .canvas-context-dock input:not([type]),body.layout-canvas .cl-more .canvas-context-dock input:is([type=number],[type=text]){width:72px}
 body.layout-canvas #example-picker [data-list] button{white-space:normal;text-align:left;min-width:0}
@@ -386,3 +366,54 @@ body.layout-canvas .cl-textbar .cl-tb.cl-swatch[data-colour=gray]{background:#8c
 body.layout-canvas #diagram .live-drag .cl-live-selected :is(path,polygon,polyline,circle,ellipse,rect,line):not([stroke=transparent]):not([fill=transparent]){stroke:var(--cl-accent)!important}
 /* About section in the document menu */
 body.layout-canvas .cl-about{margin:4px 0;font-size:12px;color:var(--cl-muted);line-height:1.45}
+
+/* ---- Menu v2: Document, Preferences, Advanced, footer; Changes and Adding popovers ---- */
+body.layout-canvas .cl-menu .cl-recent{display:flex;flex-direction:column;gap:2px;max-height:200px;overflow:auto}
+body.layout-canvas .cl-menu .cl-recent button{width:100%;justify-content:space-between;gap:12px;border-color:transparent;min-height:30px;font-size:13px}
+body.layout-canvas .cl-menu .cl-recent button[aria-current=true]{background:var(--cl-accent-bg);color:var(--cl-accent);border-color:transparent}
+body.layout-canvas .cl-recent-name{overflow:hidden;text-overflow:ellipsis;min-width:0}
+body.layout-canvas .cl-recent .cl-muted{flex:none}
+body.layout-canvas .cl-save-state:not([data-state=error]){display:none}
+body.layout-canvas .cl-save-state[data-state=error]{color:var(--cl-bad)}
+body.layout-canvas .cl-footer{gap:2px}
+body.layout-canvas .cl-footer-links{display:flex;flex-wrap:wrap;gap:2px 4px}
+body.layout-canvas .cl-menu .cl-footer-links :is(a,button){border:0;padding:0 6px;min-height:28px;color:var(--cl-accent)}
+body.layout-canvas .cl-footer .cl-about{margin:0;font-size:11px}
+body.layout-canvas .cl-about a{color:var(--cl-accent);text-decoration:underline}
+body.layout-canvas .cl-menu .cl-advanced-only .cl-row{gap:6px}
+body.layout-canvas .cl-changes{top:60px;right:12px;width:min(380px,calc(100vw - 24px));max-height:calc(100dvh - 130px)}
+body.layout-canvas .cl-changes #queue-list{margin:0;padding-left:18px;font-size:12px}
+body.layout-canvas .cl-changes #queue-list:empty,body.layout-canvas .cl-changes #suggestions{display:none}
+body.layout-canvas .cl-changes .queue-panel .cl-field-name:has(+ #diff:empty){display:none}
+body.layout-canvas .cl-popover #accept:disabled{background:transparent}
+body.layout-canvas .cl-adding{top:64px;left:50%;transform:translateX(-50%);width:min(340px,calc(100vw - 24px));max-height:calc(100dvh - 140px);display:flex;flex-direction:column;gap:8px}
+body.layout-canvas .cl-adding[hidden]{display:none}
+body.layout-canvas .cl-adding .cl-row label{display:flex;gap:6px;align-items:center}
+body.layout-canvas .cl-palette .cl-chevron{min-width:22px;padding:2px 0}
+body.layout-canvas .cl-palette .cl-chevron svg{width:14px;height:14px}
+body.layout-canvas .cl-palette #multi-select{display:none}
+@media (pointer:coarse){body.layout-canvas .cl-palette #multi-select{display:inline-flex}}
+/* The summary is a button only while there is something to review. */
+body.layout-canvas .cl-status button.cl-summary{padding:2px 6px;border-radius:6px;color:var(--cl-ink);text-decoration:underline dotted;text-underline-offset:3px}
+body.layout-canvas .cl-status button.cl-summary:disabled{color:var(--cl-muted);text-decoration:none;cursor:default;opacity:1}
+body.layout-canvas .cl-zoom .cl-sep{height:18px}
+body.layout-canvas .cl-help h3{margin:10px 0 6px}
+body.layout-canvas .cl-help dl{margin:0 0 6px}
+body.layout-canvas .cl-help dt{white-space:nowrap}
+/* Components dialog: same shell as the example picker. */
+#components-dialog{width:min(520px,calc(100vw - 24px));max-height:calc(100dvh - 32px);padding:16px;border:1px solid var(--border-strong);overflow:auto;color:inherit;background:var(--bg)}
+#components-dialog::backdrop{background:rgb(0 0 0 / .35)}
+#components-dialog .example-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#components-dialog .cl-components{display:flex!important;flex-direction:column;gap:12px;border:0;padding:0}
+#components-dialog .cl-components>summary{display:none}
+#components-dialog .cl-component-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
+#components-dialog .cl-component-row .cl-field{margin:0}
+#components-dialog :is(input,select){width:100%;min-height:32px;box-sizing:border-box;font:inherit}
+body.layout-canvas .cl-popover.cl-export button{justify-content:flex-start}
+body.layout-canvas .cl-adding{align-items:stretch}
+body.layout-canvas .cl-adding .cl-row{justify-content:flex-start}
+body.layout-canvas .cl-menu .cl-about .cl-link{display:inline;border:0;padding:0;min-height:0;color:var(--cl-accent);text-decoration:underline}
+@media (max-width:700px){
+  body.layout-canvas .cl-adding{top:auto;bottom:70px;max-height:calc(100dvh - 190px)}
+  body.layout-canvas .cl-changes{top:110px;max-height:calc(100dvh - 240px)}
+}
