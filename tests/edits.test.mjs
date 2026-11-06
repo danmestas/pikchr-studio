@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {compileSvg} from './pikchr-wasm.mjs';
+import {compileSvg, compileStudio} from './pikchr-wasm.mjs';
 import { candidates, endpointCandidates, routeCandidates, moveVertexCandidates, bendCandidates, applyPatch, byteOffsetToIndex } from '../public/edits.js';
 const bytes = text => new TextEncoder().encode(text).length;
 function fixture(statement = 'Database: cylinder "DB" fill blue at (1, -1)') {
@@ -314,4 +314,40 @@ test('keepForm: a nudge keeps an absolute placement absolute and a relative one 
   assert.equal(kept[0].source, prefix + 'API: box "API" at (3.1, 0)\n');
   const {source: rel, object, scene: s2} = fixture('Database: cylinder "DB" with .c at API.c + (0, -2)');
   assert.match(candidates(rel, object, s2, { x: 1.1, y: -1 }, { precise: true, keepForm: true })[0].source, /with \.c at API\.c \+ \(1\.1, -1\)/);
+});
+
+// Nudge B by (dx, dy) with keepForm against the real renderer; returns B's new statement.
+function nudged(source, dx, dy) {
+  const scene = compileStudio(source).scene;
+  assert.ok(!scene.error, scene.error);
+  const b = scene.objects.find(o => o.name === 'B');
+  const top = candidates(source, b, scene, { x: b.center.x + dx, y: b.center.y + dy }, { precise: true, keepForm: true })[0];
+  const after = compileStudio(top.source).scene.objects.find(o => o.name === 'B');
+  assert.ok(Math.abs(after.center.x - b.center.x - dx) < 1e-3 && Math.abs(after.center.y - b.center.y - dy) < 1e-3, top.source);
+  return top.source.split('\n').find(line => line.startsWith('B:'));
+}
+const A = 'A: box at (0,0)\n';
+test('keepForm keeps a center offset from an anchor', () => {
+  assert.equal(nudged(A + 'B: box at A.e + (1,0)\n', .1, 0), 'B: box at A.e + (1.1, 0)');
+  assert.equal(nudged(A + 'B: box at A.e + (1,0)\n', 0, .1), 'B: box at A.e + (1, 0.1)');
+  assert.equal(nudged(A + 'B: box at A.e\n', .1, 0), 'B: box at A.e + (0.1, 0)');
+});
+test('keepForm keeps an edge offset on the same edges', () => {
+  assert.equal(nudged(A + 'B: box with .w at A.e + (0.5,0)\n', .1, 0), 'B: box with .w at A.e + (0.6, 0)');
+  assert.equal(nudged(A + 'B: box with .w at A.e\n', 0, -.1), 'B: box with .w at A.e + (0, -0.1)');
+});
+test('keepForm keeps a gap along its axis and falls back to an offset from the same edges across it', () => {
+  assert.equal(nudged(A + 'B: box with .w at 0.75 right of A.e\n', .1, 0), 'B: box with .w at 0.85 right of A.e');
+  assert.equal(nudged(A + 'B: box with .w at 0.75 right of A.e\n', -.1, 0), 'B: box with .w at 0.65 right of A.e');
+  assert.equal(nudged(A + 'B: box with .w at 0.75 right of A.e\n', 0, .1), 'B: box with .w at A.e + (0.75, 0.1)');
+  assert.equal(nudged(A + 'B: box with .s at 0.5 above A.n\n', 0, .1), 'B: box with .s at 0.6 above A.n');
+  assert.equal(nudged(A + 'B: box with .s at 0.5 above A.n\n', .1, 0), 'B: box with .s at A.n + (0.1, 0.5)');
+  assert.equal(nudged(A + 'B: box with .e at 1 left of A.w\n', .1, 0), 'B: box with .e at 0.9 left of A.w');
+  assert.equal(nudged(A + 'B: box with .n at 1cm below A.s\n', 0, -.1), 'B: box with .n at 1.254 below A.s'.replace('1.254', '1.254cm'));
+  // A gap that would reach zero or flip side cannot stay a gap.
+  assert.equal(nudged(A + 'B: box with .w at 0.05 right of A.e\n', -.1, 0), 'B: box with .w at A.e + (-0.05, 0)');
+});
+test('keepForm keeps absolute centers absolute, including the with .c spelling', () => {
+  assert.equal(nudged(A + 'B: box at (3,0)\n', .1, 0), 'B: box at (3.1, 0)');
+  assert.equal(nudged(A + 'B: box with .c at (3,1)\n', 0, .1), 'B: box with .c at (3, 1.1)');
 });
