@@ -831,7 +831,7 @@ function install(studio){
   // Text is edited where it sits: T places a text object and opens an editor
   // over it; double-click or Enter edits any label. Enter commits, Shift+Enter
   // adds a line, Escape cancels. Commits go through the normal validated path.
-  const textKinds=['box','cylinder','circle','ellipse','oval','diamond','text'];
+  const textKinds=['box','cylinder','circle','ellipse','oval','diamond','file','text'];
   let inline=null,pendingText=0;
   function labelText(o){const s=studio.state();if(!o||!textKinds.includes(o.kind))return null;try{return inspectProperties(s.source,o,s.scene).text;}catch{return null;}}
   function maybeEditNewText(){
@@ -857,33 +857,67 @@ function install(studio){
     const hidden=[...(group?.querySelectorAll('text')||[])];for(const t of hidden)t.style.visibility='hidden';
     document.body.append(ta);fit();ta.focus();if(created)ta.select();else ta.setSelectionRange(ta.value.length,ta.value.length);
     inline={object,ta,created,original:text,source:s.source,hidden};context.hidden=true;textBar.hidden=true;
-    ta.addEventListener('input',fit);
+    ta.addEventListener('input',()=>{fit();inlineError(null);});
     ta.addEventListener('keydown',e=>{
       e.stopPropagation();
       if(e.key==='Escape'){e.preventDefault();closeInline(false);}
       else if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();closeInline(true);}
     });
-    ta.addEventListener('blur',()=>closeInline(true));
+    ta.addEventListener('blur',()=>{if(inline?.ta===ta&&!inline.busy)closeInline(true,{blurred:true});});
     return true;
   }
-  async function closeInline(commit){
-    const d=inline;if(!d)return;inline=null;
-    d.ta.remove();for(const t of d.hidden)t.style.visibility='';
+  // A refused label is never dropped: after Enter the editor stays open with
+  // the reason under it; after a blur the reason goes to the status line.
+  function inlineError(message){
+    const d=inline;if(!d)return;
+    if(!message){d.error?.remove();d.error=null;return;}
+    if(!d.error){d.error=el('p',{class:'cl-inline-error',role:'alert'});document.body.append(d.error);}
+    d.error.textContent=message;
+    const r=d.ta.getBoundingClientRect();
+    Object.assign(d.error.style,{left:r.left+'px',top:(r.bottom+4)+'px',width:Math.max(r.width,220)+'px'});
+  }
+  function removeInline(d){
+    if(inline===d)inline=null;
+    d.ta.remove();d.error?.remove();for(const t of d.hidden)t.style.visibility='';
     diagram.focus({preventScroll:true});schedule();
+  }
+  // Implicitly placed shapes cannot grow without moving their neighbours, so a
+  // label that cannot fit (or wrap) keeps the shape's size instead.
+  async function labelEdit(s,object,text){
+    const kind=object.kind,modes=kind==='text'?['fixed']:kind==='box'?['wrap','grow','fixed']:['grow','fixed'];
+    let failure;
+    for(const mode of modes){
+      try{return {option:await buildTextEdit(s.source,s.scene,object,{text,mode,width:object.bbox?.width},studio.render),mode};}
+      catch(error){failure=error;if(/plain text|five/.test(error.message))break;}
+    }
+    throw failure;
+  }
+  async function closeInline(commit,{blurred=false}={}){
+    const d=inline;if(!d||d.busy)return;
     const text=d.ta.value.replace(/\r/g,'').replace(/\s+$/,'');
     // A new text that ends up empty is removed again (undo the creation).
-    if(d.created&&(!commit||!text.trim())){$('canvas-undo')?.click();return;}
-    if(!commit||text===d.original)return;
+    if(d.created&&(!commit||!text.trim())){removeInline(d);$('canvas-undo')?.click();return;}
+    if(!commit||text===d.original){removeInline(d);return;}
+    const refuse=message=>{
+      if(blurred||inline!==d){removeInline(d);$('state').textContent='Label not changed: '+message;}
+      else{inlineError(message);d.ta.focus();}
+    };
     const s=studio.state();
-    if(!s.valid||s.source!==d.source){$('state').textContent='The diagram changed. Edit the text again.';return;}
-    const kind=d.object.kind,mode=kind==='text'?'fixed':kind==='box'?'wrap':'grow';
-    let option;
-    try{option=await buildTextEdit(s.source,s.scene,d.object,{text,mode,width:d.object.bbox?.width},studio.render);}
-    catch(error){
-      if(mode!=='wrap'){$('state').textContent=error.message;return;}
-      try{option=await buildTextEdit(s.source,s.scene,d.object,{text,mode:'grow'},studio.render);}catch(e2){$('state').textContent=e2.message;return;}
-    }
-    await studio.propose([{...option,...(d.object.name?{selectName:d.object.name}:{selectId:d.object.id,targetKind:d.object.kind})}]);
+    if(!s.valid||s.source!==d.source){removeInline(d);$('state').textContent='Label not changed: the diagram changed while you typed. Edit the text again.';return;}
+    if(text.split('\n').length>5)return refuse('Pikchr shows at most five lines of text per shape. Remove some line breaks.');
+    d.busy=true;
+    let edit;
+    try{
+      edit=await labelEdit(s,d.object,text);
+      const check=await studio.render(edit.option.source);
+      if(check.error)throw new Error('Pikchr cannot render this label: '+check.error);
+    }catch(error){d.busy=false;return refuse(error.message);}
+    d.busy=false;
+    if(inline!==d||studio.state().source!==d.source){removeInline(d);$('state').textContent='Label not changed: the diagram changed while you typed. Edit the text again.';return;}
+    removeInline(d);
+    const kept=edit.mode==='fixed'&&d.object.kind!=='text';
+    const applied=await studio.propose([{...edit.option,...(kept?{label:'Change text (keep shape size)'}:{}),...(d.object.name?{selectName:d.object.name}:{selectId:d.object.id,targetKind:d.object.kind})}]);
+    if(applied&&kept)$('state').textContent='Label changed; the shape kept its size. Studio grows a shape to fit only when it has an explicit position, so its neighbours never move.';
   }
   diagram.addEventListener('dblclick',e=>{
     // Pointer capture on the canvas retargets the event to the SVG root, so

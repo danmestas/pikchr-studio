@@ -1,5 +1,5 @@
 import {applyPatch,byteOffsetToIndex,candidates,editability} from './edits.js?v=20261031a';
-import {readProperties,propertyCandidate} from './properties.js?v=20261031a';
+import {readProperties,propertyCandidate,isColour} from './properties.js?v=20261031a';
 import {literalRoute,translateLineCandidate} from './free-lines.js?v=20261031a';
 import {connectorStyleCandidate} from './route-styles.js?v=20261031a';
 
@@ -10,13 +10,15 @@ const aliases={width:'(?:width|wid)',height:'(?:height|ht)',fill:'fill',color:'c
 
 function setAttribute(statement,key,value) {
   const mask=masked(statement), keyword=new RegExp(`\\b${aliases[key]}\\b`,'g');
-  const literal=key==='fill'||key==='color'?'(?:0x[0-9a-fA-F]{6}|black|white|red|blue|green|yellow|gray|grey|none)':`${number}(?:cm|mm|in|px|pt|%)?`;
-  const matches=[...mask.matchAll(new RegExp(`\\b${aliases[key]}\\s+${literal}(?=\\s|$)(?!\\s*[+*/-])`,'g'))];
+  const colour=key==='fill'||key==='color';
+  const literal=colour?'(0x[0-9a-fA-F]{6}|[A-Za-z]+)':`${number}(?:cm|mm|in|px|pt|%)?`;
+  const matches=[...mask.matchAll(new RegExp(`\\b${aliases[key]}\\s+${literal}(?=\\s|$)(?!\\s*[+*/-])`,'g'))].filter(match=>!colour||isColour(match[1]));
   if(matches.length!==[...mask.matchAll(keyword)].length) throw new Error(`The ${key} expression must be edited in source.`);
-  for(const match of matches.reverse())statement=statement.slice(0,match.index)+statement.slice(match.index+match[0].length);
+  for(const match of matches.reverse())statement=statement.slice(0,match.index).replace(/[ \t]+$/,'')+statement.slice(match.index+match[0].length);
   return statement.trimEnd()+` ${key} ${value}`;
 }
 
+const colourError='Use a colour name Pikchr knows, such as red or lightblue, or a six-digit hex value such as #1a7f37.';
 export function changeAppearance(source,object,scene,values) {
   const input={...values,color:values.color??values.stroke};
   for(const key of ['width','height'])if(input[key]!==undefined&&input[key]!==''&&connectorKinds.includes(object.kind))
@@ -30,7 +32,7 @@ export function changeAppearance(source,object,scene,values) {
     const thickness=input.thickness===undefined||input.thickness===''?undefined:input.thickness;
     let number;
     if(color!==undefined) {
-      if(!/^(?:#[0-9a-f]{6}|0x[0-9a-f]{6}|black|white|red|blue|green|yellow|gray|grey|none)$/i.test(color))throw new Error('Use a six-digit hex color or a supported named color.');
+      if(!isColour(color))throw new Error(colourError);
       color=color.replace('#','0x');
     }
     if(thickness!==undefined) {
@@ -49,7 +51,7 @@ export function changeAppearance(source,object,scene,values) {
   for(const key of ['width','height','fill','color','thickness']) {
     let value=input[key];if(value===undefined||value==='')continue;
     if(key==='fill'||key==='color') {
-      if(!/^(?:#[0-9a-f]{6}|0x[0-9a-f]{6}|black|white|red|blue|green|yellow|gray|grey|none)$/i.test(value))throw new Error('Use a six-digit hex color or a supported named color.');
+      if(!isColour(value))throw new Error(colourError);
       value=value.replace('#','0x');
     } else {
       value=Number(value);if(!Number.isFinite(value)||value<=0||value>100)throw new Error(`${key} must be greater than zero and at most 100.`);
@@ -67,8 +69,8 @@ export function changeAppearance(source,object,scene,values) {
 // combined-patch pipeline as every other multi-object action. Fill is offered
 // only when every member can carry it; sizing stays a single-object concern.
 const connectorKinds=['arrow','line','spline','arc'];
-const styleKinds=['box','cylinder','circle','ellipse','oval','diamond','text',...connectorKinds];
-const filledKinds=['box','cylinder','circle','ellipse','oval','diamond'];
+const styleKinds=['box','cylinder','circle','ellipse','oval','diamond','file','text',...connectorKinds];
+const filledKinds=['box','cylinder','circle','ellipse','oval','diamond','file'];
 const styleKeys=['stroke','color','thickness','fill'];
 export function groupStyleCapabilities(objects) {
   return {fill:objects.length>0&&objects.every(object=>filledKinds.includes(object.kind))};

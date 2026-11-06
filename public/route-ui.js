@@ -1,5 +1,5 @@
 import {routeCandidates,moveVertexCandidates,bendCandidates} from './edits.js?v=20261031a';
-import {suggestedRoutes,connectorState,strokeCandidates,weightCandidates,colourCandidates,chopCandidates,labelCandidates,checkStyleResult,thumbnailBox,routeColours} from './route-styles.js?v=20261031a';
+import {suggestedRoutes,connectorState,strokeCandidates,chopCandidates,labelCandidates,checkStyleResult,thumbnailBox} from './route-styles.js?v=20261031a';
 import {lockDirection} from './constrain.js?v=20261031a';
 const ns='http://www.w3.org/2000/svg';
 const el=(tag,attrs)=>{const e=document.createElementNS(ns,tag);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,v);return e;};
@@ -246,15 +246,8 @@ export function routeStyleGallery({object,scene,source,render,preview,accept,dis
     chips.append(row);
   };
   chipRow('Stroke',['solid','dashed','dotted'].map(d=>[d[0].toUpperCase()+d.slice(1),state.dash===d,()=>strokeCandidates(source,object,scene,d)]));
-  chipRow('Weight',['thin','normal','thick'].map(w=>[w[0].toUpperCase()+w.slice(1),state.weight===w,()=>weightCandidates(source,object,scene,w)]));
   chipRow('Ends',[['Chop at edges',state.chop,()=>chopCandidates(source,object,scene,!state.chop)]]);
-  const colourLabel=document.createElement('label');colourLabel.className='chip-row';colourLabel.append('Colour ');
-  const colour=document.createElement('select');colour.setAttribute('aria-label','Connector colour');
-  for(const c of ['default',...routeColours]){const o=document.createElement('option');o.value=c;o.textContent=c==='default'?'Default':c;colour.append(o);}
-  colour.value=routeColours.includes(state.colour)?state.colour:state.colour==='grey'?'gray':'default';
-  if(state.colour!=='default'&&!routeColours.includes(state.colour)&&state.colour!=='grey'){const o=document.createElement('option');o.value='';o.textContent=state.colour;o.disabled=true;colour.prepend(o);colour.value='';}
-  colour.onchange=()=>colour.value&&run(colourCandidates(source,object,scene,colour.value));
-  colourLabel.append(colour);chips.append(colourLabel);
+  // Colour and thickness live in the Style section's own rows above.
   // Label: one string on the connector, placed above, below or along it.
   const form=document.createElement('form');form.className='route-label-form';
   const textLabel=document.createElement('label');textLabel.append('Label ');

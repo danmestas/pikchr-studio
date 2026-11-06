@@ -1,7 +1,8 @@
-import { applyPatch, byteOffsetToIndex, editability, safeAttributes } from './edits.js?v=20261031a';
+import { applyPatch, byteOffsetToIndex, editability, safeAttributes, colourNames, isColour } from './edits.js?v=20261031a';
+export { colourNames, isColour };
 
 const bytes = text => new TextEncoder().encode(text).length;
-const kinds = ['box','cylinder','circle','ellipse','oval','diamond','line','arrow','text'];
+const kinds = ['box','cylinder','circle','ellipse','oval','diamond','file','line','arrow','text'];
 const fail = () => { throw new Error('This object’s text and terminations are read-only. Use the source editor.'); };
 
 export function readProperties(source, object, scene) {
@@ -19,7 +20,7 @@ export function readProperties(source, object, scene) {
   if (labels.some((match,index)=>index && !TEXT_ATTRS_ONLY.test(statement.slice(labels[index-1].index+labels[index-1][0].length,match.index)))) fail();
   const masked = statement.replace(/"(?:\\.|[^"\\])*"/g,match=>' '.repeat(match.length));
   if (/["\[\]{};#\r\n]/.test(masked.trim())) fail();
-  const header = masked.match(/^\s*(?:([A-Z][A-Za-z0-9_]*)\s*:\s*)?(box|cylinder|circle|ellipse|oval|diamond|line|arrow|text)\b/);
+  const header = masked.match(/^\s*(?:([A-Z][A-Za-z0-9_]*)\s*:\s*)?(box|cylinder|circle|ellipse|oval|diamond|file|line|arrow|text)\b/);
   if (!header || header[2] !== object.kind || (header[1] || '') !== (object.name || '')) fail();
   const flags = [...masked.matchAll(/<->|<-|->/g)];
   if (flags.length > 1) fail();
@@ -34,7 +35,7 @@ export function inspectProperties(source,object,scene) {
   const {labels,flags,statement} = read(source,object,scene);
   const style=maskLabels(statement);
   const scalar=key=>style.match(new RegExp(`\\b${key}\\s+([\\d.]+)(?=\\s|$)`))?.[1];
-  const color=key=>style.match(new RegExp(`\\b${key}\\s+(0x[0-9a-fA-F]{6}|black|white|red|blue|green|yellow|gray|grey|none)(?!\\w)`))?.[1]?.replace('0x','#');
+  const color=key=>{const value=style.match(new RegExp(`\\b${key}\\s+(0x[0-9a-fA-F]{6}|[A-Za-z]+)(?![\\w.$])`))?.[1];return value&&isColour(value)?value.toLowerCase().replace('0x','#'):undefined;};
   return {
     text: labels.map(label=>label[0].slice(1,-1)).join('\n'),
     width:object.bbox?.width,height:object.bbox?.height,fill:color('fill'),color:color('color'),stroke:color('color'),thickness:scalar('thickness'),
@@ -57,14 +58,14 @@ export function propertyCandidate(source,object,statement,replacement,label) {
 }
 const candidate=propertyCandidate;
 
-const shapeKinds = ['box','cylinder','circle','ellipse','oval','diamond'];
+const shapeKinds = ['box','cylinder','circle','ellipse','oval','diamond','file'];
 const numeric = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)';
 const maskLabels = statement => statement.replace(/"(?:\\.|[^"\\])*"/g,match=>' '.repeat(match.length));
 
 function fitStatement(statement,object) {
   if (!shapeKinds.includes(object.kind)) throw new Error('Fit to text is available for native shapes, not connectors.');
   const masked=maskLabels(statement);
-  const header=masked.match(/^\s*(?:[A-Z][A-Za-z0-9_]*\s*:\s*)?(?:box|cylinder|circle|ellipse|oval|diamond)\b/);
+  const header=masked.match(/^\s*(?:[A-Z][A-Za-z0-9_]*\s*:\s*)?(?:box|cylinder|circle|ellipse|oval|diamond|file)\b/);
   const body=masked.slice(header[0].length);
   const point=`\\(\\s*${numeric}\\s*,\\s*${numeric}\\s*\\)`;
   const placements=[...body.matchAll(new RegExp(`\\b(?:with\\s+\\.c\\s+)?at\\s*(?:[A-Z][A-Za-z0-9_]*\\.c\\s*\\+\\s*)?${point}`, 'g'))];

@@ -639,7 +639,7 @@ function bindDiagram(svg){
       group.setAttribute('tabindex','0');group.setAttribute('role','button');
       group.setAttribute('aria-label',(object.name||object.kind)+', '+(connector||(object.editable?'movable':'inspect only')));
     }
-    if(['box','circle','ellipse','oval','cylinder','diamond'].includes(object?.kind)){
+    if(['box','circle','ellipse','oval','cylinder','diamond','file'].includes(object?.kind)){
       // Pikchr's unfilled shapes otherwise only receive events on ink (the
       // stroke and label). Use the real outline, not a rectangular hit box, so
       // rounded/diamond corners do not capture clicks outside the shape.
