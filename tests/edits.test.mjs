@@ -301,3 +301,17 @@ test('bend edits reject invalid indices, ambiguous path mappings and unsupported
   f.object.depth=1;
   assert.deepEqual(bendCandidates(f.source,f.object,f.scene,'insert',0,{x:1,y:2}),[]);
 });
+test('keepForm: a nudge keeps an absolute placement absolute and a relative one on its reference', () => {
+  // A neighbour gap would win on literal count; a keyboard nudge must not
+  // silently tie the shape to another one.
+  const prefix = 'Client: box "Client" at (0,0)\n', statement = 'API: box "API" at (3,0)', source = prefix + statement + '\n';
+  const api = { id: '2', name: 'API', kind: 'box', editable: true, span: { start: bytes(prefix), end: bytes(prefix + statement) }, center: { x: 3, y: 0 },
+    anchors: { w: { x: 2.625, y: 0 }, e: { x: 3.375, y: 0 }, n: { x: 3, y: .25 }, s: { x: 3, y: -.25 } } };
+  const scene = { objects: [{ id: '1', name: 'Client', kind: 'box', span: { start: 0 }, center: { x: 0, y: 0 }, bbox: { x: -.375, y: -.25, width: .75, height: .5 },
+    anchors: { w: { x: -.375, y: 0 }, e: { x: .375, y: 0 }, n: { x: 0, y: .25 }, s: { x: 0, y: -.25 } } }, api] };
+  assert.deepEqual(candidates(source, api, scene, { x: 3.1, y: 0 }, { precise: true })[0].references, ['Client']);
+  const kept = candidates(source, api, scene, { x: 3.1, y: 0 }, { precise: true, keepForm: true });
+  assert.equal(kept[0].source, prefix + 'API: box "API" at (3.1, 0)\n');
+  const {source: rel, object, scene: s2} = fixture('Database: cylinder "DB" with .c at API.c + (0, -2)');
+  assert.match(candidates(rel, object, s2, { x: 1.1, y: -1 }, { precise: true, keepForm: true })[0].source, /with \.c at API\.c \+ \(1\.1, -1\)/);
+});
