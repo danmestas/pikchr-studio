@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {compileStudio} from './pikchr-wasm.mjs';
-import {macroDefinitions, macroCallSites, inlineCall, detachCandidates, macroUses} from '../public/macro-detach.js';
+import {macroDefinitions, macroCallSites, inlineCall, detachCandidates, macroUses, macroBlocked} from '../public/macro-detach.js';
+import {readProperties} from '../public/properties.js';
 import {applyPatch} from '../public/edits.js';
 
 const bytes = text => new TextEncoder().encode(text).length;
@@ -181,4 +182,51 @@ test('a candidate that changes only fill, stroke or path is refused', async () =
   assert.deepEqual(path.options, []);
   const same = await detachCandidates(source, original.objects[0], original, render, {only:'detach'});
   assert.equal(same.options.length, 1);
+});
+
+test('labelled uses are call sites; the label stays with the inlined text', async () => {
+  const source = 'define node { box }\nN1: node\nN2: node\narrow from N1.e to N2.w\n';
+  const sites = macroCallSites(source, 'node');
+  assert.deepEqual(sites.map(s => s.text), ['N1: node', 'N2: node']);
+  assert.deepEqual(sites.map(s => s.label), ['N1', 'N2']);
+  for (const s of sites) assert.equal(slice(source, s.span), s.text);
+  assert.deepEqual(macroCallSites('define m { box $1 }\nbox; Big: m(fill red); circle\n', 'm').map(s => [s.text, s.args]), [['Big: m(fill red)', ['fill red']]]);
+  const {original, options, refusals} = await detach(source, s => s.objects[0]);
+  assert.deepEqual(refusals, []);
+  const one = options.find(o => o.id === 'detach'), all = options.find(o => o.id === 'detach-all');
+  assert.equal(one.source, 'define node { box }\n# detached from node\nN1: box\nN2: node\narrow from N1.e to N2.w\n');
+  assert.equal(applyPatch(source, one.patch), one.source);
+  assert.equal(all.source, 'define node { box }\n# detached from node\nN1: box\n# detached from node\nN2: box\narrow from N1.e to N2.w\n');
+  assert.equal(applyPatch(source, all.patch), all.source);
+  for (const option of options) assert.deepEqual(geometry(option.result), geometry(original));
+  const after = scene(one.source), target = after.objects.find(o => o.id === one.selectId);
+  assert.equal(target.name, 'N1'); assert.equal(target.editable, true);
+  assert.equal(macroUses(source, original.objects[1]).uses, 2);
+});
+
+test('a labelled use with arguments and a body of several objects keeps the label on the first', async () => {
+  const source = 'define pair { box $1; circle }\nP: pair("a")\nQ: pair("b")\nline from P.s to Q.s\n';
+  const {original, options} = await detach(source, s => s.objects[1], 'detach');
+  assert.equal(options[0].source, 'define pair { box $1; circle }\n# detached from pair\nP: box "a"; circle\nQ: pair("b")\nline from P.s to Q.s\n');
+  assert.deepEqual(geometry(options[0].result), geometry(original));
+  assert.equal(scene(options[0].source).objects[0].name, 'P');
+});
+
+test('a detach that would move or drop a label is refused', async () => {
+  // The label is checked like geometry: a candidate whose objects lose their
+  // names is not offered even if every shape lands in the same place.
+  const source = 'define node { box }\nN1: node\nN2: node\n', original = scene(source);
+  const unnamed = async text => { const r = await render(text); return text === source ? r : {...r, objects:r.objects.map(o => ({...o, name:''}))}; };
+  const r = await detachCandidates(source, original.objects[0], original, unnamed);
+  assert.deepEqual(r.options, []);
+  assert.match(r.refusals.find(x => x.id === 'detach-all').reason, /object 1 \(box\) would lose its label N1/);
+});
+
+test('macroBlocked explains a macro shape and points at Detach from macro', () => {
+  const source = 'define node { box }\nN1: node\n', s = scene(source);
+  assert.equal(macroBlocked(source, s.objects[0], 'deleted'),
+    'This shape comes from the macro node, so it can’t be deleted here. Choose Detach from macro in the inspector to edit it on its own.');
+  const nested = 'define inner { circle }\ndefine outer { inner }\nouter\n', n = scene(nested);
+  assert.match(macroBlocked(nested, n.objects[0], 'duplicated'), /^This shape comes from the macro inner, which is only used inside other macro definitions, so it can’t be duplicated here\. Detach the outer macro first\.$/);
+  assert.throws(() => readProperties(source, s.objects[0], s), {message:'This shape comes from the macro node, so it can’t be edited here. Choose Detach from macro in the inspector to edit it on its own.'});
 });

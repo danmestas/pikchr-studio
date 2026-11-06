@@ -1,11 +1,13 @@
-import { applyPatch, byteOffsetToIndex, editability, safeAttributes, colourNames, isColour } from './edits.js?v=20261031a';
+import { applyPatch, byteOffsetToIndex, editability, safeAttributes, colourNames, isColour } from './edits.js?v=20261106c';
 export { colourNames, isColour };
+import { macroBlocked } from './macro-detach.js?v=20261106c';
 
 const bytes = text => new TextEncoder().encode(text).length;
 const kinds = ['box','cylinder','circle','ellipse','oval','diamond','file','line','arrow','text'];
 const fail = () => { throw new Error('This object’s text and terminations are read-only. Use the source editor.'); };
 
 export function readProperties(source, object, scene) {
+  if (object?.reason === 'Macro-expanded object' && typeof source === 'string') throw new Error(macroBlocked(source, object));
   if (typeof source !== 'string' || !object?.span || !scene?.objects?.includes(object)
       || (scene.source !== undefined && scene.source !== source)
       || !kinds.includes(object.kind) || !editability(object, scene).editable) fail();

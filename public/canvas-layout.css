@@ -216,7 +216,6 @@ body.layout-canvas .cl-section{padding:10px 0!important;border-top:1px solid var
 body.layout-canvas .cl-section:first-child{border-top:0!important}
 body.layout-canvas .cl-section>.cl-section-title{margin:0}
 body.layout-canvas .cl-section:not(:has(> :not(.cl-section-title):not([hidden]):not(.cl-offstage))){display:none}
-body.layout-canvas:not(.advanced) .cl-advanced-only{display:none}
 body.layout-canvas .cl-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 body.layout-canvas .cl-check-row{min-height:28px}
 body.layout-canvas .cl-field{display:flex!important;flex-direction:column;align-items:stretch!important;gap:4px}
@@ -478,7 +477,7 @@ body.layout-canvas .cl-footer-links{display:flex;flex-wrap:wrap;gap:2px 4px}
 body.layout-canvas .cl-menu .cl-footer-links :is(a,button){border:0;padding:0 6px;min-height:28px;color:var(--cl-accent)}
 body.layout-canvas .cl-footer .cl-about{margin:0;font-size:11px}
 body.layout-canvas .cl-about a{color:var(--cl-accent);text-decoration:underline}
-body.layout-canvas .cl-menu .cl-advanced-only .cl-row{gap:6px}
+body.layout-canvas .cl-menu .cl-advanced .cl-row{gap:6px;margin-top:8px}
 body.layout-canvas .cl-changes{top:60px;right:12px;width:min(380px,calc(100vw - 24px));max-height:calc(100dvh - 130px)}
 body.layout-canvas .cl-changes #queue-list{margin:0;padding-left:18px;font-size:12px}
 body.layout-canvas .cl-changes #queue-list:empty,body.layout-canvas .cl-changes #suggestions{display:none}
@@ -516,3 +515,18 @@ body.layout-canvas .cl-menu .cl-about .cl-link{display:inline;border:0;padding:0
   body.layout-canvas .cl-changes{top:110px;max-height:calc(100dvh - 240px)}
 }
 body.layout-canvas .cl-candidate .cl-check svg{width:16px;height:16px;vertical-align:-3px}
+
+/* Document rename, delete, and the always-present Advanced disclosure. */
+body.layout-canvas .cl-doc button.cl-title{font:inherit;font-weight:600;cursor:text;min-height:0;height:auto}
+body.layout-canvas .cl-title-input{font:inherit;font-weight:600;width:180px;max-width:200px;padding:2px 6px;margin:0 4px}
+body.layout-canvas .cl-menu .cl-recent-row{display:flex;gap:2px;align-items:center}
+body.layout-canvas .cl-menu .cl-recent .cl-recent-row>button[data-id]{flex:1;width:auto;min-width:0}
+body.layout-canvas .cl-menu .cl-recent .cl-recent-row>button.cl-recent-delete{flex:none;width:30px;min-height:30px;padding:0;justify-content:center;color:var(--cl-muted);border-color:transparent}
+body.layout-canvas .cl-menu .cl-recent .cl-recent-delete:hover:not(:disabled){color:var(--cl-bad)}
+body.layout-canvas .cl-menu .cl-recent .cl-recent-confirm button{width:auto;justify-content:center;border-color:var(--cl-line)}
+body.layout-canvas .cl-menu .cl-recent-confirm{display:flex;flex-direction:column;gap:6px;padding:6px 8px;border:1px solid var(--cl-line);border-radius:8px}
+body.layout-canvas .cl-menu .cl-recent-confirm p{margin:0;font-size:12px;line-height:1.4}
+body.layout-canvas .cl-menu .cl-recent .cl-recent-confirm button.cl-danger{color:var(--cl-bad)}
+body.layout-canvas .cl-export .cl-export-note{margin:0;font-size:12px}
+body.layout-canvas .cl-export .cl-export-note[hidden]{display:none}
+body.layout-canvas .cl-export button:disabled{opacity:.5}

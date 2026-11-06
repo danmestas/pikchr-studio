@@ -76,7 +76,7 @@ def inspect_macro_source(page):
     selected_id = page.evaluate("pikchrStudio.state().object.id")
     for control in ("#delete-selected", "#duplicate-selected"):
         page.locator(control).click()
-        expect(page.locator("#state")).to_contain_text("read-only")
+        expect(page.locator("#state")).to_contain_text("Choose Detach from macro in the inspector")
         assert page.locator("#source").input_value() == macro_source
         assert page.evaluate("pikchrStudio.state().selectedIds") == [selected_id]
         assert page.evaluate("pikchrStudio.state().queued") == 0
@@ -118,7 +118,7 @@ with sync_playwright() as pw:
         # Common tasks have stable sections and keep the original controls.
         page.locator(".cl-doc [aria-label='Menu']").click()
         headings = page.locator(".cl-menu > section > h3").all_text_contents()
-        assert headings == ["Document", "Preferences", "Advanced"], headings
+        assert headings == ["Document", "Preferences"], headings
         assert page.locator(".cl-menu > section").last.get_attribute("aria-label") == "About"
         menu = page.locator(".cl-menu")
         # Document: New, Open file, Examples on one row; recent documents instead of a select.
@@ -129,12 +129,15 @@ with sync_playwright() as pw:
         expect(current).to_have_count(1)
         assert re.search(r"just now|min ago", current.inner_text()), current.inner_text()
         assert menu.get_by_text("Saved on this browser").count() == 0 or not menu.get_by_text("Saved on this browser").first.is_visible()
-        # Preferences: four checkboxes, Snap resize moved out of Tool options.
+        # Preferences: three checkboxes, Snap resize moved out of Tool options.
         prefs = menu.locator("section[aria-label=Preferences] label").all_inner_texts()
-        assert [t.strip() for t in prefs] == ["Show anchors", "Apply accepted changes immediately", "Snap resize to 0.1 in", "Advanced tools"], prefs
+        assert [t.strip() for t in prefs] == ["Show anchors", "Apply accepted changes immediately", "Snap resize to 0.1 in"], prefs
         assert menu.locator("section[aria-label=Preferences] #auto-apply").count() == 1
-        # Advanced items need Advanced tools; footer is one row of links plus the credit line.
-        assert menu.locator("section[aria-label=Advanced]").is_hidden()
+        # Advanced is always in the menu, collapsed; footer is one row of links plus the credit line.
+        advanced = menu.locator("section[aria-label=Advanced] details.cl-advanced")
+        expect(advanced).to_be_visible()
+        assert advanced.get_attribute("open") is None
+        assert menu.locator("#open-components").is_hidden()
         footer = menu.locator("section[aria-label=About]")
         assert footer.locator(".cl-footer-links a, .cl-footer-links button").all_inner_texts() == ["How it works", "Shortcuts", "Licenses", "Source"]
         assert footer.get_by_role("link", name="Source").get_attribute("href") == "https://zeitforge.app/r/dmestas/pikchr-studio"
@@ -143,16 +146,15 @@ with sync_playwright() as pw:
         assert footer.locator("p a").get_attribute("href") == "https://pikchr.org"
         for gone in ("#multi-select", "#clear-selection", "#mobile-objects", "#focus-selection", "#mobile-add", "#accept", "#undo-draft"):
             assert menu.locator(gone).count() == 0, gone + " left the menu"
-        # The menu never scrolls at 1440x900, with or without Advanced tools.
+        # The menu never scrolls at 1440x900, with the Advanced disclosure closed or open.
         def no_scroll(label):
             fits = page.evaluate("(()=>{const m=document.querySelector('.cl-menu');return [m.scrollHeight,m.clientHeight]})()")
             assert fits[0] <= fits[1], (label, "menu scrolls", fits)
         no_scroll("basic")
-        page.locator("#advanced-mode").check()
-        expect(menu.locator("section[aria-label=Advanced]")).to_be_visible()
+        advanced.locator("summary").click()
         assert menu.locator("section[aria-label=Advanced] button").all_inner_texts() == ["Components\u2026", "Back up documents\u2026", "Restore\u2026"]
-        no_scroll("advanced")
-        page.locator("#advanced-mode").uncheck()
+        no_scroll("advanced open")
+        advanced.locator("summary").click()
         # Shortcuts in the footer opens the panel with the three groups.
         footer.get_by_role("button", name="Shortcuts").click()
         help_panel = page.locator(".cl-help")
@@ -178,7 +180,8 @@ with sync_playwright() as pw:
         page.locator("#object-search").fill("")
         page.keyboard.press("Escape")
         expect(page.locator(".cl-more")).to_be_hidden()
-        expect(page.locator(".cl-doc [aria-label='Menu']")).to_be_focused()
+        # Escape returns focus to whatever opened Find: here, the Find object button.
+        expect(page.locator("#mobile-objects")).to_be_focused()
 
         choose_object(page, "Beta", "B")
         assert page.evaluate("pikchrStudio.state().object?.name") == "B"
@@ -272,7 +275,7 @@ with sync_playwright() as pw:
                 close = sample.locator(".cl-more").get_by_role("button", name="Close inspector")
                 expect(close).to_be_visible()
                 close.click()
-                expect(sample.locator(".cl-doc [aria-label='Menu']")).to_be_focused()
+                expect(sample.locator("#mobile-objects")).to_be_focused()
                 choose_object(sample, "E")
                 grid = sample.locator(".cl-route-grid")
                 expect(grid).to_be_visible()

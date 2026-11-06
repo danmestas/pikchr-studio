@@ -235,7 +235,7 @@ with sync_playwright() as pw:
     titles = menu.locator(".cl-section:visible > .cl-section-title").all_inner_texts()
     assert [t.strip().lower() for t in titles] == ["document", "preferences"], titles
     assert menu.locator("details.canvas-view-options:visible, details.draft-toolbar:visible").count() == 0
-    for id_ in ["#auto-apply", "#anchors", "#snap-resize", "#choose-example", "#advanced-mode"]:
+    for id_ in ["#auto-apply", "#anchors", "#snap-resize", "#choose-example"]:
         assert menu.locator(id_).count() == 1, id_
     for id_ in ["#accept", "#cancel", "#undo-draft", "#multi-select", "#clear-selection", "#mobile-objects", "#focus-selection"]:
         assert menu.locator(id_).count() == 0, id_ + " left the menu"

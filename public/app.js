@@ -1,27 +1,27 @@
-import {candidates,snap,applyPatch,byteOffsetToIndex,routeCandidates} from './edits.js?v=20261031a';
-import {routeStyleCandidates} from './route-styles.js?v=20261031a';
-import {correspondingObject} from './candidate-target.js?v=20261031a';
-import {alignmentGuides,gapMarks} from './guides.js?v=20261031a';
-import {constrainDrag,smartSnap} from './constrain.js?v=20261031a';
+import {candidates,snap,applyPatch,byteOffsetToIndex,routeCandidates} from './edits.js?v=20261106c';
+import {routeStyleCandidates} from './route-styles.js?v=20261106c';
+import {correspondingObject} from './candidate-target.js?v=20261106c';
+import {alignmentGuides,gapMarks} from './guides.js?v=20261106c';
+import {constrainDrag,smartSnap} from './constrain.js?v=20261106c';
 const params=new URL(location.href).searchParams;
-import {arrowEditor,connectorCapabilities,connectorLabel,connectorRows,editingBlocked} from './arrow-ui.js?v=20261031a';
-import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20261031a';
-import {propertyEditor} from './property-ui.js?v=20261031a';
-import {fitText,canFitText,inspectProperties,readProperties} from './properties.js?v=20261031a';
-import {duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20261031a';
-import {decodeLinkSource,encodeLinkSource,linkFragment,linkPayload} from './link-import.js?v=20261031a';
-import {createDocumentStore} from './documents.js?v=20261031a';
-import {canvasNavigation,clampZoom} from './canvas-navigation.js?v=20261031a';
-import {examplePicker} from './example-picker.js?v=20261031a';
-import {canvasTools} from './canvas-tools.js?v=20261031a';
-import {copySelection,pasteSelection} from './subgraph.js?v=20261031a';
-import {createComponentLibrary} from './component-library.js?v=20261031a';
-import {exportWorkspace,parseWorkspace} from './workspace-backup.js?v=20261031a';
-import {tidyRouteCandidate} from './route-suggestions.js?v=20261031a';
-import {createCandidateReview} from './candidate-review.js?v=20261031a';
-import {cleanSVG,downloadPNG} from './diagram-export.js?v=20261031a';
-import {readSizingPreference,writeSizingPreference} from './sizing-preferences.js?v=20261031a';
-import {detachCandidates,macroUses} from './macro-detach.js?v=20261031a';
+import {arrowEditor,connectorCapabilities,connectorLabel,connectorRows,editingBlocked} from './arrow-ui.js?v=20261106c';
+import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20261106c';
+import {propertyEditor} from './property-ui.js?v=20261106c';
+import {fitText,canFitText,inspectProperties,readProperties} from './properties.js?v=20261106c';
+import {duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20261106c';
+import {decodeLinkSource,encodeLinkSource,linkFragment,linkPayload} from './link-import.js?v=20261106c';
+import {createDocumentStore} from './documents.js?v=20261106c';
+import {canvasNavigation,clampZoom} from './canvas-navigation.js?v=20261106c';
+import {examplePicker} from './example-picker.js?v=20261106c';
+import {canvasTools} from './canvas-tools.js?v=20261106c';
+import {copySelection,pasteSelection} from './subgraph.js?v=20261106c';
+import {createComponentLibrary} from './component-library.js?v=20261106c';
+import {exportWorkspace,parseWorkspace} from './workspace-backup.js?v=20261106c';
+import {tidyRouteCandidate} from './route-suggestions.js?v=20261106c';
+import {createCandidateReview} from './candidate-review.js?v=20261106c';
+import {cleanSVG,downloadPNG} from './diagram-export.js?v=20261106c';
+import {readSizingPreference,writeSizingPreference} from './sizing-preferences.js?v=20261106c';
+import {detachCandidates,macroBlocked,macroUses} from './macro-detach.js?v=20261106c';
 const $=id=>document.getElementById(id);
 const examples={
   pipeline:'Client: box "Client" at (0,0)\nAPI: box "API" at (2,0)\nDatabase: cylinder "Database" at (4,0)\narrow from Client.e to API.w\narrow from API.e to Database.w\n',
@@ -30,12 +30,14 @@ const examples={
 };
 const source=$('source');
 source.value=examples.pipeline;
+// Each document's own last valid render; an invalid document never shows another's.
+const lastValid=new Map();let diagramOwner=null;
 let worker,requests=new Map(),requestId=0,revision=0,scene=null,renderedSource='',selectedId=null,proposal=null,gesture=0,preview=null;
 const undo=[],redo=[];
 const draft=[];
 const draftRedo=[];
 let cancelCanvasEdit=()=>{},manualEditBase=null;
-let draftBase=null;
+let draftBase=null,discarded=null;
 let rendering=false,renderVersion=0;
 const selectionHistory=new Map();
 // Counts select() calls, so a render can tell the selection changed while it ran.
@@ -50,12 +52,6 @@ let routeReview=null,clipboardFragment=null,pasteCount=0;
 let sizingPreferences={};
 let viewportDocumentId=null;
 const componentLibrary=createComponentLibrary();
-// Advanced tools (components, document store, arrange, shape conversion) stay
-// out of the way until asked for, so the core drag-to-source loop is the product.
-let advanced=params.get('advanced')==='1'||(()=>{try{return localStorage.getItem('pikchr-studio-advanced')==='1';}catch{return false;}})();
-function applyAdvanced(){document.body.classList.toggle('advanced',advanced);$('advanced-mode').checked=advanced;}
-$('advanced-mode').onchange=()=>{advanced=$('advanced-mode').checked;try{localStorage.setItem('pikchr-studio-advanced',advanced?'1':'0');}catch{}applyAdvanced();status(advanced?'Advanced tools shown.':'Advanced tools hidden.');};
-applyAdvanced();
 // inspector-open / objects-open ask the layout to open the ⋯ inspector popover.
 function openInspector(){document.body.classList.remove('objects-open','creation-open');document.body.classList.add('inspector-open');$('inspector').scrollIntoView({block:'nearest'});}
 $('mobile-objects').onclick=()=>{document.body.classList.remove('inspector-open','creation-open');document.body.classList.toggle('objects-open');};
@@ -86,6 +82,19 @@ function refreshDocuments(){
 let statusTimer=null;
 const status=text=>{ $('state').textContent=text;$('state').title=text;clearTimeout(statusTimer);statusTimer=setTimeout(()=>{$('canvas-feedback').textContent=text;},120); };
 const announceError=text=>{$('diagnostic').textContent=text;};
+// While the source does not parse, editing actions are off and say why;
+// rendering cannot help, only fixing the source can.
+const FIX_SOURCE='Fix the syntax error in Source (S) to edit.';
+const sourceInvalid=()=>$('diagram').classList.contains('stale')&&!!$('diagnostic').textContent.trim();
+const notReady=()=>sourceInvalid()?FIX_SOURCE:'Render the current source before editing.';
+function gateEditing(){
+  const off=sourceInvalid();
+  for(const id of ['edit-selected','fit-text','duplicate-selected','delete-selected','appearance-selected','route-selected','tidy-route','paste-selection','arrange']){
+    const b=$(id);if(!b)continue;
+    if(off){if(b.title!==FIX_SOURCE)b.dataset.validTitle=b.title;b.disabled=true;b.title=FIX_SOURCE;}
+    else if(b.title===FIX_SOURCE){b.title=b.dataset.validTitle||'';delete b.dataset.validTitle;}
+  }
+}
 function modeHint(){
   document.querySelector('.diagram-pane .hint').textContent=$('auto-apply').checked
     ?'Auto-apply is on. Accepted changes update the source immediately; Undo reverses them. Groups and macros are inspect-only.'
@@ -195,11 +204,17 @@ async function renderSource(preRendered=null){
   if(rev!==revision)return;
   if(result.unavailable){showRendererDown();return;}
   $('diagram').classList.remove('renderer-down');$('diagram').querySelector('.renderer-down-card')?.remove();
-  if(result.error||!result.svg){announceError(result.error||'No diagram returned.');$('diagram').classList.add('stale');status('Invalid source. Last valid diagram retained; editing disabled.');return;}
+  if(result.error||!result.svg){
+    if(diagramOwner!==activeDocumentId){
+      const keep=lastValid.get(activeDocumentId);
+      scene=keep?.scene||null;renderedSource=keep?.source??'';$('diagram').innerHTML=keep?.svg||'';diagramOwner=activeDocumentId;if(scene)populateObjects();else $('objects').replaceChildren();select(null,false,false,true);
+    }
+    announceError(result.error||'No diagram returned.');$('diagram').classList.add('stale');gateEditing();
+    status($('diagram').querySelector('svg')?'Invalid source. Last valid diagram retained. '+FIX_SOURCE:'Invalid source. Nothing to show yet. '+FIX_SOURCE);return;}
   scene=result;
   if(manualEditBase!==null){if(manualEditBase!==text){undo.push(manualEditBase);redo.length=0;}manualEditBase=null;historyButtons();}
   for(const o of scene.objects){if(o.kind==='text'&&candidates(text,o,scene,o.center).length)o.editable=true;if(o.editable&&!candidates(text,o,scene,o.center).length){o.editable=false;o.reason='Placement or attributes are outside the supported literal subset.';}}
-  renderedSource=text;$('diagram').innerHTML=result.svg;$('diagram').classList.remove('stale','previewing');announceError('');
+  renderedSource=text;$('diagram').innerHTML=result.svg;diagramOwner=activeDocumentId;lastValid.set(activeDocumentId,{svg:result.svg,scene:result,source:text});$('diagram').classList.remove('stale','previewing');announceError('');
   modeHint();
   const matches=scene.objects.filter(o=>o.name&&o.name===(desiredName||name));
   const saved=selectionHistory.get(text);
@@ -304,6 +319,7 @@ function select(id,highlight=false,additive=false,preserve=false){
   $('arrange').disabled=selectedIds.size<2;
   $('focus-selection').disabled=$('clear-selection').disabled=!selectedIds.size;
   {const only=$('selection-only');only.disabled=!selectedIds.size;if(only.disabled)only.checked=false;$('selection-only-hint')?.toggleAttribute('hidden',!only.disabled);}
+  gateEditing();
   $('inspector').replaceChildren();
   if(!o){$('inspector').textContent='Select an object in the diagram or object list.';drawOverlay();directTools?.sync();return;}
   if(!single){
@@ -343,7 +359,7 @@ function select(id,highlight=false,additive=false,preserve=false){
     origin.textContent='This shape comes from the macro '+(uses?.name||'that generated it')+', which other shapes may share. Detach it to edit it on its own.';
     sourceButton.textContent='Inspect generating source';
     const detachButton=(id,label)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.disabled=!uses?.uses;
-      b.title=uses?.uses?'Preview the source with this macro use inlined; the define stays':uses?'This macro is only used inside other macro definitions':'Studio cannot tell which macro generated this shape';b.onclick=()=>detachMacro(o,id);return b;};
+      b.title=uses?.uses?(id==='detach-all'?'Preview the source with every use of this macro inlined; the define stays':'Preview the source with this macro use inlined; the define stays'):uses?'This macro is only used inside other macro definitions':'Studio cannot tell which macro generated this shape';b.onclick=()=>detachMacro(o,id);return b;};
     const detachRow=document.createElement('div');detachRow.className='inspector-detach';detachRow.style.cssText='display:flex;flex-wrap:wrap;gap:8px';
     detachRow.append(detachButton('detach','Detach from macro'));
     if(uses?.uses>1)detachRow.append(detachButton('detach-all','Detach all '+uses.uses+' uses'));
@@ -508,10 +524,13 @@ $('route-selected').onclick=()=>{
 // toolbar and any other chrome call this instead of open-coding the mode.
 const reconnectSelected=which=>{const o=current();if(!o||!['arrow','line','spline','arc'].includes(o.kind))return;directTools?.reconnect(which);};
 $('show-source-selected').onclick=()=>{const o=current();if(!o?.span)return;source.focus();source.setSelectionRange(byteOffsetToIndex(source.value,o.span.start),byteOffsetToIndex(source.value,o.span.end));};
-function action(fn){if(rendering||source.value!==renderedSource){status('Render the current source before editing.');return;}try{return validateSuggestions(current(),[fn()]);}catch(error){status(error.message);}}
-$('duplicate-selected').onclick=()=>action(()=>duplicateObject(source.value,current(),scene));
+function action(fn){if(rendering||source.value!==renderedSource||sourceInvalid()){status(notReady());return;}try{return validateSuggestions(current(),[fn()]);}catch(error){status(error.message);}}
+// A macro shape is refused with the way out (Detach from macro), per action.
+const refuseMacro=(objects,verb)=>{const o=objects.find(n=>n?.reason==='Macro-expanded object');if(o)throw Error(macroBlocked(renderedSource,o,verb));};
+const named=objects=>objects.length>3?objects.length+' objects':objects.map(o=>o.name||o.kind).join(', ');
+$('duplicate-selected').onclick=()=>action(()=>{refuseMacro([current()],'duplicated');return {...duplicateObject(source.value,current(),scene),summary:'Duplicated '+named([current()])};});
 $('delete-selected').title='Delete selected objects and attached connectors. Undo restores them.';
-$('delete-selected').onclick=()=>action(()=>({...deleteObjects(source.value,scene.objects.filter(o=>selectedIds.has(o.id)),scene,{includeConnectors:true,pinDependents:true}),clearSelection:true}));
+$('delete-selected').onclick=()=>action(()=>{const objects=scene.objects.filter(o=>selectedIds.has(o.id));refuseMacro(objects,'deleted');return {...deleteObjects(source.value,objects,scene,{includeConnectors:true,pinDependents:true}),clearSelection:true,summary:'Deleted '+named(objects)};});
 $('arrange').onclick=()=>action(()=>({...layoutObjects(source.value,scene.objects.filter(o=>selectedIds.has(o.id)),scene,$('layout-mode').value),selectionNames:scene.objects.filter(o=>selectedIds.has(o.id)).map(o=>o.name)}));
 $('fit-text').onclick=()=>{
   const o=current();if(!o||source.value!==renderedSource)return;
@@ -690,7 +709,7 @@ function bindDiagram(svg){
       // Typing is still debouncing: render now, then replay this press on the
       // fresh diagram so the gesture proceeds instead of being refused.
       if(!draft.length&&source.value!==renderedSource&&!e.studioReplay){flushAndReplay(e);return;}
-      status('Source changed. Render to update the diagram before dragging.');return;
+      status(sourceInvalid()?FIX_SOURCE:'Source changed. Render to update the diagram before dragging.');return;
     }
     if(!o?.editable){
       const capabilities=connectorCapabilities({object:o,scene,source:renderedSource});
@@ -746,6 +765,11 @@ $('diagram').addEventListener('keydown',e=>{
     if(e.key==='Escape')discardPreview();else if(e.key==='Enter')acceptPreview();else cyclePreview(e.key===']'?1:-1);
     return;
   }
+  // Enter accepts what is pending: queued changes apply as one batch.
+  // Only with nothing pending does Enter edit the selected label.
+  if(e.key==='Enter'&&draft.length&&!e.shiftKey&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.target.closest('.canvas-overlay,.arrow-overlay,[data-resize]')){
+    e.preventDefault();e.stopImmediatePropagation();$('accept').onclick();return;
+  }
   // A focused rendered object: Space selects it; Enter selects it and then
   // lets the canvas tools open its label editor.
   const group=e.target.closest?.('[data-pikchr-id]');
@@ -756,7 +780,7 @@ $('diagram').addEventListener('keydown',e=>{
   }
 },true);
 $('diagram').addEventListener('keydown',e=>{
-  if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();$('delete-selected').click();return;}
+  if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();if(selectedIds.size&&sourceInvalid())status(FIX_SOURCE);else $('delete-selected').click();return;}
   if(e.key==='Escape'){panMode=false;$('pan-mode').setAttribute('aria-pressed','false');$('diagram').style.cursor='';cancelCanvasEdit();clearProposal();clearSelection();return;}
   const delta={ArrowLeft:[-.1,0],ArrowRight:[.1,0],ArrowUp:[0,.1],ArrowDown:[0,-.1]}[e.key],o=current();
   // Focus on a rendered object: arrows walk the object list. Focus on the
@@ -765,13 +789,22 @@ $('diagram').addEventListener('keydown',e=>{
     e.preventDefault();const groups=[...$('diagram').querySelectorAll('[data-pikchr-id]')],i=groups.indexOf(e.target.closest('[data-pikchr-id]'));
     groups[(i+(delta[0]>0||delta[1]<0?1:-1)+groups.length)%groups.length]?.focus({preventScroll:true});return;
   }
-  if(!delta||!o?.editable||source.value!==renderedSource)return;
-  const step=e.shiftKey?10:e.altKey?.1:1;
-  e.preventDefault();suggest(o,{x:o.center.x+delta[0]*step,y:o.center.y+delta[1]*step});
+  nudge(e,delta);
 });
-async function suggest(o,target,withPreview=false,{precise=!withPreview,bringAlong=false}={}){
+// Arrow keys nudge the selection by 0.1 in (Shift 1 in, Alt 0.01 in). A
+// refused nudge says why rather than doing nothing.
+function nudge(e,delta){
+  const o=current();
+  if(!delta||!o)return;
+  e.preventDefault();
+  if(rendering||source.value!==renderedSource||$('diagram').classList.contains('stale')){status(sourceInvalid()?FIX_SOURCE:'Wait for a valid diagram before editing.');return;}
+  if(!o.editable){status(dragBlocked(o).replace('dragged','moved'));return;}
+  const step=e.shiftKey?10:e.altKey?.1:1;
+  suggest(o,{x:o.center.x+delta[0]*step,y:o.center.y+delta[1]*step},false,{precise:true,keepForm:true});
+}
+async function suggest(o,target,withPreview=false,{precise=!withPreview,bringAlong=false,keepForm=false}={}){
   let options;
-  try{options=selectedIds.size>1?[{...moveObjects(source.value,scene.objects.filter(n=>selectedIds.has(n.id)),scene,target.x-o.center.x,target.y-o.center.y,{pinDependents:!bringAlong}),selectionNames:scene.objects.filter(n=>selectedIds.has(n.id)).map(n=>n.name)}]:candidates(source.value,o,scene,target,{precise}).slice(0,6).map(option=>bringAlong?option:pinMove(source.value,scene,option,[o.id]));}catch(e){status(e.message);return;}
+  try{options=selectedIds.size>1?[{...moveObjects(source.value,scene.objects.filter(n=>selectedIds.has(n.id)),scene,target.x-o.center.x,target.y-o.center.y,{pinDependents:!bringAlong}),selectionNames:scene.objects.filter(n=>selectedIds.has(n.id)).map(n=>n.name)}]:candidates(source.value,o,scene,target,{precise,keepForm}).slice(0,6).map(option=>bringAlong?option:pinMove(source.value,scene,option,[o.id]));}catch(e){status(e.message);return;}
   if(!options.length){status('This placement expression is inspect-only. Try a named box with a literal at (x,y) clause.');drawOverlay();return;}
   return withPreview&&selectedIds.size<=1?previewSuggestions(o,options):validateSuggestions(o,options);
 }
@@ -1107,10 +1140,10 @@ async function choose(option){
     const previousSizing=scene.objects.flatMap(o=>{const preference=sizingFor(o);if(!preference)return[];try{return[{name:o.name,kind:o.kind,box:o.bbox,text:inspectProperties(source.value,o,scene).text,preference}];}catch{return[];}});
     const next=applyPatch(source.value,option.patch);
     if(next===source.value){if(option.sizingPreference&&current()){sizingPreferences=writeSizingPreference(source.value,scene,current(),sizingPreferences,option.sizingPreference);scheduleSave();status('Label behavior saved. Diagram geometry is unchanged.');}else status('No change to queue.');drawOverlay();installArrowEditor();directTools?.sync();return;}
-    draftRedo.length=0;
+    draftRedo.length=0;discarded=null;
     if(!draft.length)draftBase=source.value;
     const a=byteOffsetToIndex(option.base,option.patch.start),b=byteOffsetToIndex(option.base,option.patch.end);
-    draft.push({before:source.value,after:next,label:(option.subject?option.subject+': ':'')+option.label,
+    draft.push({before:source.value,after:next,label:(option.subject?option.subject+': ':'')+option.label,summary:appliedSummary(option),
       diff:'- '+option.base.slice(a,b)+'\n+ '+option.patch.text});
     requestedSelectionName=option.selectionIds?null:option.selectName||current()?.name||null;
     requestedSelectionIds=option.selectionIds||null;
@@ -1129,20 +1162,31 @@ async function choose(option){
     status(draft.length+(draft.length===1?' change queued.':' changes queued.')+' Continue editing, Apply all, or Discard all.');
   }catch(error){status(error.message);}
 }
+// What a change did, for the status line: "Moved API", "Deleted Client".
+function appliedSummary(option){
+  if(option.summary)return option.summary;
+  const subject=option.subject||'',label=option.label||'Change';
+  if('relational' in option&&subject)return 'Moved '+subject;
+  const many=/^Move (\d+) objects/.exec(label);if(many)return 'Moved '+many[1]+' objects';
+  return (subject&&!label.includes(subject)?subject+': ':'')+label+' applied';
+}
 $('accept').onclick=()=>{
   if(!draft.length||rendering)return;
   ++revision;clearProposal();
-  undo.push(draftBase);redo.length=0;
-  draft.length=0;draftRedo.length=0;draftBase=null;updateDraft();
+  undo.push(draftBase);redo.length=0;discarded=null;
+  const batch=draft.splice(0);
+  draftRedo.length=0;draftBase=null;updateDraft();
   applied=true;updateDraft();
   // Handles snapshot the revision; rebuild them so the next gesture is valid.
   refreshHandles();
-  status('All queued changes applied. Undo restores the whole batch.');
+  status(batch.length===1?(batch[0].summary||batch[0].label+' applied')+'.':'Applied '+batch.length+' changes. Undo restores the whole batch.');
 };
+// Discard all is undoable: Undo puts the discarded changes back in the queue.
 $('cancel').onclick=async()=>{
   if(!draft.length||rendering)return;
-  source.value=draftBase;draft.length=0;draftRedo.length=0;draftBase=null;
-  dirty();updateDraft();await renderSource();status('All queued changes discarded.');
+  discarded={base:draftBase,draft:draft.splice(0)};
+  source.value=draftBase;draftRedo.length=0;draftBase=null;
+  dirty();updateDraft();await renderSource();status('All queued changes discarded. Undo restores them.');
 };
 $('undo-draft').onclick=async()=>{
   if(!draft.length||rendering)return;
@@ -1153,16 +1197,23 @@ $('undo-draft').onclick=async()=>{
   status(draft.length?draft.length+' changes remain queued.':'Last queued change undone.');
 };
 function historyButtons(){
-  $('undo').disabled=rendering||(!draft.length&&!undo.length&&manualEditBase===null);
+  $('undo').disabled=rendering||(!draft.length&&!undo.length&&manualEditBase===null&&!restorable());
   $('redo').disabled=rendering||(!draftRedo.length&&(!!draft.length||!redo.length));
-  $('undo').title=draft.length?'Undo latest queued change':'Undo last applied change';
+  $('undo').title=draft.length?'Undo latest queued change':restorable()?'Restore the discarded changes':'Undo last applied change';
   $('redo').title=draftRedo.length?'Redo queued change':'Redo applied change';
   for(const kind of ['undo','redo']){const button=$('canvas-'+kind);button.disabled=$(kind).disabled;button.title=$(kind).title+' (Ctrl/⌘ '+(kind==='undo'?'Z':'Shift+Z')+')';}
   $('render').disabled=!!draft.length;
 }
+const restorable=()=>!!discarded&&!draft.length&&manualEditBase===null&&source.value===discarded.base;
 $('undo').onclick=async()=>{
   if(rendering)return;cancelCanvasEdit();
   if(draft.length){await $('undo-draft').onclick();return;}
+  if(restorable()){
+    draftBase=discarded.base;draft.push(...discarded.draft);discarded=null;
+    source.value=draft.at(-1).after;dirty();updateDraft();await renderSource();
+    status(draft.length+(draft.length===1?' discarded change':' discarded changes')+' restored to the queue.');return;
+  }
+  discarded=null;
   if(manualEditBase!==null){redo.push(source.value);source.value=manualEditBase;manualEditBase=null;}
   else {if(!undo.length)return;draftRedo.length=0;redo.push(source.value);source.value=undo.pop();}
   dirty();await renderSource();status('Undone. Redo restores the change.');
@@ -1182,6 +1233,17 @@ window.pikchrStudio={
   setDark:on=>{const flags=on?3:1;if(flags===renderFlags)return;renderFlags=flags;if(source.value.trim()||scene)renderSource();},
   refit:()=>{const svg=$('diagram').querySelector('svg');const box=svg?.dataset.exportViewBox;if(!box)return;const [x,y,w,h]=box.split(/[ ,]+/).map(Number);svg.dataset.fitViewBox=fitBox(x,y,w,h);if(zoom===1&&pan.x===0&&pan.y===0){svg.dataset.baseViewBox=svg.dataset.fitViewBox;applyViewport();refreshHandles();}},
   title:()=>activeDocumentTitle,
+  // An explicit name is stored with the document and stops the automatic one (first label).
+  rename:text=>{
+    const name=String(text).trim().slice(0,100),before=activeDocumentTitle;
+    activeDocumentTitle=name||null;
+    const saved=persistDocument();
+    if(!saved.ok)activeDocumentTitle=before;
+    status(saved.ok?(name?'Renamed to '+name:'Using the automatic name'):'Not renamed: '+saved.error);
+    return saved.ok;
+  },
+  // Removes one stored document. Deleting the open one opens the next most recent, or a blank one.
+  removeDocument:id=>removeDocument(id),
   // Pan (never zoom) just enough that the selection sits inside the screen band between
   // `top` px from the top and `bottom` px from the bottom, e.g. above a bottom sheet.
   reveal:({top=0,bottom=0}={})=>{
@@ -1206,22 +1268,28 @@ document.addEventListener('keydown',e=>{
   if(mod&&(key==='z'||key==='y')){e.preventDefault();$(key==='y'||e.shiftKey?'redo':'undo').click();return;}
   if(mod&&key==='d'){e.preventDefault();$('duplicate-selected').click();return;}
   if(mod&&key==='a'&&$('diagram').contains(document.activeElement)){e.preventDefault();selectedIds=new Set(scene?.objects.filter(o=>!['arrow','line'].includes(o.kind)&&o.editable).map(o=>o.id));select([...selectedIds][0]||null,false,false,true);return;}
-  if(!$('diagram').contains(document.activeElement))return;
+  // View keys work wherever focus rests outside a text field, including the
+  // zoom buttons just clicked; a dialog or menu list keeps its own keys.
+  if(mod||e.altKey||e.target.closest('dialog,[role=listbox],[role=menu]'))return;
   if(key==='0'||key==='1'||key==='f'){e.preventDefault();$(key==='f'?'focus-selection':'fit-view').click();}
   if(key==='+'||key==='='){e.preventDefault();$('zoom-in').click();}
   if(key==='-'){e.preventDefault();$('zoom-out').click();}
+  // Focus left on the selection toolbar (after ⋯ or a toolbar action) still
+  // belongs to the selection: arrows nudge it as on the canvas.
+  const delta={ArrowLeft:[-.1,0],ArrowRight:[.1,0],ArrowUp:[0,.1],ArrowDown:[0,-.1]}[e.key];
+  if(delta&&(e.target===document.body||e.target.closest('.cl-context')))nudge(e,delta);
 });
 $('render').onclick=renderSource;
 $('download').onclick=()=>{
   const url=URL.createObjectURL(new Blob([source.value],{type:'text/plain;charset=utf-8'})),a=document.createElement('a');
-  a.href=url;a.download='diagram.pikchr';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  a.href=url;a.download='diagram.pikchr';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);status('Downloaded diagram.pikchr');
 };
 function restoreDocument(state,preRendered=null){
   routeReview?.cancel();
   directTools?.cancel(false);
   activeDocumentTitle=state.title||null;
   sizingPreferences=state.sizingPreferences||{};
-  manualEditBase=null;draftRedo.splice(0,draftRedo.length,...(state.draftRedo||[]));
+  manualEditBase=null;discarded=null;draftRedo.splice(0,draftRedo.length,...(state.draftRedo||[]));
   source.value=state.source;draft.splice(0,draft.length,...state.draft);draftBase=state.draftBase;
   undo.splice(0,undo.length,...state.undo);redo.splice(0,redo.length,...state.redo);
   // Changes apply immediately (undo reverts them) unless the author chose
@@ -1229,7 +1297,7 @@ function restoreDocument(state,preRendered=null){
   // undone — keeps its mode: a queued redo only exists in queue mode.
   const queued=!!state.draft.length||!!state.draftRedo?.length;
   $('auto-apply').checked=queued?!!state.autoApply:!prefersQueue();applied=state.applied;selectedId=null;selectedIds.clear();
-  zoom=1;pan={x:0,y:0};++revision;return renderSource(preRendered);
+  zoom=1;pan={x:0,y:0};$('zoom-level').textContent='100%';++revision;return renderSource(preRendered);
 }
 async function newDocument(text='',preRendered=null,title=null){
   const saved=persistDocument();if(!saved.ok){status('Not opened: '+saved.error+' Download your source before switching documents.');return false;}
@@ -1240,6 +1308,19 @@ async function newDocument(text='',preRendered=null,title=null){
 $('new-document').onclick=()=>newDocument();
 $('open-document').onclick=()=>$('file-input').click();
 $('file-input').onchange=async e=>{const file=e.target.files[0];if(!file)return;if(file.size>2*1024*1024){status('File must be smaller than 2 MB.');return;}newDocument(await file.text());e.target.value='';};
+function removeDocument(id){
+  if(!storageReady)return false;
+  const title=documents.list().find(item=>item.id===id)?.title||'Untitled',wasActive=id===activeDocumentId;
+  try{
+    if(wasActive)clearTimeout(saveTimer);
+    documents.remove(id);
+    if(!wasActive){refreshDocuments();status('Deleted '+title+' from this browser.');return true;}
+    const next=documents.list()[0];
+    if(next){const record=documents.open(next.id);activeDocumentId=next.id;refreshDocuments();restoreDocument(record.state);}
+    else{activeDocumentId=documents.create();refreshDocuments();restoreDocument({source:'',draft:[],draftBase:null,undo:[],redo:[],autoApply:!prefersQueue(),applied:false});}
+    status('Deleted '+title+' from this browser.');return true;
+  }catch(error){status('Not deleted: '+error.message);return false;}
+}
 $('documents').onchange=()=>{const id=$('documents').value;const saved=persistDocument();if(!saved.ok){$('documents').value=activeDocumentId;status('Not opened: '+saved.error);return;}try{const record=documents.open(id);if(record){activeDocumentId=id;refreshDocuments();restoreDocument(record.state);}}catch(error){status(error.message);}};
 // "Selection only" crops Copy SVG, Download SVG and Download PNG to the selected objects.
 const cropped=()=>{const c=$('selection-only');return !!c&&c.checked&&!c.disabled;};
@@ -1248,10 +1329,10 @@ async function exportedSVG(verb){
   const svg=await exportSvgElement();if(!svg)throw Error('Nothing to export yet.');
   return cleanSVG(svg,cropped()?{bounds:selectedBounds()}:{});
 }
-$('export-svg').onclick=async()=>{try{downloadFile(await exportedSVG('exporting'),cropped()?'selection.svg':'diagram.svg','image/svg+xml');}catch(e){status(e.message);}};
+$('export-svg').onclick=async()=>{try{const name=cropped()?'selection.svg':'diagram.svg';downloadFile(await exportedSVG('exporting'),name,'image/svg+xml');status('Downloaded '+name);}catch(e){status(e.message);}};
 function downloadFile(data,name,type){const url=URL.createObjectURL(new Blob([data],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function selectedBounds(){const objects=scene?.objects.filter(o=>selectedIds.has(o.id));if(!objects?.length)throw Error('Select objects to export.');const p=objects.flatMap(o=>[svgPoint({x:o.bbox.x,y:o.bbox.y}),svgPoint({x:o.bbox.x+o.bbox.width,y:o.bbox.y+o.bbox.height})]);const xs=p.map(p=>p.x),ys=p.map(p=>p.y);return{x:Math.min(...xs),y:Math.min(...ys),width:Math.max(...xs)-Math.min(...xs),height:Math.max(...ys)-Math.min(...ys)};}
-$('export-png').onclick=async()=>{try{if(source.value!==renderedSource)throw Error('Render the current source first.');await downloadPNG(await exportSvgElement(),cropped()?'selection.png':'diagram.png',cropped()?{bounds:selectedBounds()}:{});status('PNG downloaded.');}catch(e){status(e.message);}};
+$('export-png').onclick=async()=>{try{if(source.value!==renderedSource)throw Error('Render the current source first.');await downloadPNG(await exportSvgElement(),cropped()?'selection.png':'diagram.png',cropped()?{bounds:selectedBounds()}:{});status('Downloaded '+(cropped()?'selection.png':'diagram.png'));}catch(e){status(e.message);}};
 // Copy actions write plain text to the clipboard. If it refuses, the text goes to a
 // selectable field in the export popover so nothing is lost.
 async function copyText(label,make){
@@ -1286,7 +1367,7 @@ routeReview=createCandidateReview({host:$('diagram'),render,propose:validateSugg
 $('tidy-route').onclick=()=>{directTools.cancel(false);try{const option=tidyRouteCandidate(source.value,scene,current());if(option.source===source.value){status('This connector already takes the tidiest route. Nothing to change.');return;}routeReview.review(option);}catch(error){status(error.message);}};
 refreshComponents();
 window.addEventListener('pagehide',persistDocument);
-try{const record=documents.load();storageReady=true;if(record){activeDocumentId=record.id;restoreDocument(record.state);}else{activeDocumentId=documents.create();renderSource();}}catch(error){$('save-state').textContent='Recovery needed: '+error.message;renderSource();}
+try{const record=documents.load();storageReady=true;if(record){activeDocumentId=record.id;refreshDocuments();restoreDocument(record.state);}else{activeDocumentId=documents.create();renderSource();}}catch(error){$('save-state').textContent='Recovery needed: '+error.message;renderSource();}
 const sample=params.get('sample');
 const samplePaths={'polished-gates':'ux-audit/polished-gates.pikchr','polished-stacks':'ux-audit/polished-stacks.pikchr','gitflow-mobile':'ux-audit/gitflow-mobile.pikchr','gitflow-guide':'examples/gitflow.pikchr'};
 async function loadSample(key){if(!samplePaths[key])return;try{const response=await fetch(samplePaths[key]);if(!response.ok)throw Error('Could not load example.');await newDocument(await response.text());history.replaceState(null,'',location.pathname);}catch(error){status(error.message);}}

@@ -1,7 +1,7 @@
 """Drag → ranked preview → cycle → accept → undo, plus keyboard reachability."""
 import re
 from playwright.sync_api import sync_playwright, expect
-from browser_helpers import prepare_legacy, object_button, reveal, menu_click, open_document_menu
+from browser_helpers import prepare_legacy, object_button, reveal, menu_click, open_document_menu, open_advanced
 import os
 STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 
@@ -67,13 +67,11 @@ with sync_playwright() as pw:
     assert page.evaluate("document.activeElement.getAttribute('data-pikchr-id')") == "o2"
     page.keyboard.press("Space")
     assert "API" in page.locator("#inspector").inner_text()
-    # Advanced tools are hidden by default, even inside the ☰ menu.
+    # Advanced tools sit in a collapsed disclosure in the ☰ menu, not on the canvas.
     open_document_menu(page)
     assert not page.locator("#open-components").is_visible()
     assert not page.locator(".component-tools").is_visible()
-    page.goto(STUDIO + "/?advanced=1")
-    page.wait_for_function("document.querySelector('#state').textContent.startsWith('Rendered')")
-    open_document_menu(page)
+    open_advanced(page)
     assert page.locator("#open-components").is_visible()
     page.locator("#open-components").click()
     assert page.locator("#components-dialog .component-tools").is_visible()
