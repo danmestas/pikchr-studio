@@ -14,10 +14,16 @@ function setAttribute(statement,key,value) {
   const literal=colour?'(0x[0-9a-fA-F]{6}|[A-Za-z]+)':`${number}(?:cm|mm|in|px|pt|%)?`;
   const matches=[...mask.matchAll(new RegExp(`\\b${aliases[key]}\\s+${literal}(?=\\s|$)(?!\\s*[+*/-])`,'g'))].filter(match=>!colour||isColour(match[1]));
   if(matches.length!==[...mask.matchAll(keyword)].length) throw new Error(`The ${key} expression must be edited in source.`);
-  for(const match of matches.reverse())statement=statement.slice(0,match.index).replace(/[ \t]+$/,'')+statement.slice(match.index+match[0].length);
-  return statement.trimEnd()+` ${key} ${value}`;
+  // A new thickness replaces Pikchr's thick/thin multipliers as well.
+  if(key==='thickness')matches.push(...mask.matchAll(/\b(?:thick|thin)\b/g));
+  for(const match of matches.sort((a,b)=>b.index-a.index))statement=statement.slice(0,match.index).replace(/[ \t]+$/,'')+statement.slice(match.index+match[0].length);
+  // null removes the property, so Pikchr's default applies again.
+  // null removes the property, so Pikchr's default applies again; thin and
+  // thick are Pikchr's own words for the preset weights.
+  return value===null?statement.trimEnd():statement.trimEnd()+(key==='thickness'&&weightWords.includes(value)?` ${value}`:` ${key} ${value}`);
 }
 
+const weightWords=['thin','thick'];
 const colourError='Use a colour name Pikchr knows, such as red or lightblue, or a six-digit hex value such as #1a7f37.';
 export function changeAppearance(source,object,scene,values) {
   const input={...values,color:values.color??values.stroke};
@@ -30,12 +36,13 @@ export function changeAppearance(source,object,scene,values) {
     if(input.fill!==undefined&&input.fill!=='')throw new Error('Fill is not available for connector paths.');
     let color=input.color===undefined||input.color===''?undefined:input.color;
     const thickness=input.thickness===undefined||input.thickness===''?undefined:input.thickness;
-    let number;
+    let number=thickness===null?null:undefined;
     if(color!==undefined) {
       if(!isColour(color))throw new Error(colourError);
       color=color.replace('#','0x');
     }
-    if(thickness!==undefined) {
+    if(weightWords.includes(thickness))number=thickness;
+    else if(thickness!==undefined&&thickness!==null) {
       number=Number(thickness);
       if(!Number.isFinite(number)||number<=0||number>100)throw new Error('thickness must be greater than zero and at most 100.');
     }
@@ -43,13 +50,14 @@ export function changeAppearance(source,object,scene,values) {
       ...(color!==undefined?{color}:{}),
       ...(number!==undefined?{thickness:number}:{}),
     });
-    if(!option)throw new Error('The connector style expression must be edited in source.');
+    if(!option)throw new Error('Studio cannot restyle this connector safely: its statement uses an expression or word Studio does not recognise, or it cannot be told apart from another object, so its style must be edited in source.');
     return {...option,label:'Change stroke and thickness'};
   }
   const {statement}=readProperties(source,object,scene);
   let replacement=statement;
   for(const key of ['width','height','fill','color','thickness']) {
     let value=input[key];if(value===undefined||value==='')continue;
+    if(key==='thickness'&&(value===null||weightWords.includes(value))){replacement=setAttribute(replacement,key,value);continue;}
     if(key==='fill'||key==='color') {
       if(!isColour(value))throw new Error(colourError);
       value=value.replace('#','0x');

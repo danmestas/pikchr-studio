@@ -33,14 +33,41 @@ const TEXT_ATTR_WORDS='(?:bold|italic|big|small|ljust|rjust|center|above|below|a
 const TEXT_ATTRS_ONLY=new RegExp(`^(?:\\s+${TEXT_ATTR_WORDS}\\b)*\\s*$`);
 const TEXT_ATTRS_AFTER=new RegExp(`^(?:\\s+${TEXT_ATTR_WORDS}\\b)*`);
 
+// Pikchr's built-in line thickness, in inches; `thickness = …` overrides it.
+export const PIKCHR_THICKNESS=0.015;
+const UNITS={'':1,in:1,cm:1/2.54,mm:1/25.4,pt:1/72,px:1/96};
+export function documentThickness(source){
+  const global=[...source.replace(/"(?:\\.|[^"\\])*"|#[^\n]*/g,'').matchAll(/^\s*thickness\s*=\s*(\d+(?:\.\d*)?|\.\d+)(in|cm|mm|pt|px)?\s*$/gm)].at(-1);
+  const value=global?Number(global[1])*UNITS[global[2]||'']:NaN;
+  return Number.isFinite(value)&&value>0?value:PIKCHR_THICKNESS;
+}
+// The thickness Pikchr draws, applied in source order: `thickness N[unit]`
+// sets it, `thick` multiplies by 1.5 and `thin` by 0.67. Undefined when a
+// value is an expression Studio cannot evaluate.
+function effectiveThickness(style,base){
+  let value=base,set=false;
+  const words=style.matchAll(/\b(?:thickness\s+(\S+)|thick|thin)\b/g);
+  for(const match of words){
+    set=true;
+    if(match[0]==='thick')value*=1.5;
+    else if(match[0]==='thin')value*=0.67;
+    else{
+      const literal=/^(\d+(?:\.\d*)?|\.\d+)(in|cm|mm|pt|px)?$/.exec(match[1]);
+      if(!literal)return {value:undefined,set};
+      value=Number(literal[1])*UNITS[literal[2]||''];
+    }
+  }
+  return {value,set};
+}
+
 export function inspectProperties(source,object,scene) {
   const {labels,flags,statement} = read(source,object,scene);
   const style=maskLabels(statement);
-  const scalar=key=>style.match(new RegExp(`\\b${key}\\s+([\\d.]+)(?=\\s|$)`))?.[1];
+  const weight=effectiveThickness(style,documentThickness(source));
   const color=key=>{const value=style.match(new RegExp(`\\b${key}\\s+(0x[0-9a-fA-F]{6}|[A-Za-z]+)(?![\\w.$])`))?.[1];return value&&isColour(value)?value.toLowerCase().replace('0x','#'):undefined;};
   return {
     text: labels.map(label=>label[0].slice(1,-1)).join('\n'),
-    width:object.bbox?.width,height:object.bbox?.height,fill:color('fill'),color:color('color'),stroke:color('color'),thickness:scalar('thickness'),
+    width:object.bbox?.width,height:object.bbox?.height,fill:color('fill'),color:color('color'),stroke:color('color'),thickness:weight.value,thicknessSet:weight.set,
     termination: ['line','arrow'].includes(object.kind)
       ? ({'<-':'start','->':'end','<->':'both'}[flags[0]?.[0]] || (object.kind === 'arrow' ? 'end' : 'none')) : null,
   };

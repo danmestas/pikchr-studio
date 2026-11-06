@@ -112,6 +112,19 @@ with sync_playwright() as pw:
     expect(error).to_have_count(0)
     assert src(page) == before
 
+    # A refusal after a blur keeps the editor and its text as well.
+    editor = open_editor(page, 2, "dblclick")
+    page.keyboard.type('a "b"')
+    page.locator(".cl-doc [aria-label='Menu']").focus()
+    expect(error).to_be_visible()
+    expect(editor).to_be_visible()
+    assert editor.input_value() == 'a "b"'
+    assert src(page) == before
+    editor.focus()
+    page.keyboard.press("Escape")
+    expect(editor).to_have_count(0)
+    assert src(page) == before
+
     set_auto_apply(page, False)
     run(page, queued=True)
 

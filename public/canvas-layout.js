@@ -562,7 +562,7 @@ function install(studio){
     const focus=objects?(opener||(more.hidden?null:more.returnFocus)||diagram):(document.activeElement?.closest('.cl-context button')||more.returnFocus||moreButton);
     toggle(more,moreButton,true);more.returnFocus=focus;
     if(objects)return;
-    const s=$('inspector')?.querySelector('.appearance-editor[open]');if(s){s.scrollIntoView({block:'nearest'});s.querySelector('input,select')?.focus({preventScroll:true});}
+    const s=$('inspector')?.querySelector('.appearance-editor[open]');if(s){s.scrollIntoView({block:'nearest'});[...s.querySelectorAll('button,input,select')].find(e=>e.offsetParent&&!e.disabled)?.focus({preventScroll:true});}
   }).observe(document.body,{attributes:true,attributeFilter:['class']});
   // Choosing an object from the outline returns to its properties, so the
   // list is a way in rather than a place to get stuck.
@@ -935,8 +935,8 @@ function install(studio){
     ta.addEventListener('blur',()=>{if(inline?.ta===ta&&!inline.busy)closeInline(true,{blurred:true});});
     return true;
   }
-  // A refused label is never dropped: after Enter the editor stays open with
-  // the reason under it; after a blur the reason goes to the status line.
+  // A refused label is never dropped: the editor stays open with the reason
+  // under it, refocused after Enter and left as it is after a blur.
   function inlineError(message){
     const d=inline;if(!d)return;
     if(!message){d.error?.remove();d.error=null;return;}
@@ -950,13 +950,13 @@ function install(studio){
     d.ta.remove();d.error?.remove();for(const t of d.hidden)t.style.visibility='';
     diagram.focus({preventScroll:true});schedule();
   }
-  // Implicitly placed shapes cannot grow without moving their neighbours, so a
-  // label that cannot fit (or wrap) keeps the shape's size instead.
+  // A shape that cannot wrap or grow (no explicit position, size expressions)
+  // keeps its size; the reason travels with the edit for the status line.
   async function labelEdit(s,object,text){
     const kind=object.kind,modes=kind==='text'?['fixed']:kind==='box'?['wrap','grow','fixed']:['grow','fixed'];
     let failure;
     for(const mode of modes){
-      try{return {option:await buildTextEdit(s.source,s.scene,object,{text,mode,width:object.bbox?.width},studio.render),mode};}
+      try{return {option:await buildTextEdit(s.source,s.scene,object,{text,mode,width:object.bbox?.width},studio.render),mode,reason:failure?.message};}
       catch(error){failure=error;if(/plain text|five/.test(error.message))break;}
     }
     throw failure;
@@ -968,8 +968,8 @@ function install(studio){
     if(d.created&&(!commit||!text.trim())){removeInline(d);$('canvas-undo')?.click();return;}
     if(!commit||text===d.original){removeInline(d);return;}
     const refuse=message=>{
-      if(blurred||inline!==d){removeInline(d);$('state').textContent='Label not changed: '+message;}
-      else{inlineError(message);d.ta.focus();}
+      if(inline!==d){$('state').textContent='Label not changed: '+message;return;}
+      inlineError(message);if(!blurred)d.ta.focus();
     };
     const s=studio.state();
     if(!s.valid||s.source!==d.source){removeInline(d);$('state').textContent='Label not changed: the diagram changed while you typed. Edit the text again.';return;}
@@ -986,7 +986,7 @@ function install(studio){
     removeInline(d);
     const kept=edit.mode==='fixed'&&d.object.kind!=='text';
     const applied=await studio.propose([{...edit.option,...(kept?{label:'Change text (keep shape size)'}:{}),...(d.object.name?{selectName:d.object.name}:{selectId:d.object.id,targetKind:d.object.kind})}]);
-    if(applied&&kept)$('state').textContent='Label changed; the shape kept its size. Studio grows a shape to fit only when it has an explicit position, so its neighbours never move.';
+    if(applied&&kept)$('state').textContent='Label changed; the shape kept its size. It could not grow to fit: '+edit.reason;
   }
   diagram.addEventListener('dblclick',e=>{
     // Pointer capture on the canvas retargets the event to the SVG root, so

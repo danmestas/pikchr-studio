@@ -5,7 +5,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { createRequire } from 'node:module';
 import {
-  parseConnector, connectorState, routeStyleCandidates, strokeCandidates, weightCandidates, colourCandidates,
+  parseConnector, connectorState, routeStyleCandidates, strokeCandidates,
   chopCandidates, labelCandidates, checkStyleResult, thumbnailBox,
 } from '../public/route-styles.js';
 import { applyPatch } from '../public/edits.js';
@@ -120,20 +120,14 @@ test('type changes are withheld when another object depends on the connector', (
   assertValid(byId(options, 'heads-both'), scene, object);
 });
 
-test('stroke, weight, colour and chop swap in place and preserve everything else', () => {
+test('stroke and chop swap in place and preserve everything else', () => {
   const { source, scene, object } = setup('arrow "café 😀" above from A.e to B.w thin color blue fill red');
   assert.equal(statementOf(strokeCandidates(source, object, scene, 'dashed')[0]), 'arrow "café 😀" above from A.e to B.w thin color blue fill red dashed');
-  assert.equal(statementOf(weightCandidates(source, object, scene, 'thick')[0]), 'arrow "café 😀" above from A.e to B.w thick color blue fill red');
-  assert.equal(statementOf(weightCandidates(source, object, scene, 'normal')[0]), 'arrow "café 😀" above from A.e to B.w color blue fill red');
-  assert.equal(statementOf(colourCandidates(source, object, scene, 'red')[0]), 'arrow "café 😀" above from A.e to B.w thin color red fill red');
-  assert.equal(statementOf(colourCandidates(source, object, scene, 'default')[0]), 'arrow "café 😀" above from A.e to B.w thin fill red');
   assert.equal(statementOf(chopCandidates(source, object, scene, true)[0]), 'arrow "café 😀" above from A.e to B.w thin color blue fill red chop');
-  assert.deepEqual(weightCandidates(source, object, scene, 'thin'), [], 'no-op edits are not offered');
-  assert.deepEqual(colourCandidates(source, object, scene, 'purple'), []);
   const dashed = setup('arrow from A.e to B.w dashed 0.05');
   assert.equal(statementOf(strokeCandidates(dashed.source, dashed.object, dashed.scene, 'dotted')[0]), 'arrow from A.e to B.w dotted');
   assert.equal(statementOf(strokeCandidates(dashed.source, dashed.object, dashed.scene, 'solid')[0]), 'arrow from A.e to B.w');
-  for (const list of [strokeCandidates(source, object, scene, 'dotted'), weightCandidates(source, object, scene, 'thick'), colourCandidates(source, object, scene, 'green'), chopCandidates(source, object, scene, true)])
+  for (const list of [strokeCandidates(source, object, scene, 'dotted'), chopCandidates(source, object, scene, true)])
     assertValid(list[0], scene, object);
 });
 
@@ -262,4 +256,15 @@ test('all gallery candidates for a typical diagram render and pass the guard', (
     assert.equal(new Set(options.map(o => o.source)).size, options.length, 'no duplicate candidates');
     for (const o of options) assertValid(o, scene, object);
   }
+});
+
+test('any Pikchr colour name keeps a connector parseable and restylable', () => {
+  for (const colour of ['orange', 'DarkRed', 'purple', '0x1a7f37']) {
+    const { source, scene, object } = setup(`arrow from A.e to B.w color ${colour}`);
+    assert.ok(parseConnector(source, object, scene), colour);
+    assert.ok(connectorState(source, object, scene), colour);
+    assertValid(strokeCandidates(source, object, scene, 'dashed')[0], scene, object);
+  }
+  const { source, scene, object } = setup('arrow from A.e to B.w color salsa', { shapes:SHAPES + 'salsa = 0xff0000\n' });
+  assert.equal(parseConnector(source, object, scene), null, 'an unknown word may be a variable');
 });

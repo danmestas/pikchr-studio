@@ -6,8 +6,8 @@ import {constrainDrag,smartSnap} from './constrain.js?v=20261106c';
 const params=new URL(location.href).searchParams;
 import {arrowEditor,connectorCapabilities,connectorLabel,connectorRows,editingBlocked} from './arrow-ui.js?v=20261106c';
 import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20261106c';
-import {propertyEditor} from './property-ui.js?v=20261106c';
-import {fitText,canFitText,inspectProperties,readProperties} from './properties.js?v=20261106c';
+import {propertyEditor,styleControls} from './property-ui.js?v=20261106c';
+import {fitText,canFitText,inspectProperties,readProperties,documentThickness} from './properties.js?v=20261106c';
 import {duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20261106c';
 import {decodeLinkSource,encodeLinkSource,linkFragment,linkPayload} from './link-import.js?v=20261106c';
 import {createDocumentStore} from './documents.js?v=20261106c';
@@ -473,39 +473,26 @@ function drawGroupInspector(){
   const details=document.createElement('details'),summary=document.createElement('summary');
   details.className='appearance-editor group-style';details.open=groupStyleOpen;
   details.ontoggle=()=>{if(details.isConnected)groupStyleOpen=details.open;};
-  summary.textContent='Style all '+objects.length+' objects';details.append(summary);
-  const form=document.createElement('form');form.className='appearance-form';
-  const fields=[['stroke','Stroke / text color'],['thickness','Line thickness (pixels)'],...(capabilities.fill?[['fill','Fill color']]:[])];
-  const controls={};
-  for(const [key,title] of fields){
-    const label=document.createElement('label');label.textContent=title;
-    const input=document.createElement('input');input.setAttribute('aria-label',title);
-    input.dataset.initial=input.value='';
-    if(key==='thickness'){input.type='number';input.step='any';input.min='0';}
-    else input.placeholder=key==='fill'?'none, white, or #ffffff':'black or #000000';
-    controls[key]=input;label.append(input);form.append(label);
-  }
-  const error=document.createElement('p');error.className='property-error';error.setAttribute('role','alert');
-  const apply=document.createElement('button');apply.type='submit';apply.textContent='Style '+objects.length+' objects';form.append(apply);
-  form.onsubmit=e=>{
-    e.preventDefault();
-    if(rendering||source.value!==renderedSource||$('diagram').classList.contains('stale')){error.textContent='Render the current source before styling the group.';status(error.textContent);return;}
-    const values={};
-    for(const [key,input] of Object.entries(controls)){
-      const value=input.value.trim();
-      if(value!==''&&value!==input.dataset.initial)values[key]=key==='thickness'?Number(value):value;
-    }
-    if(!Object.keys(values).length){error.textContent='Change a stroke, thickness or fill value first.';status(error.textContent);return;}
-    let option;
-    try{option=changeSelectionAppearance(renderedSource,objects,scene,values);}
-    catch(problem){error.textContent=problem.message;status('Edit not applied. '+problem.message);return;}
-    error.textContent='';
-    validateSuggestions(objects[0],[{...option,selectionIds:option.selectionIds}]);
-  };
-  details.append(form,error);$('inspector').append(details);
+  summary.append('Style all '+objects.length+' objects');details.append(summary);
+  // The same controls as one object's Style; a value shows only when every
+  // member agrees (null reads as mixed). Each choice is one validated edit.
+  const props=objects.map(o=>{try{return inspectProperties(renderedSource,o,scene);}catch{return {};}});
+  const common=key=>{const values=props.map(p=>p[key]);return values.every(v=>v===values[0])?values[0]:null;};
+  const {body,preview}=styleControls({fill:capabilities.fill,stroke:true,
+    current:{fill:common('fill'),color:common('color'),thickness:common('thickness'),thicknessSet:props.some(p=>p.thicknessSet)},
+    base:documentThickness(renderedSource),
+    apply:values=>{
+      if(rendering||source.value!==renderedSource||$('diagram').classList.contains('stale'))throw new Error('Render the current source before styling the group.');
+      let option;
+      try{option=changeSelectionAppearance(renderedSource,objects,scene,values);}
+      catch(problem){status('Edit not applied. '+problem.message);throw problem;}
+      validateSuggestions(objects[0],[{...option,selectionIds:option.selectionIds}]);
+    }});
+  summary.append(preview);
+  details.append(body);$('inspector').append(details);
 }
 $('edit-selected').onclick=()=>directTools?.editText();
-$('appearance-selected').onclick=()=>{openInspector();const section=$('inspector').querySelector('.appearance-editor');if(section){section.open=true;section.scrollIntoView({block:'nearest'});section.querySelector('input')?.focus({preventScroll:true});}};
+$('appearance-selected').onclick=()=>{openInspector();const section=$('inspector').querySelector('.appearance-editor');if(section){section.open=true;section.scrollIntoView({block:'nearest'});[...section.querySelectorAll('button,input,select')].find(e=>e.offsetParent&&!e.disabled)?.focus({preventScroll:true});}};
 $('route-selected').onclick=()=>{
   openInspector();
   const button=[...$('inspector').querySelectorAll('button')].find(b=>b.textContent==='Routing');button?.click();
