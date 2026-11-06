@@ -50,10 +50,30 @@ with sync_playwright() as pw:
     grab = rect(phone, ".cl-grab")
     assert grab["y"] >= sheet["y"] - .5 and grab["y"] + grab["h"] <= sheet["y"] + 40, (grab, sheet)
 
-    # The canvas panned so the selected object sits above the sheet.
-    phone.wait_for_function("s=>document.querySelector(s).getBoundingClientRect().bottom <= document.querySelector('.cl-more').getBoundingClientRect().top", arg=low)
+    # The canvas panned so the selected object sits above the sheet and above
+    # the undo and zoom chips riding on it.
+    clear = "s=>{const b=document.querySelector(s).getBoundingClientRect();return b.bottom <= Math.min(...['.cl-more','.cl-history','.cl-zoom'].map(c=>document.querySelector(c).getBoundingClientRect().top))}"
+    phone.wait_for_function(clear, arg=low)
     after = rect(phone, low)
-    assert after["y"] >= 0 and after["b"] <= sheet["y"], (after, sheet)
+    assert after["y"] >= 0 and after["b"] <= min(sheet["y"], rect(phone, ".cl-history")["y"], rect(phone, ".cl-zoom")["y"]), (after, sheet)
+
+    # A selection the sheet itself would miss but the chips cover still moves:
+    # pan it to sit just above the sheet's top, then open the sheet again.
+    phone.get_by_role("button", name="Close inspector").click()
+    phone.get_by_role("button", name="Pan", exact=True).tap()
+    r = rect(phone, low)
+    dy = (844 * .55 - 14) - r["b"]
+    cdp = phone.context.new_cdp_session(phone)
+    cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": 5, "y": 300, "id": 1}]})
+    for i in range(1, 7):
+        cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": 5, "y": 300 + dy * i / 6, "id": 1}]})
+    cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+    phone.get_by_role("button", name="Select", exact=True).tap()
+    r = rect(phone, low)
+    assert 844 * .55 - 30 < r["b"] < 844 * .55, r   # above the sheet, under where the chips ride
+    open_more(phone)
+    phone.wait_for_function(clear, arg=low)
+    sheet = rect(phone, ".cl-more")
 
     # Dragging the handle up expands the sheet to about 90%.
     cx, cy = grab["x"] + grab["w"] / 2, grab["y"] + grab["h"] / 2

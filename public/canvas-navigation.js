@@ -29,7 +29,9 @@ export function canvasNavigation(host,{panEnabled,panBy,zoomAt,cancelEdit,desele
     if(e.button!==0&&e.button!==1)return;
     host.focus?.({preventScroll:true});
     pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,target:e.target});
-    if(pointers.size===2){cancel();navigating=true;last=points();moved=true;}
+    // A second finger turns a one-finger marquee into a pinch: the box goes,
+    // but its pointer stays tracked so both fingers drive the zoom.
+    if(pointers.size===2){if(box){box.el.remove();box=null;}cancel();navigating=true;last=points();moved=true;}
     else if(pointers.size===1&&e.button===0&&!space&&!panEnabled()&&marquee?.enabled()&&!ownsPointer(e)&&!e.target.closest('[data-pikchr-id],.arrow-overlay,.canvas-overlay')){
       const r=host.getBoundingClientRect(),el=document.createElement('div');el.className='cl-marquee';el.setAttribute('aria-hidden','true');host.append(el);
       box={pointerId:e.pointerId,x:e.clientX,y:e.clientY,el,r,moved:false};cancelEdit();try{host.setPointerCapture(e.pointerId);}catch{}stop(e);return;

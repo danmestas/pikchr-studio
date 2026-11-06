@@ -1,27 +1,27 @@
-import {candidates,snap,applyPatch,byteOffsetToIndex,routeCandidates} from './edits.js?v=20261106c';
-import {routeStyleCandidates} from './route-styles.js?v=20261106c';
-import {correspondingObject} from './candidate-target.js?v=20261106c';
-import {alignmentGuides,gapMarks} from './guides.js?v=20261106c';
-import {constrainDrag,smartSnap} from './constrain.js?v=20261106c';
+import {candidates,snap,applyPatch,byteOffsetToIndex,routeCandidates} from './edits.js?v=20261106d';
+import {routeStyleCandidates} from './route-styles.js?v=20261106d';
+import {correspondingObject} from './candidate-target.js?v=20261106d';
+import {alignmentGuides,gapMarks} from './guides.js?v=20261106d';
+import {constrainDrag,smartSnap} from './constrain.js?v=20261106d';
 const params=new URL(location.href).searchParams;
-import {arrowEditor,connectorCapabilities,connectorLabel,connectorRows,editingBlocked} from './arrow-ui.js?v=20261106c';
-import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20261106c';
-import {propertyEditor,styleControls} from './property-ui.js?v=20261106c';
-import {fitText,canFitText,inspectProperties,readProperties,documentThickness} from './properties.js?v=20261106c';
-import {duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20261106c';
-import {decodeLinkSource,encodeLinkSource,linkFragment,linkPayload} from './link-import.js?v=20261106c';
-import {createDocumentStore} from './documents.js?v=20261106c';
-import {canvasNavigation,clampZoom} from './canvas-navigation.js?v=20261106c';
-import {examplePicker} from './example-picker.js?v=20261106c';
-import {canvasTools} from './canvas-tools.js?v=20261106c';
-import {copySelection,pasteSelection} from './subgraph.js?v=20261106c';
-import {createComponentLibrary} from './component-library.js?v=20261106c';
-import {exportWorkspace,parseWorkspace} from './workspace-backup.js?v=20261106c';
-import {tidyRouteCandidate} from './route-suggestions.js?v=20261106c';
-import {createCandidateReview} from './candidate-review.js?v=20261106c';
-import {cleanSVG,downloadPNG} from './diagram-export.js?v=20261106c';
-import {readSizingPreference,writeSizingPreference} from './sizing-preferences.js?v=20261106c';
-import {detachCandidates,macroBlocked,macroUses} from './macro-detach.js?v=20261106c';
+import {arrowEditor,connectorCapabilities,connectorLabel,connectorRows,editingBlocked} from './arrow-ui.js?v=20261106d';
+import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20261106d';
+import {propertyEditor,styleControls} from './property-ui.js?v=20261106d';
+import {fitText,canFitText,inspectProperties,readProperties,documentThickness} from './properties.js?v=20261106d';
+import {duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20261106d';
+import {decodeLinkSource,encodeLinkSource,linkFragment,linkPayload} from './link-import.js?v=20261106d';
+import {createDocumentStore} from './documents.js?v=20261106d';
+import {canvasNavigation,clampZoom} from './canvas-navigation.js?v=20261106d';
+import {examplePicker} from './example-picker.js?v=20261106d';
+import {canvasTools} from './canvas-tools.js?v=20261106d';
+import {copySelection,pasteSelection} from './subgraph.js?v=20261106d';
+import {createComponentLibrary} from './component-library.js?v=20261106d';
+import {exportWorkspace,parseWorkspace} from './workspace-backup.js?v=20261106d';
+import {tidyRouteCandidate} from './route-suggestions.js?v=20261106d';
+import {createCandidateReview} from './candidate-review.js?v=20261106d';
+import {cleanSVG,downloadPNG} from './diagram-export.js?v=20261106d';
+import {readSizingPreference,writeSizingPreference} from './sizing-preferences.js?v=20261106d';
+import {detachCandidates,macroBlocked,macroUses} from './macro-detach.js?v=20261106d';
 const $=id=>document.getElementById(id);
 const examples={
   pipeline:'Client: box "Client" at (0,0)\nAPI: box "API" at (2,0)\nDatabase: cylinder "Database" at (4,0)\narrow from Client.e to API.w\narrow from API.e to Database.w\n',
@@ -246,12 +246,20 @@ async function renderSource(preRendered=null){
   status('Rendered '+scene.objects.length+' objects. Select one to inspect.');
   if(focusLabel||focusText){const replacement=[...document.querySelectorAll('#inspector input,#inspector textarea,#inspector button,#creation-tools input,#creation-tools button')].find(el=>focusLabel?el.getAttribute('aria-label')===focusLabel:el.textContent===focusText);replacement?.focus({preventScroll:true});}
 }
-// Fit to the stage so a diagram shows at natural size, never upscaled.
+// Fit to the stage so a diagram shows at natural size, never upscaled. The
+// layout may reserve screen insets (floating chrome); the drawing is fitted
+// and centred inside them, while the view still fills the stage.
+let fitInsets={top:0,right:0,bottom:0,left:0};
 function fitBox(vx,vy,vw,vh){
   let bw=Math.max(640,vw),bh=Math.max(360,vh);
   const d=$('diagram'),cs=getComputedStyle(d);
   const w=d.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight),h=d.clientHeight-parseFloat(cs.paddingTop)-parseFloat(cs.paddingBottom);
-  if(w>0&&h>0){bw=Math.max(w,vw);bh=Math.max(h,vh);}
+  if(w>0&&h>0){
+    const {top,right,bottom,left}=fitInsets,iw=Math.max(w/4,w-left-right),ih=Math.max(h/4,h-top-bottom);
+    const scale=Math.min(1,iw/vw,ih/vh);bw=w/scale;bh=h/scale;
+    const cx=vx+vw/2-(left+iw/2-w/2)/scale,cy=vy+vh/2-(top+ih/2-h/2)/scale;
+    return [cx-bw/2,cy-bh/2,bw,bh].join(' ');
+  }
   return [vx-(bw-vw)/2,vy-(bh-vh)/2,bw,bh].join(' ');
 }
 async function exportSvgElement(){
@@ -1220,6 +1228,7 @@ window.pikchrStudio={
   setDark:on=>{const flags=on?3:1;if(flags===renderFlags)return;renderFlags=flags;for(const id of lastValid.keys())if(id!==activeDocumentId)lastValid.delete(id);if(source.value.trim()||scene)renderSource();},
   refit:()=>{const svg=$('diagram').querySelector('svg');const box=svg?.dataset.exportViewBox;if(!box)return;const [x,y,w,h]=box.split(/[ ,]+/).map(Number);svg.dataset.fitViewBox=fitBox(x,y,w,h);if(zoom===1&&pan.x===0&&pan.y===0){svg.dataset.baseViewBox=svg.dataset.fitViewBox;applyViewport();refreshHandles();}},
   title:()=>activeDocumentTitle,
+  setFitInsets:insets=>{fitInsets={top:0,right:0,bottom:0,left:0,...insets};},
   // An explicit name is stored with the document and stops the automatic one (first label).
   rename:text=>{
     const name=String(text).trim().slice(0,100),before=activeDocumentTitle;
@@ -1233,12 +1242,22 @@ window.pikchrStudio={
   removeDocument:id=>removeDocument(id),
   // Pan (never zoom) just enough that the selection sits inside the screen band between
   // `top` px from the top and `bottom` px from the bottom, e.g. above a bottom sheet.
-  reveal:({top=0,bottom=0}={})=>{
-    const svg=$('diagram').querySelector('svg');if(!svg||!selectedIds.size)return;
-    const boxes=[...selectedIds].map(id=>svg.querySelector(`[data-pikchr-id="${id}"]`)?.getBoundingClientRect()).filter(Boolean);if(!boxes.length)return;
-    const t=Math.min(...boxes.map(b=>b.top)),b=Math.max(...boxes.map(b=>b.bottom)),room=innerHeight-bottom-top;
-    const dy=b-t>room?top-t:t<top||b>innerHeight-bottom?top+room/2-(t+b)/2:0;
-    if(dy){panBy(0,dy);refreshHandles();}
+  // `left`/`right` do the same across, e.g. beside a drawer; only the axes asked
+  // for move. With `diagram`, an empty selection reveals the whole drawing.
+  reveal:({top=0,bottom=0,left=0,right=0,diagram=false}={})=>{
+    const svg=$('diagram').querySelector('svg');if(!svg)return;
+    const ids=selectedIds.size?[...selectedIds]:diagram&&scene?scene.objects.map(o=>o.id):[];
+    const boxes=ids.map(id=>svg.querySelector(`[data-pikchr-id="${id}"]`)?.getBoundingClientRect()).filter(Boolean);if(!boxes.length)return;
+    const shift=(lo,hi,a,z,size)=>{const room=size-z-a;return hi-lo>room?a-lo:lo<a||hi>size-z?a+room/2-(lo+hi)/2:0;};
+    const dy=top||bottom?shift(Math.min(...boxes.map(b=>b.top)),Math.max(...boxes.map(b=>b.bottom)),top,bottom,innerHeight):0;
+    const dx=left||right?shift(Math.min(...boxes.map(b=>b.left)),Math.max(...boxes.map(b=>b.right)),left,right,innerWidth):0;
+    if(dx||dy){panBy(dx,dy);refreshHandles();}
+    return {dx,dy,zoom};
+  },
+  // Undo a reveal's pan, unless the view was zoomed since.
+  unreveal:shift=>{
+    const svg=$('diagram').querySelector('svg');if(!svg||!shift||shift.zoom!==zoom)return;
+    if(shift.dx||shift.dy){panBy(-shift.dx,-shift.dy);refreshHandles();}
   },
   editLabelDialog:()=>directTools?.editText(),
   reconnect:which=>reconnectSelected(which),

@@ -2,14 +2,14 @@
 // the controls declared in index.html into chips, menus and popovers; every
 // control keeps its own handler. It also adds drag-to-connect, which submits
 // ordinary candidate edits.
-import {attachPoints,nearestAnchor,targetAnchor,hitShape,connectCandidate,connectionLabel,elbowRoute} from './connect-drag.js?v=20261106c';
-import {connectableShapes} from './creation.js?v=20261106c';
-import {connectorCapabilities,connectorTitle} from './arrow-ui.js?v=20261106c';
-import {freeLineCandidate,pointText,snapToGrid,literalRoute,lineEnds,translateLineCandidate,moveEndpointCandidate} from './free-lines.js?v=20261106c';
-import {lockDirection} from './constrain.js?v=20261106c';
-import {inspectProperties} from './properties.js?v=20261106c';
-import {buildTextEdit} from './text-sizing.js?v=20261106c';
-import {textStyle,textStyleCandidate,textSizes,textColours} from './text-style.js?v=20261106c';
+import {attachPoints,nearestAnchor,targetAnchor,hitShape,connectCandidate,connectionLabel,elbowRoute} from './connect-drag.js?v=20261106d';
+import {connectableShapes} from './creation.js?v=20261106d';
+import {connectorCapabilities,connectorTitle} from './arrow-ui.js?v=20261106d';
+import {freeLineCandidate,pointText,snapToGrid,literalRoute,lineEnds,translateLineCandidate,moveEndpointCandidate} from './free-lines.js?v=20261106d';
+import {lockDirection} from './constrain.js?v=20261106d';
+import {inspectProperties} from './properties.js?v=20261106d';
+import {buildTextEdit} from './text-sizing.js?v=20261106d';
+import {textStyle,textStyleCandidate,textSizes,textColours} from './text-style.js?v=20261106d';
 
 
 const $=id=>document.getElementById(id);
@@ -39,6 +39,7 @@ function install(studio){
   new MutationObserver(syncTheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
   syncTheme();
 
+  const phoneQuery=matchMedia('(max-width:700px)'),coarseQuery=matchMedia('(pointer:coarse)');
   // ---- popovers -------------------------------------------------------------
   const popovers=[];
   function popover(className,label){
@@ -272,7 +273,14 @@ function install(studio){
     if(open)for(const panel of popovers)if(!panel.hidden)toggle(panel,panel.opener,false);
     drawer.classList.toggle('open',open);sourceButton.setAttribute('aria-pressed',String(open));
     if(open)$('source')?.focus({preventScroll:true});else diagram.focus({preventScroll:true});
+    // Pan the selection, or the whole diagram, out from under the open drawer,
+    // and back on close if the view was left alone meanwhile. Offsets ignore
+    // the slide-in transform, so this is the drawer's final edge.
+    const right=drawer.offsetLeft+drawer.offsetWidth;
+    if(open&&!drawerShift&&innerWidth-right>160)drawerShift=studio.reveal?.({left:right+12,right:12,diagram:true});
+    if(!open&&drawerShift){studio.unreveal?.(drawerShift);drawerShift=null;}
   };
+  let drawerShift=null;
   sourceButton.onclick=()=>setDrawer(!drawer.classList.contains('open'));
   closeDrawer.onclick=()=>setDrawer(false);
 
@@ -351,11 +359,19 @@ function install(studio){
   // Select multiple is a touch aid (no Shift-click): CSS shows it on coarse pointers only.
   const multi=$('multi-select');
   if(multi){multi.replaceChildren(iconMarkup(CHROME_ICONS.multi));multi.setAttribute('aria-label','Select multiple');multi.title='Select multiple';multi.classList.add('cl-tool','cl-multi');}
+  // While it is on, a pill says so and offers Done; picking any tool ends it.
+  const multiOn=()=>multi?.getAttribute('aria-pressed')==='true';
+  const endMulti=()=>{if(multiOn())multi.click();};
+  const multiDone=el('button',{type:'button'},'Done');multiDone.onclick=endMulti;
+  const multiPill=el('div',{class:'cl-float cl-multi-pill',role:'status',hidden:''},el('span',{},'Selecting multiple'),multiDone);
+  document.body.append(multiPill);
+  const syncMulti=()=>{const on=multiOn();if(multiPill.hidden===on){multiPill.hidden=!on;document.body.classList.toggle('cl-multi',on);}};
   // The chevron opens "Adding shapes": placement and connected-shape options
   // that used to sit in the menu's Tool options.
   const adding=popover('cl-adding','Adding shapes');
   const chevron=el('button',{type:'button',class:'cl-chevron','aria-label':'Adding shapes',title:'Adding shapes','aria-haspopup':'dialog','aria-expanded':'false'},iconMarkup(CHROME_ICONS.chevron));
   chevron.onclick=()=>toggle(adding,chevron);
+  palette.addEventListener('click',e=>{const b=e.target.closest('button');if(b&&b!==multi&&b!==chevron)endMulti();},true);
   const addCoords=$('mobile-add');if(addCoords)addCoords.textContent='Add by coordinates…';
   adding.append(el('h3',{class:'cl-section-title'},'Adding shapes'),row($('place-center')),row($('mobile-add')),$('creation-tools'),el('div',{class:'cl-row'},$('add-neighbor'),$('neighbor-direction')?.closest('label')),labelled('keep-adding','Keep adding'));
   palette.append(...[selectTool,marquee,panTool,sep(),shapeButtons.box,shapeButtons.circle,shapeButtons.cylinder,shapeButtons.diamond,chevron,textTool,sep(),connectTool,lineButton,multi].filter(Boolean));
@@ -459,14 +475,20 @@ function install(studio){
   // On phones the inspector is a bottom sheet (see canvas-layout.css): it opens at 45% of
   // the viewport and its handle drags, or toggles, it up to 90%. The canvas pans so the
   // selection stays visible above it.
-  const phoneQuery=matchMedia('(max-width:700px)');
   const grab=el('button',{type:'button',class:'cl-grab','aria-label':'Resize inspector','aria-expanded':'false'});
   const SHEET=[.45,.9];
   // Above this fraction there is no room for undo and zoom over the sheet; they hide.
   const SHEET_CHIPS_MAX=.6;
   const sheetPx=f=>Math.round(innerHeight*f);
   function setSheet(px,smooth=true){more.classList.toggle('cl-dragging',!smooth);more.style.setProperty('--cl-sheet',px+'px');document.body.style.setProperty('--cl-sheet',px+'px');document.body.classList.toggle('cl-sheet-tall',px>innerHeight*SHEET_CHIPS_MAX);grab.setAttribute('aria-expanded',String(px>sheetPx((SHEET[0]+SHEET[1])/2)));}
-  function revealAboveSheet(){if(phoneQuery.matches&&!more.hidden){const room=more.offsetHeight;studio.reveal?.({bottom:room+12,top:Math.max(8,Math.min(64,innerHeight-room-60))});}}
+  // The selection clears the sheet and the undo and zoom chips riding above it.
+  function revealAboveSheet(){
+    if(!phoneQuery.matches||more.hidden)return;
+    let limit=innerHeight-more.offsetHeight;
+    for(const c of [history,zoom])if(c?.getClientRects().length&&getComputedStyle(c).visibility!=='hidden')limit=Math.min(limit,c.getBoundingClientRect().top);
+    const top=chip.getBoundingClientRect().bottom+8;
+    studio.reveal?.({bottom:innerHeight-limit+8,top:Math.max(8,Math.min(top,limit-60))});
+  }
   function openSheet(){if(!phoneQuery.matches)return;setSheet(sheetPx(SHEET[0]),false);requestAnimationFrame(revealAboveSheet);}
   grab.onclick=()=>{if(grab.dragged){grab.dragged=false;return;}setSheet(sheetPx(more.offsetHeight>sheetPx((SHEET[0]+SHEET[1])/2)?SHEET[0]:SHEET[1]));setTimeout(revealAboveSheet,220);};
   grab.onpointerdown=e=>{
@@ -575,7 +597,10 @@ function install(studio){
   if(previewActions){
     previewActions.classList.add('cl-float','cl-candidate');document.body.append(previewActions);
     previewActions.prepend(check,code,count);
-    const keep=$('preview-discard');if(keep){keep.textContent='Esc';keep.title='Keep the original (Escape)';keep.setAttribute('aria-label','Keep the original');}
+    // Touch has no Escape key: the button says what it does instead.
+    const keep=$('preview-discard');
+    if(keep&&coarseQuery.matches){keep.textContent='Discard';keep.title='Keep the original';}
+    else if(keep){keep.textContent='Esc';keep.title='Keep the original (Escape)';keep.setAttribute('aria-label','Keep the original');}
     $('preview-accept')?.setAttribute('title','Accept (Enter)');
     $('preview-prev')?.setAttribute('title','Previous ([)');$('preview-next')?.setAttribute('title','Next (])');
   }
@@ -611,13 +636,21 @@ function install(studio){
     let top=box.top-h-gap;if(top<64)top=box.bottom+gap;top=Math.max(64,Math.min(vh-h-64,top));
     node.style.left=left+'px';node.style.top=top+'px';
   }
+  // Move node beside panel (left of it, else below it) when they collide.
+  function stepAside(node,panel){
+    const r=node.getBoundingClientRect();
+    if(!(r.left<panel.right&&r.right>panel.left&&r.top<panel.bottom&&r.bottom>panel.top))return;
+    if(panel.left-r.width-8>=8)node.style.left=(panel.left-r.width-8)+'px';
+    else if(panel.bottom+8+r.height<=innerHeight-8)node.style.top=(panel.bottom+8)+'px';
+  }
   function markSelection(){
     const svg=svgNow(),ids=new Set(studio.state().selectedIds||[]);
     if(!svg)return;
     for(const g of svg.querySelectorAll('[data-pikchr-id]')){const on=ids.has(g.getAttribute('data-pikchr-id'));if(g.classList.contains('cl-selected')!==on)g.classList.toggle('cl-selected',on);}
   }
   function layout(){
-    syncStatus();syncTitle();syncExport();markSelection();syncCandidate();syncMoreHead();
+    syncStatus();syncTitle();syncExport();markSelection();syncCandidate();syncMoreHead();syncMulti();
+    if(arrangedFor!==document.body.clientWidth+'x'+document.body.clientHeight)arrangeChrome();
     if(!more.hidden){
       const padding=(more.querySelector('.cl-popover-head').offsetHeight+8)+'px';
       if(more.style.scrollPaddingTop!==padding)more.style.scrollPaddingTop=padding;
@@ -634,6 +667,7 @@ function install(studio){
     changeStart.title=changeEnd.title=endpoints?'':'This connector has no editable shape endpoint.';
     context.hidden=!visible;
     if(visible)place(context,box,30);
+    if(visible&&!more.hidden&&!phoneQuery.matches)stepAside(context,more.getBoundingClientRect());
     syncTextBar(visible&&!inline);
     if(pendingText&&!inline)maybeEditNewText();
     if(previewActions&&!previewActions.hidden){
@@ -663,8 +697,54 @@ function install(studio){
   // state changes outside the toolbar; either re-syncs the ⋯ head.
   for(const node of [selection,$('selection-count'),$('multi-select'),$('queue-status'),diagnostic,previewActions,$('accept')].filter(Boolean))
     new MutationObserver(schedule).observe(node,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['hidden','disabled','aria-pressed']});
+  // ---- chrome arrangement ------------------------------------------------------
+  // The palette takes the top row only where it fits between the document chip
+  // and the status chip; otherwise it sits at the bottom, wrapping to rows when
+  // one row is too wide, and undo and zoom ride above it. Zoom lifts a further
+  // row if it would meet undo. CSS reads the resulting heights as variables,
+  // and the first fit keeps the diagram clear of all of it.
+  // Everything is measured in CSS px of the body (offsets, clientWidth), so a
+  // page zoom on the body cannot mix scaled and unscaled lengths.
+  let insetsKey='',arrangedFor='';
+  function arrangeChrome(){
+    const body=document.body,vw=body.clientWidth;arrangedFor=vw+'x'+body.clientHeight;
+    body.classList.remove('cl-palette-bottom','cl-palette-wrap');
+    Object.assign(palette.style,{left:'0px',transform:'none',maxWidth:'none',width:''});
+    const natural=palette.offsetWidth;palette.style.maxWidth='';
+    const docRight=chip.offsetLeft+chip.offsetWidth,docBottom=chip.offsetTop+chip.offsetHeight;
+    // The status chip gets a fixed slot rather than its current width: an error
+    // message wraps inside the slot instead of moving the palette and refitting.
+    const STATUS_SLOT=150;
+    const lo=docRight+8,hi=vw-12-STATUS_SLOT-8;
+    const bottom=phoneQuery.matches||natural>hi-lo;
+    let chipsBottom=12;
+    statusChip.style.maxWidth='';
+    if(!bottom){
+      const left=Math.round(Math.max(lo,Math.min(hi-natural,(vw-natural)/2)));
+      palette.style.left=left+'px';
+      statusChip.style.maxWidth=Math.min(360,Math.max(STATUS_SLOT,vw-12-(left+natural+8)))+'px';
+    }
+    else{
+      const wrap=natural>vw-24;
+      body.classList.add('cl-palette-bottom');body.classList.toggle('cl-palette-wrap',wrap);
+      if(wrap){palette.style.left='12px';palette.style.width=(vw-24)+'px';}
+      else palette.style.left=Math.round((vw-natural)/2)+'px';
+      chipsBottom=12+palette.offsetHeight+8;
+    }
+    body.style.setProperty('--cl-chips-bottom',chipsBottom+'px');
+    const hw=history?.offsetWidth||0,zw=zoom?.offsetWidth||0;
+    const row=Math.max(history?.offsetHeight||0,zoom?.offsetHeight||0);
+    const lift=hw&&zw&&vw-12-zw<12+hw+8?row+8:0;
+    body.style.setProperty('--cl-zoom-lift',lift+'px');
+    const above=chipsBottom+lift+row+8;
+    body.style.setProperty('--cl-above-chips',above+'px');
+    const insets={top:Math.round(docBottom+8),right:16,bottom:Math.round(above),left:16},key=JSON.stringify(insets);
+    if(key!==insetsKey){insetsKey=key;studio.setFitInsets?.(insets);studio.refit?.();}
+  }
+  arrangeChrome();
+  new ResizeObserver(arrangeChrome).observe(chip);
   let refitTimer=0;
-  addEventListener('resize',()=>{schedule();clearTimeout(refitTimer);refitTimer=setTimeout(()=>{studio.refit?.();schedule();},120);});
+  addEventListener('resize',()=>{arrangeChrome();schedule();clearTimeout(refitTimer);refitTimer=setTimeout(()=>{studio.refit?.();schedule();},120);});
   requestAnimationFrame(()=>studio.refit?.());
   stage.addEventListener('pointerdown',()=>{stage.classList.add('cl-pressing');schedule();},true);
   addEventListener('pointerup',()=>{if(stage.classList.contains('cl-pressing')){stage.classList.remove('cl-pressing');schedule();}},true);
@@ -764,11 +844,15 @@ function install(studio){
       // A dot's hit zone never covers more than 30% of the shape's shorter
       // side, so a tap on a small shape (phones, zoomed out) still hits it.
       const lo=toSvg(s.scene,{x:object.bbox.x,y:object.bbox.y}),hi=toSvg(s.scene,{x:object.bbox.x+object.bbox.width,y:object.bbox.y+object.bbox.height});
-      const hitR=Math.min(10/scale,.3*Math.min(Math.abs(hi.x-lo.x),Math.abs(hi.y-lo.y)));
+      // On touch the 44 px zone sits outside the edge instead, reaching only
+      // 4 px in, so a finger on the body still moves the shape.
+      const coarse=coarseQuery.matches,hitR=coarse?22/scale:Math.min(10/scale,.3*Math.min(Math.abs(hi.x-lo.x),Math.abs(hi.y-lo.y)));
+      const middle=toSvg(s.scene,object.center);
       for(const point of pointsOf(object)){
       // On the edge midpoint, as in the mockup; resize handles sit on corners.
       const p=toSvg(s.scene,point),attrs={'data-id':object.id,'data-anchor':point.anchor};
-      layer.append(svgEl('circle',{...attrs,class:'cl-dot-hit',cx:p.x,cy:p.y,r:hitR,fill:'transparent'}),
+      const away=Math.hypot(p.x-middle.x,p.y-middle.y)||1,out=coarse?hitR-4/scale:0;
+      layer.append(svgEl('circle',{...attrs,class:'cl-dot-hit',cx:p.x+(p.x-middle.x)/away*out,cy:p.y+(p.y-middle.y)/away*out,r:hitR,fill:'transparent'}),
         svgEl('circle',{...attrs,class:'cl-dot',cx:p.x,cy:p.y,r:5/scale,'vector-effect':'non-scaling-stroke'}));
     }
     }
@@ -1171,7 +1255,7 @@ function install(studio){
       t:()=>textTool?.click(),a:()=>setConnect('arrow'),l:()=>setConnect('line'),s:()=>setDrawer(!drawer.classList.contains('open')),'?':()=>toggle(helpPanel,helpButton)};
     const action=actions[k==='?'?'?':k.toLowerCase()];
     if(!action||(e.shiftKey&&k!=='?'&&k!=='/'))return;
-    e.preventDefault();action();
+    e.preventDefault();if('vmhbcdrtal'.includes(k.toLowerCase()))endMulti();action();
   });
 
   syncPalette();schedule();

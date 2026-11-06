@@ -35,7 +35,13 @@ body.layout-canvas .cl-doc{top:12px;left:12px}
 body.layout-canvas .cl-title{padding:0 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 body.layout-canvas .cl-icon{font-weight:600}
 
-body.layout-canvas .cl-palette{top:12px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 24px);overflow-x:auto;scrollbar-width:none}
+/* canvas-layout.js places the palette: in the top row between the document
+   chip and the status chip when it fits there, else at the bottom (wrapped
+   to rows when one row is too wide), with undo and zoom lifted above it. */
+body.layout-canvas .cl-palette{top:12px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 24px)}
+body.layout-canvas.cl-palette-bottom .cl-palette{top:auto;bottom:12px}
+body.layout-canvas.cl-palette-wrap .cl-palette{flex-wrap:wrap;justify-content:center}
+body.layout-canvas.cl-palette-wrap .cl-palette .cl-sep{display:none}
 body.layout-canvas .cl-palette button{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-width:40px;height:44px;padding:2px 6px}
 body.layout-canvas .cl-palette button[aria-pressed=true]{background:var(--cl-accent-bg);color:var(--cl-accent)}
 body.layout-canvas .cl-palette button svg{width:18px;height:18px}
@@ -53,13 +59,15 @@ body.layout-canvas .cl-status #state{font-size:12px;color:var(--muted);white-spa
 body.layout-canvas .cl-status #diagnostic{color:var(--cl-bad);font-size:12px;padding:4px 2px;white-space:pre-wrap;max-height:30vh;overflow:auto}
 body.layout-canvas .cl-status #diagnostic:empty{display:none}
 
-body.layout-canvas .cl-history{bottom:12px;left:12px}
-body.layout-canvas .cl-zoom{bottom:12px;right:12px}
+body.layout-canvas .cl-history{bottom:var(--cl-chips-bottom,12px);left:12px}
+body.layout-canvas .cl-zoom{bottom:calc(var(--cl-chips-bottom,12px) + var(--cl-zoom-lift,0px));right:12px}
 body.layout-canvas .cl-zoom #zoom-level{min-width:44px;text-align:center;font-size:12px}
 
 /* Contextual toolbar: the existing selection buttons, shown as icons. */
-body.layout-canvas .cl-context{z-index:11;max-width:calc(100vw - 16px);overflow-x:auto;scrollbar-width:none}
-body.layout-canvas .cl-context .selection-toolbar{display:flex!important;align-items:center;gap:2px;margin:0;padding:0;border:0;background:none;flex-wrap:nowrap}
+/* Wraps to a second row rather than scrolling actions out of reach; the
+   selection buttons join the chip's own row so they wrap with it. */
+body.layout-canvas .cl-context{z-index:11;max-width:calc(100vw - 16px);box-sizing:border-box;flex-wrap:wrap;justify-content:center}
+body.layout-canvas .cl-context .selection-toolbar{display:contents!important}
 body.layout-canvas .cl-context .selection-toolbar>:is(#multi-select,#clear-selection,.move-selection){display:none!important}
 /* A group selection names itself in the toolbar; one object needs no count. */
 body.layout-canvas .cl-context .selection-toolbar>#selection-count{display:none!important;margin:0 6px 0 2px;color:var(--cl-muted);font-size:12px;white-space:nowrap}
@@ -101,7 +109,7 @@ body.layout-canvas .cl-export .cl-export-scope{display:flex;align-items:center;g
 body.layout-canvas .cl-export .cl-export-scope label:has(input:disabled){color:var(--cl-muted)}
 body.layout-canvas .cl-export .cl-export-scope [hidden]{display:none}
 body.layout-canvas .cl-export .cl-copy-fallback textarea{width:100%;font:12px/1.4 ui-monospace,monospace;resize:vertical}
-body.layout-canvas .cl-help{bottom:64px;right:12px;width:min(360px,calc(100vw - 24px));max-height:calc(100dvh - 140px)}
+body.layout-canvas .cl-help{bottom:var(--cl-above-chips,64px);right:12px;width:min(360px,calc(100vw - 24px));max-height:calc(100dvh - 140px)}
 body.layout-canvas .cl-help h2{font-size:14px;margin:0 0 8px}
 body.layout-canvas .cl-help dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;font-size:12px;margin:0 0 10px}
 body.layout-canvas .cl-help dt{font-family:ui-monospace,monospace;color:var(--muted)}
@@ -119,7 +127,7 @@ body.layout-canvas .cl-drawer .source-pane .pane-heading{display:none}
 body.layout-canvas .cl-drawer #source{flex:1;min-height:120px;height:auto;resize:none;width:100%;box-sizing:border-box}
 
 /* Feedback: a screen-reader region, visible only when it offers choices. */
-body.layout-canvas .cl-toast{position:fixed;left:50%;bottom:72px;transform:translateX(-50%);z-index:12;max-width:calc(100vw - 24px);
+body.layout-canvas .cl-toast{position:fixed;left:50%;bottom:var(--cl-above-chips,72px);transform:translateX(-50%);z-index:12;max-width:calc(100vw - 24px);
   background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:6px 10px;box-shadow:0 2px 10px var(--shadow);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 body.layout-canvas .cl-toast:not(:has(button)){position:fixed;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);padding:0;border:0;white-space:nowrap}
 
@@ -127,6 +135,11 @@ body.layout-canvas .cl-toast:not(:has(button)){position:fixed;width:1px;height:1
 body.layout-canvas .cl-note{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:12;max-width:min(560px,calc(100vw - 200px));
   background:var(--cl-chip);color:var(--cl-ink);border-radius:10px;padding:8px 12px;box-shadow:var(--cl-shadow);font-size:12px;opacity:1;transition:opacity .4s}
 body.layout-canvas .cl-note.cl-fade{opacity:0}
+body.layout-canvas.cl-palette-bottom .cl-note{bottom:var(--cl-above-chips,124px)}
+/* Select multiple stays on until Done; the pill says so above undo and zoom. */
+body.layout-canvas .cl-multi-pill{left:50%;transform:translateX(-50%);bottom:var(--cl-above-chips,64px);gap:8px;padding:4px 4px 4px 12px;font-size:13px;white-space:nowrap}
+body.layout-canvas .cl-multi-pill button{padding:0 12px;color:var(--cl-accent);font-weight:600}
+body.layout-canvas.cl-multi :is(.cl-note,.cl-toast){bottom:calc(var(--cl-above-chips,64px) + 60px)}
 body.layout-canvas .cl-note[hidden]{display:none}
 
 /* Selection: accent ink on the selected shape instead of a dashed box. */
@@ -158,22 +171,19 @@ body.layout-canvas .cl-badge[hidden]{display:none}
 
 /* Phones: palette moves to the bottom, chrome stays inside the viewport. */
 @media (max-width:700px){
-  body.layout-canvas .cl-palette{top:auto;bottom:12px}
-  body.layout-canvas .cl-history,body.layout-canvas .cl-zoom{bottom:66px}
   /* Pinch zooms on a phone; dropping the percentage keeps zoom clear of undo/redo. */
   body.layout-canvas .cl-zoom #zoom-level{display:none}
-  body.layout-canvas .cl-help{bottom:118px}
   body.layout-canvas .cl-title{display:none}
   body.layout-canvas .cl-status{top:62px;max-width:calc(100vw - 24px)}
   body.layout-canvas .cl-palette{gap:0;padding:3px}
   body.layout-canvas .cl-palette button{min-width:33px;padding:2px 1px}
-  body.layout-canvas .cl-palette .cl-sep{margin:0 2px}
+  body.layout-canvas .cl-palette .cl-sep{margin:0 1px}
   body.layout-canvas .cl-status #state{display:none}
-  body.layout-canvas .cl-toast{bottom:124px}
-  body.layout-canvas .cl-note{bottom:124px;max-width:calc(100vw - 24px)}
+  body.layout-canvas .cl-note{max-width:calc(100vw - 24px)}
   body.layout-canvas .cl-candidate{flex-wrap:wrap}
-  body.layout-canvas .cl-drawer{top:60px;bottom:124px}
+  body.layout-canvas .cl-context .cl-endpoint-label{display:none}
 }
+body.layout-canvas.cl-palette-bottom .cl-drawer{bottom:var(--cl-above-chips,124px)}
 @media (prefers-reduced-motion:reduce){body.layout-canvas :is(.cl-drawer,.cl-note,.cl-more){transition:none}}
 
 /* ---- Panel kit: one flat visual language for every popover and dialog ----
@@ -413,7 +423,8 @@ body.layout-canvas .cl-note{border-radius:8px}
     border-radius:16px 16px 0 0;overscroll-behavior:contain;transition:height .18s ease}
   body.layout-canvas .cl-more.cl-dragging{transition:none}
   /* Undo and zoom ride above the open sheet so they stay reachable. */
-  body.layout-canvas:has(.cl-more:not([hidden])) :is(.cl-history,.cl-zoom){bottom:calc(var(--cl-sheet,45dvh) + 8px)}
+  body.layout-canvas:has(.cl-more:not([hidden])) .cl-history{bottom:calc(var(--cl-sheet,45dvh) + 8px)}
+  body.layout-canvas:has(.cl-more:not([hidden])) .cl-zoom{bottom:calc(var(--cl-sheet,45dvh) + 8px + var(--cl-zoom-lift,0px))}
   /* A sheet taller than 60% leaves no room for them; they come back when it shrinks or closes. */
   body.layout-canvas.cl-sheet-tall:has(.cl-more:not([hidden])) :is(.cl-history,.cl-zoom){visibility:hidden}
   body.layout-canvas .cl-more .cl-popover-head{top:0;margin:0 -14px 8px;padding:0 6px 8px 14px;flex-wrap:wrap}
@@ -510,12 +521,11 @@ body.layout-canvas .cl-popover.cl-export button{justify-content:flex-start}
 body.layout-canvas .cl-adding{align-items:stretch}
 body.layout-canvas .cl-adding .cl-row{justify-content:flex-start}
 body.layout-canvas .cl-menu .cl-about .cl-link{display:inline;border:0;padding:0;min-height:0;color:var(--cl-accent);text-decoration:underline}
+body.layout-canvas.cl-palette-bottom .cl-adding{top:auto;bottom:var(--cl-chips-bottom,70px);max-height:calc(100dvh - 190px)}
 @media (max-width:700px){
-  body.layout-canvas .cl-adding{top:auto;bottom:70px;max-height:calc(100dvh - 190px)}
   body.layout-canvas .cl-changes{top:110px;max-height:calc(100dvh - 240px)}
 }
 body.layout-canvas .cl-candidate .cl-check svg{width:16px;height:16px;vertical-align:-3px}
-
 /* Document rename, delete, and the always-present Advanced disclosure. */
 body.layout-canvas .cl-doc button.cl-title{font:inherit;font-weight:600;cursor:text;min-height:0;height:auto}
 body.layout-canvas .cl-title-input{font:inherit;font-weight:600;width:180px;max-width:200px;padding:2px 6px;margin:0 4px}
@@ -530,3 +540,18 @@ body.layout-canvas .cl-menu .cl-recent .cl-recent-confirm button.cl-danger{color
 body.layout-canvas .cl-export .cl-export-note{margin:0;font-size:12px}
 body.layout-canvas .cl-export .cl-export-note[hidden]{display:none}
 body.layout-canvas .cl-export button:disabled{opacity:.5}
+
+/* Touch: every chrome control is at least a 44 px target. Undo and zoom
+   tighten up on phones so both chips share one row; shortcuts stay in ☰. */
+@media (pointer:coarse){
+  body.layout-canvas :is(.cl-doc,.cl-palette,.cl-history,.cl-zoom,.cl-status,.cl-context,.cl-candidate,.cl-multi-pill) button,
+  body.layout-canvas .cl-palette .cl-chevron{min-width:44px;min-height:44px}
+  body.layout-canvas .cl-doc button.cl-title,body.layout-canvas .cl-menu .cl-recent .cl-recent-row>button.cl-recent-delete{min-width:44px;min-height:44px}
+  body.layout-canvas :is(.cl-context,.cl-candidate) button{height:auto}
+  body.layout-canvas #preview-actions.cl-candidate button{min-height:44px}
+}
+@media (pointer:coarse) and (max-width:700px){
+  body.layout-canvas :is(.cl-history,.cl-zoom){gap:0;padding:2px}
+  body.layout-canvas .cl-zoom :is(.cl-sep,[aria-label=Shortcuts]){display:none}
+  body.layout-canvas .cl-status{top:72px}
+}

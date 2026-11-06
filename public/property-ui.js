@@ -1,5 +1,5 @@
-import {inspectProperties,isColour,documentThickness} from './properties.js?v=20261106c';
-import {changeAppearance} from './object-actions.js?v=20261106c';
+import {inspectProperties,isColour,documentThickness} from './properties.js?v=20261106d';
+import {changeAppearance} from './object-actions.js?v=20261106d';
 let appearanceOpen=false;
 // Pikchr colour names that read well as fills or as ink. Pikchr's dark mode
 // inverts colours, so light fills and dark inks both keep their contrast.
