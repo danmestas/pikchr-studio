@@ -66,7 +66,7 @@ function placementRange(statement, object) {
     if (!placement) return null;
     const rest = masked.slice(header[0].length, placement.start) + masked.slice(placement.end);
     if (/\b(?:at|with|from|to|then|left|right|of)\b|[()+*/]/.test(rest) || !safeAttributes(rest)) return null;
-    return {start:placement.start, end:placement.end, referenceName:placement.referenceName};
+    return {start:placement.start, end:placement.end, referenceName:placement.referenceName, placement};
   }
   // Numeric style attributes and quoted labels remain byte-for-byte intact.
   // Expression-valued attributes are valid Pikchr but intentionally read-only.
@@ -396,9 +396,10 @@ export function rankCandidates(list, target, referencedNames = []) {
 
 // `precise` marks exact input (keyboard nudges, layout) where snapping and
 // alignment tolerances would silently discard the requested position.
-// `keepForm` (keyboard nudges) ranks first the candidates that reference
-// exactly what the current placement does, so a nudge never ties the shape
-// to a new neighbour or drops its existing reference.
+// `keepForm` (keyboard nudges) puts first the current placement rewritten
+// for the new position (see keptPlacement), then the candidates that
+// reference exactly what the current placement does, so a nudge never ties
+// the shape to a new neighbour or drops its existing reference.
 export function candidates(source, object, scene, target, {precise=false, keepForm=false}={}) {
   if (!object || (object.editable === false && object.kind!=='text') || !topLevel(object,scene) || !movableKinds.includes(object.kind)
       || !/^[A-Z][A-Za-z0-9_]*$/.test(object.name || '')
@@ -474,5 +475,38 @@ export function candidates(source, object, scene, target, {precise=false, keepFo
   const ranked = rankCandidates(unique, target, range.referenceName ? [range.referenceName] : []);
   if (!keepForm) return ranked;
   const same = c => c.references.join() === (range.referenceName || '');
-  return [...ranked.filter(same), ...ranked.filter(c => !same(c))];
+  const kept = keptPlacement(range.placement, object, earlier, position);
+  const first = kept ? [make('Nudge', kept, position, range.referenceName ? [range.referenceName] : [])] : [];
+  return [...first, ...ranked.filter(same), ...ranked.filter(c => !same(c))]
+    .filter((candidate,index,all) => all.findIndex(item => item.source === candidate.source) === index);
+}
+
+// The current placement, same spelling, rewritten so the shape's center lands
+// on `position`: `at (x, y)` stays literal, `[with .O] at R.A + (dx, dy)` keeps
+// its anchors and gets a new offset, and `[with .O] at G DIR R.A` keeps its
+// gap (in its own unit) when the move runs along the gap's axis. A move across
+// the axis, or one that would make the gap zero or negative, falls back to the
+// nearest form: an offset from the same two anchors. Null when the shape has
+// no explicit placement or the anchors are unknown.
+function keptPlacement(placement, object, earlier, position) {
+  if (!placement) return null;
+  const fmt = rawCoordinate;
+  const spelled = placement.text.match(/^with\s+\.(\w+)\s+/);
+  const prefix = spelled ? `with .${spelled[1]} ` : '';
+  if (placement.literal) return `${prefix}at (${fmt(position.x)}, ${fmt(position.y)})`;
+  const reference = earlier.find(other => other.name === placement.referenceName);
+  const from = reference?.anchors?.[placement.referenceAnchor], own = object.anchors?.[placement.ownAnchor];
+  const ownOffset = placement.ownAnchor === 'c' ? { x: 0, y: 0 } : point(own) && point(object.center) ? { x: own.x - object.center.x, y: own.y - object.center.y } : null;
+  if (!point(from) || !ownOffset) return null;
+  const now = { x: position.x + ownOffset.x - from.x, y: position.y + ownOffset.y - from.y };
+  const anchor = `${placement.referenceName}.${placement.referenceAnchor}`;
+  if (placement.gap) {
+    const axis = { 'right of': ['x', 1], 'left of': ['x', -1], above: ['y', 1], below: ['y', -1] }[placement.direction];
+    const before = { x: object.center.x + ownOffset.x - from.x, y: object.center.y + ownOffset.y - from.y };
+    const across = axis[0] === 'x' ? 'y' : 'x', gap = now[axis[0]] * axis[1], old = before[axis[0]] * axis[1];
+    const [, value, unit] = placement.gap.match(/^([-+]?(?:\d+\.?\d*|\.\d+))(.*)$/) || [];
+    if (Math.abs(now[across]) < 1e-9 && gap > 1e-9 && old > 1e-9 && value !== undefined)
+      return `${prefix}at ${Number((Number(value) * gap / old).toFixed(4))}${unit} ${placement.direction} ${anchor}`;
+  }
+  return `${prefix}at ${anchor} + (${fmt(now.x)}, ${fmt(now.y)})`;
 }
