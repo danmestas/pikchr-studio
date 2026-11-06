@@ -44,8 +44,6 @@ export function propertyEditor({object,scene,source,propose,status,valid}){
     controls[key]=input;label.append(input);styleForm.append(label);
   }
   const apply=document.createElement('button');apply.type='submit';apply.textContent='Update style';styleForm.append(apply);
-  // Escape reverts a field's unapplied value; a second Escape closes the inspector.
-  styleForm.addEventListener('keydown',e=>{const input=e.target;if(e.key!=='Escape'||input.dataset?.initial===undefined||input.value===input.dataset.initial)return;e.preventDefault();e.stopPropagation();input.value=input.dataset.initial;});
   styleForm.onsubmit=e=>{e.preventDefault();request(()=>{
     const values={};for(const[key,input]of Object.entries(controls)){if(input.value!==input.dataset.initial&&input.value.trim()!=='')values[key]=key==='thickness'?Number(input.value):input.value.trim();}
     return changeAppearance(source,object,scene,values);
