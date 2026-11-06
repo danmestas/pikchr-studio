@@ -1,9 +1,9 @@
-import {createShape,createConnector,connectableShapes,shapeKinds} from './creation.js?v=20261031a';
-import {inspectProperties} from './properties.js?v=20261031a';
-import {endpointCandidates} from './edits.js?v=20261031a';
-import {buildTextEdit} from './text-sizing.js?v=20261031a';
-import {createConnectedNeighbor,resizeShape} from './canvas-operations.js?v=20261031a';
-import {snapResize,resizeBox} from './resize-guides.js?v=20261031a';
+import {createShape,createConnector,connectableShapes,shapeKinds} from './creation.js?v=20261106d';
+import {inspectProperties} from './properties.js?v=20261106d';
+import {endpointCandidates} from './edits.js?v=20261106d';
+import {buildTextEdit} from './text-sizing.js?v=20261106d';
+import {createConnectedNeighbor,resizeShape} from './canvas-operations.js?v=20261106d';
+import {snapResize,resizeBox} from './resize-guides.js?v=20261106d';
 
 const ns='http://www.w3.org/2000/svg';
 const element=(tag,attrs={})=>{const node=document.createElement(tag);for(const[k,v]of Object.entries(attrs))node.setAttribute(k,v);return node;};
@@ -93,7 +93,9 @@ export function canvasTools({clearSelection,host,toolbar,getState,render,propose
   for(const field of [sizeWidth,sizeHeight]){
     field.addEventListener('keydown',e=>{
       if(e.key==='Enter'){e.preventDefault();applySize();}
-      else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();restoreSize();}
+      // Escape reverts a typed size; with nothing to revert it reaches the
+      // inspector, which closes.
+      else if(e.key==='Escape'){const o=getState().object;if(o&&Number(sizeWidth.value)===Number(o.bbox.width.toFixed(3))&&Number(sizeHeight.value)===Number(o.bbox.height.toFixed(3))&&!typed)return;e.preventDefault();e.stopPropagation();restoreSize();}
     });
     // Moving between the two fields is still one edit; leaving the pair applies it.
     field.addEventListener('blur',e=>{if(e.relatedTarget!==sizeWidth&&e.relatedTarget!==sizeHeight&&typed===fieldKey(snapshot()))applySize();});
@@ -151,7 +153,7 @@ export function canvasTools({clearSelection,host,toolbar,getState,render,propose
     if(['connect','from','to'].includes(mode)&&modeKey!==s.key){mode='select';startShape=null;pending=null;}
     const panning=document.querySelector('#pan-mode')?.getAttribute('aria-pressed')==='true';
     selectTool.setAttribute('aria-pressed',String(mode==='select'&&!panning));panTool.setAttribute('aria-pressed',String(panning));textTool.setAttribute('aria-pressed',String(mode==='place'&&kinds.select.value==='text'));
-    place.setAttribute('aria-pressed',String(mode==='place'&&kinds.select.value!=='text'));connect.setAttribute('aria-pressed',String(mode==='connect'));
+    place.setAttribute('aria-pressed',String(mode==='place'&&kinds.select.value!=='text'));connect.setAttribute('aria-pressed',String(mode==='connect'));connect.dataset.active=String(mode==='connect');
     marquee.setAttribute('aria-pressed',String(mode==='marquee'));
     kinds.field.hidden=mode!=='place'||kinds.select.value==='text';
     toolState.textContent=panning?'Pan':mode==='select'?'Select':mode==='marquee'?'Drag a selection area':mode==='connect'?(startShape?'Choose destination':'Choose first shape'):mode==='place'?'Place '+kinds.select.value:'Choose '+mode+' target';
@@ -276,7 +278,9 @@ export function canvasTools({clearSelection,host,toolbar,getState,render,propose
   },true);
   host.addEventListener('pointercancel',()=>cancel(false));
   host.addEventListener('lostpointercapture',()=>{if(resize){resize=null;liveClear?.();host.querySelectorAll('.canvas-preview').forEach(node=>node.remove());sync();}});
-  host.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();const idle=mode==='select'&&!resize&&!pending&&!dialogSession;cancel();if(idle)clearSelection?.();}else if(e.key==='Enter'&&mode==='select'&&!e.target.closest('[data-resize]')){e.preventDefault();editText();}},true);
+  // Escape with nothing in progress only deselects; "Cancelled" is said only
+  // when a gesture or tool was actually cancelled.
+  host.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();const idle=mode==='select'&&!resize&&!pending&&!dialogSession;if(idle){cancel(false);stopPan();clearSelection?.();}else cancel();}else if(e.key==='Enter'&&mode==='select'&&!e.target.closest('[data-resize]')){e.preventDefault();editText();}},true);
   window.addEventListener('blur',()=>{if(resize||pending)cancel(false);});
 
   function editText(){

@@ -1,4 +1,5 @@
-"""Group style: three shapes styled together as one undoable change, a mixed
+"""Group style: three shapes styled together as one undoable change per
+choice (the same swatches, custom colour and thickness controls as one object), a mixed
 shape/connector selection limited to stroke and thickness, and an atomic
 refusal that leaves the source untouched. Uses the real Select multiple menu,
 canvas taps and visible ⋯ → Group controls. Desktop and phone, light and dark.
@@ -21,9 +22,9 @@ from playwright.sync_api import sync_playwright, expect
 STUDIO = os.environ.get("PIKCHR_STUDIO_URL", "http://127.0.0.1:8790").rstrip("/")
 URL = STUDIO + "/"
 BASE = 'A: box "Alpha" at (0,0)\nB: cylinder "Beta" at (2.5,0)\nC: box "Gamma" at (5,0)\nLink: arrow from A.e to B.w\n'
-STYLED = ('A: box "Alpha" at (0,0) color 0x123456 thickness 1.5\n'
-          'B: cylinder "Beta" at (2.5,0) color 0x123456 thickness 1.5\n'
-          'C: box "Gamma" at (5,0) color 0x123456 thickness 1.5\n'
+STYLED = ('A: box "Alpha" at (0,0) color 0x123456\n'
+          'B: cylinder "Beta" at (2.5,0) color 0x123456\n'
+          'C: box "Gamma" at (5,0) color 0x123456\n'
           'Link: arrow from A.e to B.w\n')
 CENTER = """name=>{const s=pikchrStudio.state(),o=s.scene.objects.find(o=>o.name===name);const p=pikchrStudio.modelToScreen(o.center);return {x:p.x,y:p.y}}"""
 
@@ -103,6 +104,19 @@ with sync_playwright() as pw:
         expect(panel).to_be_visible()
         return panel
 
+    def colour(panel, value):
+        """Custom line & text colour, typed and committed with Enter (one edit)."""
+        field = panel.get_by_label("Line & text colour value", exact=True)
+        if not field.is_visible():
+            panel.get_by_role("button", name="Custom line & text colour", exact=True).click()
+        field.fill(value)
+        field.press("Enter")
+
+    def thickness(panel, value):
+        field = panel.get_by_label("Thickness in inches", exact=True)
+        field.fill(value)
+        field.press("Enter")
+
     rendered()
     set_source(page, BASE)
     rendered()
@@ -117,22 +131,29 @@ with sync_playwright() as pw:
     assert "style every selected object" in note.lower(), note
     close_popovers(page)
     panel = open_group_style()
-    assert panel.get_by_label("Stroke / text color", exact=True).is_visible()
-    assert panel.get_by_label("Line thickness (pixels)", exact=True).is_visible()
-    assert panel.get_by_label("Fill color", exact=True).is_visible()
+    assert panel.get_by_role("group", name="Line & text", exact=True).is_visible()
+    assert panel.get_by_label("Thickness in inches", exact=True).is_visible()
+    assert panel.get_by_role("group", name="Fill", exact=True).is_visible()
+    expect(panel.get_by_role("button", name="Style 3 objects")).to_have_count(0)
     assert page.locator("#inspector dt", has_text="Name").count() == 0
     assert page.locator(".cl-more .cl-label-options").count() == 0
     assert page.locator("#inspector .label-row").count() == 0
-    panel.get_by_label("Stroke / text color", exact=True).fill("#123456")
-    panel.get_by_label("Line thickness (pixels)", exact=True).fill("1.5")
-    panel.get_by_role("button", name="Style 3 objects", exact=True).click()
+    colour(panel, "#123456")
     changed(BASE)
     assert page.locator("#source").input_value() == STYLED, page.locator("#source").input_value()
-    # Renderer, not just source: every shape takes the new stroke and width.
+    # Renderer, not just source: every shape takes the new stroke.
     for name in ("A", "B", "C"):
         assert svg_stroke(page, name) == "rgb(18, 52, 86)", (name, shape_style(page, name))
-        # Pikchr draws 144 units per inch; thickness 1.5 is drawn at 216.
-        assert abs(svg_width(page, name) - 1.5 * 144) < 0.01, (name, shape_style(page, name))
+    # The agreed colour shows as the group's current value.
+    panel = open_group_style()
+    expect(panel.get_by_label("Line & text colour value", exact=True)).to_have_value("#123456")
+    # Thickness presets write Pikchr's own words, in inches (144 units each).
+    panel.get_by_role("group", name="Thickness presets", exact=True).get_by_role("button", name="Thick", exact=True).click()
+    changed(STYLED)
+    for name in ("A", "B", "C"):
+        assert abs(svg_width(page, name) - 0.015 * 1.5 * 144) < 0.01, (name, shape_style(page, name))
+    undo()
+    page.wait_for_function("text => document.querySelector('#source').value === text", arg=STYLED)
     # Geometry and the connector statement are untouched.
     assert page.evaluate("""()=>{const s=pikchrStudio.state();
       return s.scene.objects.map(o=>o.name+':'+o.center.x.toFixed(3)+','+o.center.y.toFixed(3)).join('|')}""") == \
@@ -147,19 +168,22 @@ with sync_playwright() as pw:
     # ---- mixed shape and connector: stroke/thickness, never fill ------------
     select_group("A", "Link")
     panel = open_group_style()
-    assert panel.get_by_label("Stroke / text color", exact=True).is_visible()
-    assert panel.get_by_label("Line thickness (pixels)", exact=True).is_visible()
-    assert panel.get_by_label("Fill color", exact=True).count() == 0, "fill offered for a mixed selection"
-    panel.get_by_label("Stroke / text color", exact=True).fill("#222222")
-    panel.get_by_label("Line thickness (pixels)", exact=True).fill("2")
-    panel.get_by_role("button", name="Style 2 objects", exact=True).click()
+    assert panel.get_by_role("group", name="Line & text", exact=True).is_visible()
+    assert panel.get_by_label("Thickness in inches", exact=True).is_visible()
+    assert panel.get_by_role("group", name="Fill", exact=True).count() == 0, "fill offered for a mixed selection"
+    colour(panel, "#222222")
     changed(BASE)
+    once = page.locator("#source").input_value()
+    thickness(open_group_style(), "0.02")
+    changed(once)
     mixed = page.locator("#source").input_value()
-    assert mixed == ('A: box "Alpha" at (0,0) color 0x222222 thickness 2\n'
+    assert mixed == ('A: box "Alpha" at (0,0) color 0x222222 thickness 0.02\n'
                      'B: cylinder "Beta" at (2.5,0)\nC: box "Gamma" at (5,0)\n'
-                     'Link: arrow from A.e to B.w color 0x222222 thickness 2\n'), mixed
+                     'Link: arrow from A.e to B.w color 0x222222 thickness 0.02\n'), mixed
     assert svg_stroke(page, "A") == "rgb(34, 34, 34)"
     assert svg_stroke(page, "Link") == "rgb(34, 34, 34)"
+    undo()
+    page.wait_for_function("text => document.querySelector('#source').value === text", arg=once)
     undo()
     page.wait_for_function("text => document.querySelector('#source').value === text", arg=BASE)
 
@@ -173,9 +197,8 @@ with sync_playwright() as pw:
     object_button(page, "N").click()
     page.wait_for_function("pikchrStudio.state().selectedIds.length === 2")
     panel = open_group_style()
-    panel.get_by_label("Line thickness (pixels)", exact=True).fill("3")
-    panel.get_by_role("button", name="Style 2 objects", exact=True).click()
-    error = page.locator("#inspector .group-style .property-error")
+    thickness(panel, "0.03")
+    error = page.locator("#inspector .group-style .style-error:visible")
     expect(error).to_contain_text("No style applied")
     expect(error).to_contain_text("N: Objects inside a group are inspect-only")
     expect(page.locator("#canvas-feedback")).to_contain_text("No style applied")
@@ -196,8 +219,7 @@ with sync_playwright() as pw:
     object_button(page, "B").click()
     page.wait_for_function("pikchrStudio.state().selectedIds.length === 3")
     panel = open_group_style()
-    panel.get_by_label("Stroke / text color", exact=True).fill("#123456")
-    panel.get_by_role("button", name="Style 3 objects", exact=True).click()
+    colour(panel, "#123456")
     changed(mixed_names)
     assert page.locator("#source").input_value() == ('A: box "Alpha" at (0,0) color 0x123456\n'
                                                      'box "Anonymous" at (2.5,0) color 0x123456\n'
@@ -221,14 +243,17 @@ with sync_playwright() as pw:
     object_button(page, "box o2").click()
     page.wait_for_function("pikchrStudio.state().selectedIds.length === 2")
     panel = open_group_style()
-    panel.get_by_label("Stroke / text color", exact=True).fill("#222222")
-    panel.get_by_label("Line thickness (pixels)", exact=True).fill("2")
-    panel.get_by_role("button", name="Style 2 objects", exact=True).click()
+    colour(panel, "#222222")
     changed(anonymous)
-    assert page.locator("#source").input_value() == ('box "One" at (0,0) color 0x222222 thickness 2\n'
-                                                     'box "Two" at (2,0) color 0x222222 thickness 2\n')
+    once = page.locator("#source").input_value()
+    thickness(open_group_style(), "0.02")
+    changed(once)
+    assert page.locator("#source").input_value() == ('box "One" at (0,0) color 0x222222 thickness 0.02\n'
+                                                     'box "Two" at (2,0) color 0x222222 thickness 0.02\n')
     assert page.locator("#selection-count").inner_text() == "2 selected"
     assert page.evaluate("pikchrStudio.state().selectedIds.join(',')") == "o1,o2"
+    undo()
+    page.wait_for_function("text => document.querySelector('#source').value === text", arg=once)
     undo()
     page.wait_for_function("text => document.querySelector('#source').value === text", arg=anonymous)
     assert page.locator("#selection-count").inner_text() == "2 selected"
@@ -237,8 +262,7 @@ with sync_playwright() as pw:
     reveal(page, "#auto-apply").uncheck()
     close_popovers(page)
     panel = open_group_style()
-    panel.get_by_label("Stroke / text color", exact=True).fill("#123456")
-    panel.get_by_role("button", name="Style 2 objects", exact=True).click()
+    colour(panel, "#123456")
     changed(anonymous)
     assert page.evaluate("pikchrStudio.state().queued") == 1
     assert page.evaluate("pikchrStudio.state().selectedIds.join(',')") == "o1,o2"
@@ -286,20 +310,23 @@ with sync_playwright() as pw:
     page.wait_for_function("pikchrStudio.state().selectedIds.length === 3")
     before_paths = page.evaluate("()=>JSON.stringify(pikchrStudio.state().scene.objects.map(o=>[o.id,o.kind,o.path]))")
     panel = open_group_style()
-    assert panel.get_by_label("Fill color", exact=True).count() == 0, "fill offered for connector members"
-    panel.get_by_label("Stroke / text color", exact=True).fill("#345678")
-    panel.get_by_label("Line thickness (pixels)", exact=True).fill("1.5")
-    panel.get_by_role("button", name="Style 3 objects", exact=True).click()
+    assert panel.get_by_role("group", name="Fill", exact=True).count() == 0, "fill offered for connector members"
+    colour(panel, "#345678")
     changed(curves)
-    assert page.locator("#source").input_value() == ('A: box "Alpha" at (0,0) color 0x345678 thickness 1.5\n'
+    once = page.locator("#source").input_value()
+    thickness(open_group_style(), "0.02")
+    changed(once)
+    assert page.locator("#source").input_value() == ('A: box "Alpha" at (0,0) color 0x345678 thickness 0.02\n'
                                                      'B: box "Beta" at (3.5,0)\n'
-                                                     'S: spline from A.e to B.w color 0x345678 thickness 1.5\n'
-                                                     'R: arc from A.n to B.n cw color 0x345678 thickness 1.5\n')
+                                                     'S: spline from A.e to B.w color 0x345678 thickness 0.02\n'
+                                                     'R: arc from A.n to B.n cw color 0x345678 thickness 0.02\n')
     # Connector identity and geometry are unchanged; the box moved nowhere.
     assert page.evaluate("()=>JSON.stringify(pikchrStudio.state().scene.objects.map(o=>[o.id,o.kind,o.path]))") == before_paths
     assert svg_stroke(page, "S") == "rgb(52, 86, 120)", shape_style(page, "S")
     assert svg_stroke(page, "R") == "rgb(52, 86, 120)", shape_style(page, "R")
     assert page.locator("#selection-count").inner_text() == "3 selected"
+    undo()
+    page.wait_for_function("text => document.querySelector('#source').value === text", arg=once)
     undo()
     page.wait_for_function("text => document.querySelector('#source').value === text", arg=curves)
     assert page.locator("#selection-count").inner_text() == "3 selected"
@@ -315,9 +342,8 @@ with sync_playwright() as pw:
     page.wait_for_function("document.querySelector('#diagram').classList.contains('stale')")
     hide_source(page)
     panel = open_group_style()
-    panel.get_by_label("Stroke / text color", exact=True).fill("#123456")
-    panel.get_by_role("button", name="Style 3 objects", exact=True).click()
-    error = page.locator("#inspector .group-style .property-error")
+    colour(panel, "#123456")
+    error = page.locator("#inspector .group-style .style-error:visible")
     expect(error).to_contain_text("Render the current source before styling the group.")
     assert page.locator("#source").input_value() == stale, "group style overwrote the edited source"
     assert page.evaluate("pikchrStudio.state().queued") == 0, "stale refusal queued a change"
@@ -340,17 +366,15 @@ with sync_playwright() as pw:
         rendered()
         select_group("A", "B", "C")
         panel = open_group_style()
-        stroke = panel.get_by_label("Stroke / text color", exact=True)
-        expect(stroke).to_be_visible()
-        box = stroke.bounding_box()
-        assert box and box["x"] >= 0 and box["x"] + box["width"] <= width, (width, scheme, box)
-        button = panel.get_by_role("button", name="Style 3 objects", exact=True)
-        expect(button).to_be_visible()
+        panel.get_by_role("button", name="Custom line & text colour", exact=True).click()
+        for control in (panel.get_by_role("group", name="Fill", exact=True), panel.get_by_label("Line & text colour value", exact=True),
+                        panel.get_by_label("Thickness in inches", exact=True)):
+            expect(control).to_be_visible()
+            box = control.bounding_box()
+            assert box and box["x"] >= 0 and box["x"] + box["width"] <= width, (width, scheme, box)
         assert not page.evaluate("document.documentElement.scrollWidth > innerWidth"), f"{width} {scheme} overflow"
         assert not page.evaluate("document.querySelector('.cl-more').scrollWidth > innerWidth")
-        stroke.fill("#123456")
-        panel.get_by_label("Line thickness (pixels)", exact=True).fill("1.5")
-        button.click()
+        colour(panel, "#123456")
         changed(BASE)
         assert page.locator("#source").input_value() == STYLED
         # Pikchr's dark flag lightens dark ink for contrast, so the same source
@@ -358,7 +382,6 @@ with sync_playwright() as pw:
         expected = {"light": "rgb(18, 52, 86)", "dark": "rgb(169, 203, 237)"}[scheme]
         assert svg_stroke(page, "A") == expected, (scheme, shape_style(page, "A"))
         assert svg_stroke(page, "B") == expected, (scheme, shape_style(page, "B"))
-        assert abs(svg_width(page, "B") - 1.5 * 144) < 0.01, (scheme, shape_style(page, "B"))
         undo()
         page.wait_for_function("text => document.querySelector('#source').value === text", arg=BASE)
 
@@ -370,9 +393,7 @@ with sync_playwright() as pw:
     page.locator("#fit-view").click()
     select_group("A", "B", "C")
     panel = open_group_style()
-    panel.get_by_label("Stroke / text color", exact=True).fill("#123456")
-    panel.get_by_label("Line thickness (pixels)", exact=True).fill("1.5")
-    panel.get_by_role("button", name="Style 3 objects", exact=True).click()
+    colour(panel, "#123456")
     changed(BASE)
     assert page.locator("#source").input_value() == STYLED
     page.reload()

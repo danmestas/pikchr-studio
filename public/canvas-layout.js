@@ -2,14 +2,14 @@
 // the controls declared in index.html into chips, menus and popovers; every
 // control keeps its own handler. It also adds drag-to-connect, which submits
 // ordinary candidate edits.
-import {attachPoints,nearestAnchor,targetAnchor,hitShape,connectCandidate,connectionLabel,elbowRoute} from './connect-drag.js?v=20261031a';
-import {connectableShapes} from './creation.js?v=20261031a';
-import {connectorCapabilities,connectorTitle} from './arrow-ui.js?v=20261031a';
-import {freeLineCandidate,pointText,snapToGrid,literalRoute,lineEnds,translateLineCandidate,moveEndpointCandidate} from './free-lines.js?v=20261031a';
-import {lockDirection} from './constrain.js?v=20261031a';
-import {inspectProperties} from './properties.js?v=20261031a';
-import {buildTextEdit} from './text-sizing.js?v=20261031a';
-import {textStyle,textStyleCandidate,textSizes,textColours} from './text-style.js?v=20261031a';
+import {attachPoints,nearestAnchor,targetAnchor,hitShape,connectCandidate,connectionLabel,elbowRoute} from './connect-drag.js?v=20261106d';
+import {connectableShapes} from './creation.js?v=20261106d';
+import {connectorCapabilities,connectorTitle} from './arrow-ui.js?v=20261106d';
+import {freeLineCandidate,pointText,snapToGrid,literalRoute,lineEnds,translateLineCandidate,moveEndpointCandidate} from './free-lines.js?v=20261106d';
+import {lockDirection} from './constrain.js?v=20261106d';
+import {inspectProperties} from './properties.js?v=20261106d';
+import {buildTextEdit} from './text-sizing.js?v=20261106d';
+import {textStyle,textStyleCandidate,textSizes,textColours} from './text-style.js?v=20261106d';
 
 
 const $=id=>document.getElementById(id);
@@ -68,6 +68,7 @@ function install(studio){
   // Paths are Lucide (lucide.dev, ISC license): 24-unit, round caps and joins,
   // drawn at the one stroke weight iconMarkup sets.
   const CHROME_ICONS={
+    trash:[['path',{d:'M3 6h18'}],['path',{d:'M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6'}],['path',{d:'M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2'}],['path',{d:'M10 11v6'}],['path',{d:'M14 11v6'}]],
     menu:[['path',{d:'M4 5h16'}],['path',{d:'M4 12h16'}],['path',{d:'M4 19h16'}]],
     source:[['path',{d:'m18 16 4-4-4-4'}],['path',{d:'m6 8-4 4 4 4'}],['path',{d:'m14.5 4-5 16'}]],
     export:[['path',{d:'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'}],['path',{d:'m7 10 5 5 5-5'}],['path',{d:'M12 15V3'}]],
@@ -98,7 +99,7 @@ function install(studio){
 
   const menuButton=el('button',{type:'button',class:'cl-icon','aria-label':'Menu',title:'Menu','aria-expanded':'false'},iconMarkup(CHROME_ICONS.menu));
   const sourceButton=el('button',{type:'button',class:'cl-icon','aria-label':'Source','aria-pressed':'false',title:'Source (S)'},iconMarkup(CHROME_ICONS.source));
-  const title=el('strong',{class:'cl-title'},'Untitled');
+  const title=el('button',{type:'button',class:'cl-title',title:'Rename document'},'Untitled');
   const exportButton=el('button',{type:'button',class:'cl-icon','aria-label':'Export',title:'Export','aria-expanded':'false'},iconMarkup(CHROME_ICONS.export));
   const chip=el('div',{class:'cl-float cl-doc'},menuButton,title,el('span',{class:'cl-sep'}),sourceButton,exportButton);
   document.body.append(chip);
@@ -117,22 +118,39 @@ function install(studio){
   const documents=$('documents');
   const recent=el('div',{class:'cl-recent','aria-label':'Saved documents'});
   const ago=t=>{const s=Math.max(0,(Date.now()-t)/1000);return s<45?'just now':s<3600?Math.round(s/60)+' min ago':s<86400?Math.round(s/3600)+' h ago':s<604800?Math.round(s/86400)+' d ago':new Date(t).toLocaleDateString();};
+  // Deleting asks first, in place, and says what is removed: only this browser's copy.
+  let confirming=null;
+  function confirmRow(o){
+    const yes=el('button',{type:'button',class:'cl-danger'},'Delete'),no=el('button',{type:'button'},'Cancel');
+    yes.onclick=()=>{confirming=null;studio.removeDocument?.(o.value);syncRecent();recent.querySelector('button[data-id]')?.focus();};
+    no.onclick=()=>{confirming=null;syncRecent();recent.querySelector(`.cl-recent-row [data-id="${o.value}"]`)?.nextElementSibling?.focus();};
+    return el('div',{class:'cl-recent-confirm',role:'group','aria-label':'Confirm delete'},
+      el('p',{},'Delete \u201c'+o.textContent+'\u201d? This removes the document, its undo history and queued changes from this browser. It cannot be undone. Backups you downloaded are not affected.'),
+      el('div',{class:'cl-row'},yes,no));
+  }
   function syncRecent(){
     if(!documents)return;
     const all=[...documents.options],keep=all.slice(0,5);
     const active=all.find(o=>o.value===documents.value);if(active&&!keep.includes(active))keep.push(active);
+    if(confirming&&!keep.some(o=>o.value===confirming))confirming=null;
     recent.replaceChildren(...keep.map(o=>{
+      if(o.value===confirming)return confirmRow(o);
       const on=o===active,b=el('button',{type:'button','data-id':o.value,'aria-current':on?'true':null},el('span',{class:'cl-recent-name'},o.textContent),el('span',{class:'cl-muted'},o.dataset.updated?ago(+o.dataset.updated):''));
-      b.onclick=()=>{toggle(menu,menuButton,false);if(on)return;documents.value=o.value;documents.dispatchEvent(new Event('change',{bubbles:true}));};
-      return b;
+      b.onclick=()=>{toggle(menu,menuButton,false);menuButton.focus();if(on)return;documents.value=o.value;documents.dispatchEvent(new Event('change',{bubbles:true}));};
+      const del=el('button',{type:'button',class:'cl-recent-delete','aria-label':'Delete '+o.textContent,title:'Delete this document'},iconMarkup(CHROME_ICONS.trash));
+      del.onclick=()=>{confirming=o.value;syncRecent();recent.querySelector('.cl-recent-confirm button:last-child')?.focus();};
+      return el('div',{class:'cl-recent-row'},b,del);
     }));
   }
   const saveState=$('save-state');saveState?.classList.add('cl-muted','cl-save-state');
   const newDoc=$('new-document'),openDoc=$('open-document');
   if(newDoc)newDoc.textContent='New';if(openDoc)openDoc.textContent='Open file…';
   const examples=$('choose-example');if(examples)examples.textContent='Examples…';
+  // The menu would otherwise stay open behind the dialog and swallow its first Escape.
+  examples?.addEventListener('click',()=>toggle(menu,menuButton,false));
+  $('example-picker')?.addEventListener('close',()=>menuButton.focus());
   const docSection=section('Document',row(newDoc,openDoc,examples,$('file-input')),recent,saveState);
-  const prefsSection=section('Preferences',labelled('anchors','Show anchors'),labelled('auto-apply','Apply accepted changes immediately'),labelled('snap-resize','Snap resize to 0.1 in'),labelled('advanced-mode','Advanced tools'));
+  const prefsSection=section('Preferences',labelled('anchors','Show anchors'),labelled('auto-apply','Apply accepted changes immediately'),labelled('snap-resize','Snap resize to 0.1 in'));
   const view=q('.canvas-view-options');if(view)view.hidden=true;
   // Changes live in a popover opened from the status chip (see syncStatus).
   const draft=q('.draft-toolbar'),queueStatus=$('queue-status');
@@ -154,6 +172,7 @@ function install(studio){
     components.replaceChildren(sum,
       el('div',{class:'cl-component-row'},field('Name',$('component-name')),$('save-component')),
       el('div',{class:'cl-component-row'},field('Components',$('components')),$('insert-component')));
+    componentsDialog.addEventListener('close',()=>menuButton.focus());
     const closeComponents=el('button',{type:'button'},'Close');closeComponents.onclick=()=>componentsDialog.close();
     componentsDialog.append(el('div',{class:'example-heading'},el('h2',{id:'components-title'},'Reusable components'),closeComponents),el('p',{},'Saved on this browser, separately from document backups. Save the current selection, then insert it into any document.'),components);
     document.body.append(componentsDialog);
@@ -162,8 +181,8 @@ function install(studio){
   componentsButton.onclick=()=>{toggle(menu,menuButton,false);componentsDialog.showModal();};
   const backup=$('backup-workspace'),restore=$('restore-workspace');
   if(backup)backup.textContent='Back up documents…';if(restore)restore.textContent='Restore…';
-  const advancedSection=section('Advanced',row(componentsButton,backup,restore,$('backup-input')));
-  advancedSection.classList.add('cl-advanced-only');
+  const advancedSection=section('',el('details',{class:'cl-advanced'},el('summary',{},'Advanced'),row(componentsButton,backup,restore,$('backup-input'))));
+  advancedSection.setAttribute('aria-label','Advanced');
   // Footer: where the code lives, and credit for the Pikchr renderer.
   const link=(href,text)=>{const a=el('a',{href,class:'cl-link'},text);if(/^https?:/.test(href)){a.target='_blank';a.rel='noopener';}return a;};
   if(help){help.textContent='How it works';help.classList.add('cl-link');}
@@ -175,7 +194,7 @@ function install(studio){
   // Remaining toolbar controls (render, undo, redo, downloads, the documents
   // select) stay reachable by id but off-stage; the export menu takes the downloads.
   if(nav){nav.classList.add('cl-offstage');document.body.append(nav);}
-  menuButton.onclick=()=>{syncRecent();toggle(menu,menuButton);};
+  menuButton.onclick=()=>{confirming=null;syncRecent();toggle(menu,menuButton);};
   const exportMenu=popover('cl-export','Export');
   // Two titled groups share one "Selection only" switch. The buttons are declared in
   // index.html and moved here, so each keeps its id and handler.
@@ -190,15 +209,56 @@ function install(studio){
   const selectionOnly=$('selection-only'),selectionLabel=selectionOnly?.closest('label');
   if(selectionLabel){selectionLabel.classList.add('cl-check-row');selectionLabel.replaceChildren(selectionOnly,el('span',{},'Selection only'));}
   const selectionHint=el('span',{id:'selection-only-hint',class:'cl-muted'},'select objects first');
+  const exportNote=el('p',{id:'export-note',class:'cl-muted cl-export-note',role:'status',hidden:''});
   const fallback=el('div',{id:'copy-fallback',class:'cl-copy-fallback',hidden:''},el('label',{class:'cl-field'},el('span',{class:'cl-field-name'},'Copy this text yourself'),el('textarea',{readonly:'',rows:'4',spellcheck:'false','aria-label':'Text to copy manually'})));
   exportMenu.append(el('strong',{},'Export'),
     section('Copy',exportItem('copy-link','Copy','link','Share link'),exportItem('copy-source','Copy','code','Pikchr source'),exportItem('copy-svg','Copy','svg','SVG')),
     section('Download',exportItem('export-svg','Download','svg','SVG'),exportItem('export-png','Download','png','PNG'),exportItem('download','Download','file','Source (.pikchr)')),
-    el('div',{class:'cl-export-scope'},selectionLabel,selectionHint),fallback);
-  exportButton.onclick=()=>toggle(exportMenu,exportButton);
+    el('div',{class:'cl-export-scope'},selectionLabel,selectionHint),exportNote,fallback);
+  // The source drawer sits where this popover opens; one closes when the other opens.
+  exportButton.onclick=()=>{
+    if(exportMenu.hidden&&drawer.classList.contains('open')){drawer.classList.remove('open');sourceButton.setAttribute('aria-pressed','false');}
+    toggle(exportMenu,exportButton);
+  };
+  // Image exports need a valid render, and Source always exports the whole document.
+  const INVALID_REASON='Fix the syntax error to export',WHOLE_REASON='Source always exports the whole document';
+  function setOff(button,off,why){
+    if(!button)return;
+    if(button.disabled!==off)button.disabled=off;
+    if(off){if(button.title!==why)button.title=why;}else if(button.hasAttribute('title'))button.removeAttribute('title');
+  }
+  function syncExport(){
+    const invalid=diagram.classList.contains('stale')&&!!$('diagnostic')?.textContent.trim();
+    const scoped=!!selectionOnly&&selectionOnly.checked&&!selectionOnly.disabled;
+    for(const id of ['copy-svg','export-svg','export-png'])setOff($(id),invalid,INVALID_REASON);
+    for(const id of ['copy-source','download'])setOff($(id),scoped,WHOLE_REASON);
+    const note=[invalid&&INVALID_REASON,scoped&&WHOLE_REASON].filter(Boolean).join('. ');
+    if(exportNote.textContent!==note)exportNote.textContent=note;
+    if(exportNote.hidden!==!note)exportNote.hidden=!note;
+  }
+  selectionOnly?.addEventListener('change',syncExport);
   const syncTitle=()=>{const own=studio.title?.();const text=own||documents?.selectedOptions?.[0]?.textContent?.trim();const next=text&&text!=='Current diagram'?text:'Untitled';if(title.textContent!==next)title.textContent=next;};
   documents?.addEventListener('change',()=>{syncTitle();syncRecent();});syncTitle();syncRecent();
   if(documents)new MutationObserver(()=>{syncTitle();syncRecent();}).observe(documents,{childList:true,subtree:true,characterData:true});
+  // Rename: click or Enter on the title edits it in place; Enter saves, Escape cancels.
+  // A name the author gave stops the automatic one (the first label).
+  title.onclick=()=>{
+    const initial=title.textContent;
+    const input=el('input',{class:'cl-title-input',type:'text',maxlength:'100','aria-label':'Document name',placeholder:'Untitled',value:initial});
+    let done=false;
+    const finish=(save,refocus=true)=>{
+      if(done)return;done=true;
+      const value=input.value;
+      input.replaceWith(title);if(refocus)title.focus();
+      if(save&&value.trim()!==initial)studio.rename?.(value);
+    };
+    input.onkeydown=e=>{
+      if(e.key==='Enter'){e.preventDefault();finish(true);}
+      else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finish(false);}
+    };
+    input.onblur=()=>finish(true,false);
+    title.replaceWith(input);input.focus();input.select();
+  };
 
   // ---- source drawer ---------------------------------------------------------
   const drawer=el('section',{class:'cl-drawer','aria-label':'Source drawer'});
@@ -242,12 +302,16 @@ function install(studio){
     clearTimeout(toastTimer);toastTimer=setTimeout(()=>{toast.classList.add('cl-fade');toastTimer=setTimeout(()=>{toast.hidden=true;},400);},3000);
   }).observe(statusText,{childList:true,characterData:true,subtree:true});
   const diagnostic=$('diagnostic');if(diagnostic){diagnostic.setAttribute('aria-live','assertive');statusChip.append(diagnostic);}
+  // A syntax error is fixed in the source, so the error offers it directly.
+  const fixSource=el('button',{type:'button',class:'cl-fix-source',hidden:''},'Open Source to fix (S)');
+  fixSource.onclick=()=>setDrawer(true);statusChip.append(fixSource);
   document.body.append(statusChip);
   function syncStatus(){
     const s=studio.state(),invalid=diagram.classList.contains('stale')&&!!diagnostic?.textContent.trim();
     const queued=s.queued;
     summary.textContent=diagram.classList.contains('renderer-down')?'Renderer unavailable':invalid?'Invalid':queued?'Rendered · '+queued+' queued':s.valid?'Rendered':'Rendering…';
     statusChip.dataset.state=invalid||diagram.classList.contains('renderer-down')?'invalid':queued?'queued':'ok';
+    if(fixSource.hidden===invalid)fixSource.hidden=!invalid;
     apply.disabled=$('accept')?.disabled??true;discard.disabled=$('cancel')?.disabled??true;
     apply.hidden=discard.hidden=!queued;
     // The queue and Undo last are reachable only while there is something to review.
@@ -279,8 +343,11 @@ function install(studio){
     syncPalette();
   }
   for(const [kind,button] of Object.entries(shapeButtons))button.onclick=()=>placeShape(kind);
+  // canvas-tools marks connect mode with data-active; aria-pressed shows
+  // which of Arrow and Line is the active tool.
+  const connecting=()=>connectTool?.dataset.active==='true';
   function setConnect(kind){
-    const on=connectTool?.getAttribute('aria-pressed')==='true';
+    const on=connecting();
     if(on&&connectKind===kind){selectTool?.click();return;}
     if(!on)connectTool?.click();
     connectKind=kind;syncPalette();
@@ -317,9 +384,10 @@ function install(studio){
   function syncPalette(){
     const placing=placeTool?.getAttribute('aria-pressed')==='true';
     for(const [kind,button] of Object.entries(shapeButtons))press(button,placing&&kindSelect?.value===kind);
-    const connecting=connectTool?.getAttribute('aria-pressed')==='true';
-    if(!connecting)connectKind='arrow';
-    press(lineButton,connecting&&connectKind==='line');
+    const on=connecting();
+    if(!on)connectKind='arrow';
+    press(lineButton,on&&connectKind==='line');
+    if(connectTool)press(connectTool,on&&connectKind!=='line');
   }
   // canvas-tools sets aria-pressed on its own buttons; mirror that.
   new MutationObserver(syncPalette).observe(palette,{subtree:true,attributes:true,attributeFilter:['aria-pressed']});
@@ -345,7 +413,7 @@ function install(studio){
   // One list under three headings; keep in step with public/help.html.
   const keys=[
     ['Tools',[['V  M  H','Select, area, pan'],['B  C  D  R  T','Box, circle, cylinder, diamond, text'],['A  L','Arrow, line (drag to draw)']]],
-    ['Editing',[['Enter · double-click','Edit text (Shift+Enter: new line)'],['⌘D  Del','Duplicate, delete'],['⌘A  Shift-drag','Select all, select area'],['Arrows','Nudge 0.1 in (Shift 1 in, Alt 0.01 in)'],['[  ]  Enter  Esc','Cycle, accept, discard a preview'],['⌘Z  ⇧⌘Z','Undo, redo']]],
+    ['Editing',[['Enter','Accept a preview or apply queued changes; otherwise edit text'],['Double-click','Edit text (Shift+Enter: new line)'],['⌘D  Del','Duplicate, delete'],['⌘A  Shift-drag','Select all, select area'],['Arrows','Nudge 0.1 in (Shift 1 in, Alt 0.01 in)'],['[  ]  Esc','Cycle, discard a preview (queued changes stay)'],['⌘Z  ⇧⌘Z','Undo, redo']]],
     ['View',[['+  −  0  F','Zoom in, out, fit, focus selection'],['Space-drag','Pan over shapes'],['⌘-scroll · pinch','Zoom at pointer'],['/','Find object'],['S  ?','Source drawer, this panel']]],
   ];
   helpPanel.append(el('h2',{},'Shortcuts'),...keys.flatMap(([name,rows])=>[el('h3',{},name),el('dl',{},...rows.flatMap(([k,v])=>[el('dt',{},k),el('dd',{},v)]))]));
@@ -512,10 +580,11 @@ function install(studio){
     const objects=cls.contains('objects-open');
     cls.remove('inspector-open','objects-open');
     showMoreView(objects?'objects':'properties');syncMoreHead();
-    const focus=objects?menuButton:(document.activeElement?.closest('.cl-context button')||more.returnFocus||moreButton);
+    const from=document.activeElement,opener=from&&from!==document.body&&!more.contains(from)&&from.getClientRects().length?from:null;
+    const focus=objects?(opener||(more.hidden?null:more.returnFocus)||diagram):(document.activeElement?.closest('.cl-context button')||more.returnFocus||moreButton);
     toggle(more,moreButton,true);more.returnFocus=focus;
     if(objects)return;
-    const s=$('inspector')?.querySelector('.appearance-editor[open]');if(s){s.scrollIntoView({block:'nearest'});s.querySelector('input,select')?.focus({preventScroll:true});}
+    const s=$('inspector')?.querySelector('.appearance-editor[open]');if(s){s.scrollIntoView({block:'nearest'});[...s.querySelectorAll('button,input,select')].find(e=>e.offsetParent&&!e.disabled)?.focus({preventScroll:true});}
   }).observe(document.body,{attributes:true,attributeFilter:['class']});
   // Choosing an object from the outline returns to its properties, so the
   // list is a way in rather than a place to get stuck.
@@ -580,7 +649,7 @@ function install(studio){
     for(const g of svg.querySelectorAll('[data-pikchr-id]')){const on=ids.has(g.getAttribute('data-pikchr-id'));if(g.classList.contains('cl-selected')!==on)g.classList.toggle('cl-selected',on);}
   }
   function layout(){
-    syncStatus();syncTitle();markSelection();syncCandidate();syncMoreHead();syncMulti();
+    syncStatus();syncTitle();syncExport();markSelection();syncCandidate();syncMoreHead();syncMulti();
     if(arrangedFor!==document.body.clientWidth+'x'+document.body.clientHeight)arrangeChrome();
     if(!more.hidden){
       const padding=(more.querySelector('.cl-popover-head').offsetHeight+8)+'px';
@@ -643,10 +712,18 @@ function install(studio){
     Object.assign(palette.style,{left:'0px',transform:'none',maxWidth:'none',width:''});
     const natural=palette.offsetWidth;palette.style.maxWidth='';
     const docRight=chip.offsetLeft+chip.offsetWidth,docBottom=chip.offsetTop+chip.offsetHeight;
-    const lo=docRight+8,hi=(statusChip.offsetTop<docBottom?statusChip.offsetLeft:vw-12)-8;
+    // The status chip gets a fixed slot rather than its current width: an error
+    // message wraps inside the slot instead of moving the palette and refitting.
+    const STATUS_SLOT=150;
+    const lo=docRight+8,hi=vw-12-STATUS_SLOT-8;
     const bottom=phoneQuery.matches||natural>hi-lo;
     let chipsBottom=12;
-    if(!bottom)palette.style.left=Math.round(Math.max(lo,Math.min(hi-natural,(vw-natural)/2)))+'px';
+    statusChip.style.maxWidth='';
+    if(!bottom){
+      const left=Math.round(Math.max(lo,Math.min(hi-natural,(vw-natural)/2)));
+      palette.style.left=left+'px';
+      statusChip.style.maxWidth=Math.min(360,Math.max(STATUS_SLOT,vw-12-(left+natural+8)))+'px';
+    }
     else{
       const wrap=natural>vw-24;
       body.classList.add('cl-palette-bottom');body.classList.toggle('cl-palette-wrap',wrap);
@@ -666,7 +743,6 @@ function install(studio){
   }
   arrangeChrome();
   new ResizeObserver(arrangeChrome).observe(chip);
-  new ResizeObserver(arrangeChrome).observe(statusChip);
   let refitTimer=0;
   addEventListener('resize',()=>{arrangeChrome();schedule();clearTimeout(refitTimer);refitTimer=setTimeout(()=>{studio.refit?.();schedule();},120);});
   requestAnimationFrame(()=>studio.refit?.());
@@ -726,7 +802,7 @@ function install(studio){
     if(cache.scene!==s.scene||cache.source!==s.source){let list=[];try{list=connectableShapes(s.source,s.scene);}catch{}cache={scene:s.scene,source:s.source,list};}
     return cache.list;
   }
-  const connectMode=()=>connectTool?.getAttribute('aria-pressed')==='true';
+  const connectMode=connecting;
   // The arrow editor draws the connector endpoint handles. They are drawn by
   // another module, so recognise them by their own attribute and let the
   // endpoint gesture own the press: no creation dot or shape drag may start.
@@ -908,7 +984,7 @@ function install(studio){
   // Text is edited where it sits: T places a text object and opens an editor
   // over it; double-click or Enter edits any label. Enter commits, Shift+Enter
   // adds a line, Escape cancels. Commits go through the normal validated path.
-  const textKinds=['box','cylinder','circle','ellipse','oval','diamond','text'];
+  const textKinds=['box','cylinder','circle','ellipse','oval','diamond','file','text'];
   let inline=null,pendingText=0;
   function labelText(o){const s=studio.state();if(!o||!textKinds.includes(o.kind))return null;try{return inspectProperties(s.source,o,s.scene).text;}catch{return null;}}
   function maybeEditNewText(){
@@ -934,33 +1010,67 @@ function install(studio){
     const hidden=[...(group?.querySelectorAll('text')||[])];for(const t of hidden)t.style.visibility='hidden';
     document.body.append(ta);fit();ta.focus();if(created)ta.select();else ta.setSelectionRange(ta.value.length,ta.value.length);
     inline={object,ta,created,original:text,source:s.source,hidden};context.hidden=true;textBar.hidden=true;
-    ta.addEventListener('input',fit);
+    ta.addEventListener('input',()=>{fit();inlineError(null);});
     ta.addEventListener('keydown',e=>{
       e.stopPropagation();
       if(e.key==='Escape'){e.preventDefault();closeInline(false);}
       else if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();closeInline(true);}
     });
-    ta.addEventListener('blur',()=>closeInline(true));
+    ta.addEventListener('blur',()=>{if(inline?.ta===ta&&!inline.busy)closeInline(true,{blurred:true});});
     return true;
   }
-  async function closeInline(commit){
-    const d=inline;if(!d)return;inline=null;
-    d.ta.remove();for(const t of d.hidden)t.style.visibility='';
+  // A refused label is never dropped: the editor stays open with the reason
+  // under it, refocused after Enter and left as it is after a blur.
+  function inlineError(message){
+    const d=inline;if(!d)return;
+    if(!message){d.error?.remove();d.error=null;return;}
+    if(!d.error){d.error=el('p',{class:'cl-inline-error',role:'alert'});document.body.append(d.error);}
+    d.error.textContent=message;
+    const r=d.ta.getBoundingClientRect();
+    Object.assign(d.error.style,{left:r.left+'px',top:(r.bottom+4)+'px',width:Math.max(r.width,220)+'px'});
+  }
+  function removeInline(d){
+    if(inline===d)inline=null;
+    d.ta.remove();d.error?.remove();for(const t of d.hidden)t.style.visibility='';
     diagram.focus({preventScroll:true});schedule();
+  }
+  // A shape that cannot wrap or grow (no explicit position, size expressions)
+  // keeps its size; the reason travels with the edit for the status line.
+  async function labelEdit(s,object,text){
+    const kind=object.kind,modes=kind==='text'?['fixed']:kind==='box'?['wrap','grow','fixed']:['grow','fixed'];
+    let failure;
+    for(const mode of modes){
+      try{return {option:await buildTextEdit(s.source,s.scene,object,{text,mode,width:object.bbox?.width},studio.render),mode,reason:failure?.message};}
+      catch(error){failure=error;if(/plain text|five/.test(error.message))break;}
+    }
+    throw failure;
+  }
+  async function closeInline(commit,{blurred=false}={}){
+    const d=inline;if(!d||d.busy)return;
     const text=d.ta.value.replace(/\r/g,'').replace(/\s+$/,'');
     // A new text that ends up empty is removed again (undo the creation).
-    if(d.created&&(!commit||!text.trim())){$('canvas-undo')?.click();return;}
-    if(!commit||text===d.original)return;
+    if(d.created&&(!commit||!text.trim())){removeInline(d);$('canvas-undo')?.click();return;}
+    if(!commit||text===d.original){removeInline(d);return;}
+    const refuse=message=>{
+      if(inline!==d){$('state').textContent='Label not changed: '+message;return;}
+      inlineError(message);if(!blurred)d.ta.focus();
+    };
     const s=studio.state();
-    if(!s.valid||s.source!==d.source){$('state').textContent='The diagram changed. Edit the text again.';return;}
-    const kind=d.object.kind,mode=kind==='text'?'fixed':kind==='box'?'wrap':'grow';
-    let option;
-    try{option=await buildTextEdit(s.source,s.scene,d.object,{text,mode,width:d.object.bbox?.width},studio.render);}
-    catch(error){
-      if(mode!=='wrap'){$('state').textContent=error.message;return;}
-      try{option=await buildTextEdit(s.source,s.scene,d.object,{text,mode:'grow'},studio.render);}catch(e2){$('state').textContent=e2.message;return;}
-    }
-    await studio.propose([{...option,...(d.object.name?{selectName:d.object.name}:{selectId:d.object.id,targetKind:d.object.kind})}]);
+    if(!s.valid||s.source!==d.source){removeInline(d);$('state').textContent='Label not changed: the diagram changed while you typed. Edit the text again.';return;}
+    if(text.split('\n').length>5)return refuse('Pikchr shows at most five lines of text per shape. Remove some line breaks.');
+    d.busy=true;
+    let edit;
+    try{
+      edit=await labelEdit(s,d.object,text);
+      const check=await studio.render(edit.option.source);
+      if(check.error)throw new Error('Pikchr cannot render this label: '+check.error);
+    }catch(error){d.busy=false;return refuse(error.message);}
+    d.busy=false;
+    if(inline!==d||studio.state().source!==d.source){removeInline(d);$('state').textContent='Label not changed: the diagram changed while you typed. Edit the text again.';return;}
+    removeInline(d);
+    const kept=edit.mode==='fixed'&&d.object.kind!=='text';
+    const applied=await studio.propose([{...edit.option,...(kept?{label:'Change text (keep shape size)'}:{}),...(d.object.name?{selectName:d.object.name}:{selectId:d.object.id,targetKind:d.object.kind})}]);
+    if(applied&&kept)$('state').textContent='Label changed; the shape kept its size. It could not grow to fit: '+edit.reason;
   }
   diagram.addEventListener('dblclick',e=>{
     // Pointer capture on the canvas retargets the event to the SVG root, so
@@ -977,7 +1087,7 @@ function install(studio){
   addEventListener('keydown',e=>{
     if(e.key!=='Enter'||inline||e.shiftKey||e.ctrlKey||e.metaKey||e.altKey)return;
     if(!e.target.closest?.('#diagram')||e.target.closest('input,textarea,select,[data-resize]'))return;
-    if(selectTool?.getAttribute('aria-pressed')!=='true'||(previewActions&&!previewActions.hidden))return;
+    if(selectTool?.getAttribute('aria-pressed')!=='true'||(previewActions&&!previewActions.hidden)||studio.state().queued)return;
     if(openInline(studio.state().object)){e.preventDefault();e.stopImmediatePropagation();}
   },true);
 

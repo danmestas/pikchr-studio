@@ -5,7 +5,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import {createRequire} from 'node:module';
 import {createShape} from '../public/creation.js';
-import {inspectProperties,changeText,fitText} from '../public/properties.js';
+import {inspectProperties,changeText,fitText,colourNames} from '../public/properties.js';
 import {candidates,endpointCandidates} from '../public/edits.js';
 import {changeAppearance,duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove} from '../public/object-actions.js';
 const publicDir=path.resolve(import.meta.dirname,'../public');
@@ -152,4 +152,52 @@ test('a free drop prefers a plain position over an arbitrary offset from a neigh
   const ranked=candidates(source,b,scene,{x:1.37,y:-1.83});
   assert.equal(ranked[0].label,'Place here');
   assert.ok(ranked.some(c=>c.label==='Position relative to A'),'the relation is still offered');
+});
+
+test('every colour name Studio accepts renders in Pikchr, and style edits read and replace them',()=>{
+  for(const name of colourNames)render(`box fill ${name} color ${name}`);
+  const source='A: box "x" fill LightBlue color 0x1a7f37 at (0,0)\nB: file "doc" at (2,0)\n',scene=render(source);
+  const props=inspectProperties(source,scene.objects[0],scene);
+  assert.equal(props.fill,'lightblue');assert.equal(props.color,'#1a7f37');
+  const edited=changeAppearance(source,scene.objects[0],scene,{fill:'lavender',color:'#AABBCC'});
+  assert.equal(edited.source.split('\n')[0],'A: box "x" at (0,0) fill lavender color 0xAABBCC');
+  const moved=render(edited.source);
+  // A shape with any Pikchr colour name stays movable.
+  assert.ok(candidates(edited.source,moved.objects[0],moved,{x:1,y:1}).length);
+  for(const bad of ['transparent','bogus','#abc','rgb(1,2,3)'])
+    assert.throws(()=>changeAppearance(source,scene.objects[0],scene,{fill:bad}),/colour name Pikchr knows/);
+  // An unknown word after fill is an expression, not a colour Studio can replace.
+  const variable='c = 0xff0000\nA: box fill c at (0,0)\n',vs=render(variable);
+  assert.equal(inspectProperties(variable,vs.objects[0],vs).fill,undefined);
+  assert.throws(()=>changeAppearance(variable,vs.objects[0],vs,{fill:'red'}),/expression/);
+  // File shapes carry labels and style like the other native shapes.
+  const file=scene.objects[1];
+  assert.equal(render(changeText(source,file,scene,'notes').source).objects[1].kind,'file');
+  assert.match(changeAppearance(source,file,scene,{fill:'white',thickness:0.03}).source,/B: file "doc" at \(2,0\) fill white thickness 0\.03/);
+});
+
+test('thickness reads thick, thin, units and the document default, and every preset can write or reset it',()=>{
+  const read=statement=>{const source='A: box at (0,0)\nB: box at (2,0)\n'+statement+'\n',scene=render(source);return {source,scene,object:scene.objects[2],props:inspectProperties(source,scene.objects[2],scene)};};
+  const near=(a,b)=>assert.ok(Math.abs(a-b)<1e-9,`${a} != ${b}`);
+  let r=read('E: arrow from A.e to B.w');near(r.props.thickness,0.015);assert.equal(r.props.thicknessSet,false);
+  r=read('E: arrow from A.e to B.w thick');near(r.props.thickness,0.0225);assert.equal(r.props.thicknessSet,true);
+  near(read('C: box thin at (4,0)').props.thickness,0.015*0.67);
+  near(read('C: box thickness 2px at (4,0)').props.thickness,2/96);
+  near(read('C: box thickness 0.02 thick at (4,0)').props.thickness,0.03);
+  const global=(()=>{const source='thickness = 0.02\nA: box at (0,0)\n',scene=render(source);return inspectProperties(source,scene.objects[0],scene);})();
+  near(global.thickness,0.02);assert.equal(global.thicknessSet,false);
+  // Normal (null) resets to the default; a value replaces thick/thin too.
+  r=read('E: arrow from A.e to B.w thick color orange');
+  assert.match(changeAppearance(r.source,r.object,r.scene,{thickness:null}).source,/\nE: arrow from A\.e to B\.w color orange\n/);
+  assert.match(changeAppearance(r.source,r.object,r.scene,{thickness:0.01}).source,/\nE: arrow from A\.e to B\.w thickness 0\.01 color orange\n/);
+  r=read('C: box thick thickness 0.04 at (4,0)');
+  assert.match(changeAppearance(r.source,r.object,r.scene,{thickness:null}).source,/\nC: box at \(4,0\)\n/);
+  assert.match(changeAppearance(r.source,r.object,r.scene,{thickness:0.01}).source,/\nC: box at \(4,0\) thickness 0\.01\n/);
+  assert.match(changeAppearance(r.source,r.object,r.scene,{thickness:'thin'}).source,/\nC: box at \(4,0\) thin\n/);
+  r=read('E: arrow from A.e to B.w thickness 0.04');
+  assert.match(changeAppearance(r.source,r.object,r.scene,{thickness:'thick'}).source,/\nE: arrow from A\.e to B\.w thick\n/);
+  // Connector colours beyond the basic seven stay editable.
+  r=read('E: arrow from A.e to B.w color orange');
+  const purple=changeAppearance(r.source,r.object,r.scene,{color:'purple'});
+  assert.match(purple.source,/\nE: arrow from A\.e to B\.w color purple\n/);render(purple.source);
 });
