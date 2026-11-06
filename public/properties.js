@@ -1,6 +1,6 @@
-import { applyPatch, byteOffsetToIndex, editability, safeAttributes, colourNames, isColour } from './edits.js?v=20261106d';
+import { applyPatch, byteOffsetToIndex, editability, safeAttributes, colourNames, isColour } from './edits.js?v=20261106e';
 export { colourNames, isColour };
-import { macroBlocked } from './macro-detach.js?v=20261106d';
+import { macroBlocked } from './macro-detach.js?v=20261106e';
 
 const bytes = text => new TextEncoder().encode(text).length;
 const kinds = ['box','cylinder','circle','ellipse','oval','diamond','file','line','arrow','text'];

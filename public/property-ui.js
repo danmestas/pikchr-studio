@@ -1,10 +1,13 @@
-import {inspectProperties,isColour,documentThickness} from './properties.js?v=20261106d';
-import {changeAppearance} from './object-actions.js?v=20261106d';
+import {inspectProperties,isColour,documentThickness} from './properties.js?v=20261106e';
+import {changeAppearance} from './object-actions.js?v=20261106e';
 let appearanceOpen=false;
-// Pikchr colour names that read well as fills or as ink. Pikchr's dark mode
-// inverts colours, so light fills and dark inks both keep their contrast.
-const FILLS=['none','white','lightgray','lightyellow','lightgreen','lightblue','pink','lavender'];
-const INKS=['black','gray','red','orange','green','blue','purple'];
+// Pikchr colour names for the swatches. Every ink keeps at least 4.5:1 (WCAG AA)
+// against both canvases (#ffffff, #161b22) and every fill, in light mode and in
+// Pikchr's dark mode, which inverts inks to light and fills to dark. A test
+// renders each pair, so changing a list means re-proving that rule.
+export const FILLS=['none','white','whitesmoke','lightyellow','honeydew','aliceblue','mistyrose','ghostwhite'];
+export const INKS=['black','dimgray','firebrick','darkgreen','blue','purple','saddlebrown'];
+const CANVAS={light:'#ffffff',dark:'#161b22'},MIN_CONTRAST=4.5;
 // Presets use Pikchr's own words: thin (×0.67), the default, thick (×1.5).
 const PRESETS=[['Thin','thin',0.67],['Normal',null,1],['Thick','thick',1.5]];
 const round=n=>Math.round(n*10000)/10000;
@@ -27,6 +30,45 @@ function typedColour(text){
   return isColour(full)?full:null;
 }
 const el=(tag,attrs={},...children)=>{const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs))e.setAttribute(k,v);e.append(...children);return e;};
+
+// Pikchr recolours in dark mode, so a swatch painted with its raw name would
+// lie. The dark colour comes from Pikchr itself: one probe render per batch of
+// colours, cached; swatches repaint when it lands or the theme changes.
+const theme={dark:false,render:null},darkColours=new Map(),liveRows=new Set();
+export function setSwatchTheme(dark,render){
+  theme.dark=!!dark;theme.render=render;
+  for(const row of [...liveRows]){if(row.box.isConnected)row.refresh();else liveRows.delete(row);}
+}
+const cssWord=c=>c.replace(/^#/,'0x');
+async function resolveDark(role,colours){
+  const todo=[...new Set(colours)].filter(c=>c&&!['none','off'].includes(c)&&!darkColours.has(role+':'+c));
+  if(!todo.length||!theme.render)return;
+  const attr=role==='fill'?'fill':'stroke',word=role==='fill'?'fill':'color';
+  const result=await theme.render(todo.map(c=>`box ${word} ${cssWord(c)}`).join('\n'),3);
+  const paths=[...(result?.svg||'').matchAll(/<path[^>]*style="([^"]*)"/g)].map(m=>m[1].match(new RegExp(attr+':rgb\\((\\d+),(\\d+),(\\d+)\\)')));
+  if(paths.length!==todo.length||paths.some(m=>!m))return;
+  todo.forEach((c,k)=>darkColours.set(role+':'+c,'#'+paths[k].slice(1).map(n=>(+n).toString(16).padStart(2,'0')).join('')));
+}
+const luminance=h=>{const v=[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255).map(c=>c<=.03928?c/12.92:((c+.055)/1.055)**2.4);return .2126*v[0]+.7152*v[1]+.0722*v[2];};
+export const contrast=(a,b)=>{const[x,y]=[luminance(a),luminance(b)].sort((p,q)=>q-p);return (x+.05)/(y+.05);};
+// The colour a role shows in a theme, or null when it is not known yet.
+function shownColour(role,colour,dark){
+  if(colour==='none'||colour==='off')return role==='fill'?CANVAS[dark?'dark':'light']:null;
+  return dark?darkColours.get(role+':'+colour)??null:hex(colour);
+}
+// Ink against the fill behind it (or the canvas) in both themes; the message
+// names each theme where it falls short.
+function readability(ink,fill){
+  if(!ink||['none','off'].includes(ink))return '';
+  const bad=[];
+  for(const dark of [false,true]){
+    const i=shownColour('color',ink,dark),f=fill&&fill!=='none'?shownColour('fill',fill,dark):CANVAS[dark?'dark':'light'];
+    if(!i||!f)continue;
+    const ratio=contrast(i,f);
+    if(ratio<MIN_CONTRAST)bad.push(`${dark?'dark':'light'} mode (${ratio.toFixed(1)}:1)`);
+  }
+  return bad.length?'Hard to read in '+bad.join(' and '):'';
+}
 
 // The inspector's Label row, Style section and error line, for the caller to
 // place in order. Connector style controls join Style through its slot.
@@ -76,14 +118,14 @@ export function styleControls({fill,stroke,current,base,apply}){
     note.textContent='';note.hidden=true;
     try{apply(values);return true;}catch(e){note.textContent=e.message;note.hidden=false;return false;}
   };
-  const colourRow=(key,title,value,palette,hint)=>{
+  const colourRow=(key,title,value,palette,hint,partner)=>{
+    const role=key==='fill'?'fill':'color';
     const lower=title.toLowerCase(),mixed=value===null;
-    const note=el('p',{class:'style-error',role:'alert',hidden:''});
+    const note=el('p',{class:'style-error',role:'alert',hidden:''}),warning=el('p',{class:'style-warning',role:'status',hidden:''});
     const group=el('div',{class:'style-swatches',role:'group','aria-label':title});
     const custom=!mixed&&!palette.some(c=>same(c,value));
     for(const colour of palette){
       const b=el('button',{type:'button',class:'style-swatch','data-colour':colour,'aria-label':`${title} ${colour}`,title:colour,'aria-pressed':String(!mixed&&!custom&&same(colour,value))});
-      if(colour!=='none')b.style.setProperty('--swatch',colour);
       b.onclick=()=>{if(mixed||!same(colour,value))request(note,{[key]:colour});};
       group.append(b);
     }
@@ -108,14 +150,38 @@ export function styleControls({fill,stroke,current,base,apply}){
     const row=el('div',{class:'inspector-row style-row'},el('span',{class:'row-name'},title),group);
     const box=el('div',{class:'style-control'},row,fields);
     if(hint)box.append(el('p',{class:'style-hint'},hint));
-    box.append(note);
-    const dot=el('span',{class:'style-dot','data-colour':mixed?'mixed':value});if(!mixed&&value!=='none')dot.style.setProperty('--swatch',value);
+    box.append(warning,note);
+    const dot=el('span',{class:'style-dot','data-colour':mixed?'mixed':value});
     preview.append(dot);
+    // Paint each swatch in the colour the canvas shows in this theme, and warn
+    // when a custom colour is hard to read against what sits behind it.
+    const paint=()=>{
+      for(const target of [...group.querySelectorAll('[data-colour]'),dot]){
+        const colour=target.dataset.colour;
+        if(colour==='none'||colour==='mixed')continue;
+        target.style.setProperty('--swatch',(theme.dark&&darkColours.get(role+':'+colour))||colour);
+      }
+      const other=partner?.();
+      let text='';
+      if(custom&&!mixed&&other!==undefined)text=role==='color'?readability(value,other):readability(other,value);
+      warning.textContent=text;warning.hidden=!text;
+    };
+    const refresh=async()=>{
+      paint();
+      const other=partner?.();
+      await resolveDark(role,[...palette,...(mixed?[]:[value])]);
+      if(role==='color'&&other)await resolveDark('fill',[other]);
+      if(role==='fill'&&other)await resolveDark('color',[other]);
+      if(box.isConnected)paint();
+    };
+    liveRows.add({box,refresh});refresh();
     return box;
   };
-  if(fill)body.append(colourRow('fill','Fill',current.fill===null?null:current.fill??'none',FILLS));
+  // A partner is the other colour the ink sits on or the fill carries; null
+  // (mixed) has no partner, and no fill control means the canvas is behind.
+  if(fill)body.append(colourRow('fill','Fill',current.fill===null?null:current.fill??'none',FILLS,null,()=>current.color===null?undefined:current.color??'black'));
   body.append(colourRow('color',stroke?'Line & text':'Text',current.color===null?null:current.color??'black',INKS,
-    stroke?'Pikchr’s color sets the outline and label together.':null));
+    stroke?'Pikchr’s color sets the outline and label together.':null,()=>fill?(current.fill===null?'none':current.fill??'none'):'none'));
   if(stroke){
     // effective is undefined when the source uses an expression Studio cannot read.
     const effective=current.thickness,known=typeof effective==='number';

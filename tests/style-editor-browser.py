@@ -75,10 +75,10 @@ with sync_playwright() as pw:
     assert src(page) == before, src(page)
 
     # Swatch: applied at once, then shown as the current value.
-    fill.get_by_role("button", name="Fill lightblue", exact=True).click()
-    wait_line(page, 0, 'A: box "A" at (0,0) fill lightblue')
+    fill.get_by_role("button", name="Fill aliceblue", exact=True).click()
+    wait_line(page, 0, 'A: box "A" at (0,0) fill aliceblue')
     section = style(page)
-    expect(section.get_by_role("group", name="Fill", exact=True).get_by_role("button", name="Fill lightblue", exact=True)).to_have_attribute("aria-pressed", "true")
+    expect(section.get_by_role("group", name="Fill", exact=True).get_by_role("button", name="Fill aliceblue", exact=True)).to_have_attribute("aria-pressed", "true")
     expect(section.locator("summary .style-preview")).to_be_visible()
 
     # Custom colour typed as hex.
@@ -87,7 +87,7 @@ with sync_playwright() as pw:
     expect(value).to_be_visible()
     value.fill("#1A7F37")
     value.press("Enter")
-    wait_line(page, 0, 'A: box "A" at (0,0) fill lightblue color 0x1a7f37')
+    wait_line(page, 0, 'A: box "A" at (0,0) fill aliceblue color 0x1a7f37')
     section = style(page)
     # A colour outside the palette shows as Custom with its value.
     expect(section.get_by_role("button", name="Custom line & text colour", exact=True)).to_have_attribute("aria-pressed", "true")
@@ -96,7 +96,7 @@ with sync_playwright() as pw:
 
     # Custom colour from the picker.
     section.get_by_label("Line & text colour picker", exact=True).fill("#123456")
-    wait_line(page, 0, 'A: box "A" at (0,0) fill lightblue color 0x123456')
+    wait_line(page, 0, 'A: box "A" at (0,0) fill aliceblue color 0x123456')
 
     # Invalid custom colour: inline error, no change.
     section = style(page)
@@ -147,11 +147,11 @@ with sync_playwright() as pw:
     select(page, "E")
     section = style(page)
     expect(section.get_by_role("group", name="Fill", exact=True)).to_have_count(0)
-    section.get_by_role("group", name="Line & text", exact=True).get_by_role("button", name="Line & text red", exact=True).click()
-    wait_line(page, 2, "E: arrow from A.e to B.w color red")
+    section.get_by_role("group", name="Line & text", exact=True).get_by_role("button", name="Line & text firebrick", exact=True).click()
+    wait_line(page, 2, "E: arrow from A.e to B.w color firebrick")
     section = style(page)
     section.get_by_role("group", name="Thickness presets", exact=True).get_by_role("button", name="Thin", exact=True).click()
-    wait_line(page, 2, "E: arrow from A.e to B.w color red thin")
+    wait_line(page, 2, "E: arrow from A.e to B.w color firebrick thin")
     # The connector slot keeps its own controls, without a second colour or weight picker.
     section = style(page)
     expect(section.locator(".connector-style-slot")).to_have_count(1)
@@ -169,8 +169,8 @@ with sync_playwright() as pw:
         expect(page.locator("#inspector .inspector-routes")).to_have_count(1)
         return section
     section = connector_controls()
-    section.get_by_role("button", name="Line & text orange", exact=True).click()
-    wait_line(page, 2, "E: arrow from A.e to B.w color orange thin")
+    section.get_by_role("button", name="Line & text saddlebrown", exact=True).click()
+    wait_line(page, 2, "E: arrow from A.e to B.w color saddlebrown thin")
     section = connector_controls()
     section.get_by_role("button", name="Custom line & text colour", exact=True).click()
     value = section.get_by_label("Line & text colour value", exact=True)
@@ -186,8 +186,8 @@ with sync_playwright() as pw:
     section.get_by_label("Line & text colour value", exact=True).press("Enter")
     wait_line(page, 2, "E: arrow from A.e to B.w color 0x1a7f37 thin")
     section = connector_controls()
-    section.get_by_role("button", name="Line & text red", exact=True).click()
-    wait_line(page, 2, "E: arrow from A.e to B.w color red thin")
+    section.get_by_role("button", name="Line & text firebrick", exact=True).click()
+    wait_line(page, 2, "E: arrow from A.e to B.w color firebrick thin")
     connector_controls()
 
     # A thick connector shows Thick, and Normal makes it normal again.
@@ -203,6 +203,60 @@ with sync_playwright() as pw:
     wait_line(page, 2, "E: arrow from A.e to B.w")
     section = style(page)
     expect(section.get_by_role("group", name="Thickness presets", exact=True).get_by_role("button", name="Normal", exact=True)).to_have_attribute("aria-pressed", "true")
+
+    # Readability: a custom ink that is hard to read on the fill warns (never
+    # blocks); a readable one does not. Swatches paint Pikchr's dark colour.
+    set_source(page, SOURCE.replace('B: box "B" at (2,0)', 'B: box "B" at (2,0) fill white'))
+    settled(page)
+    select(page, "B")
+    section = style(page)
+    section.get_by_role("button", name="Custom line & text colour", exact=True).click()
+    value = section.get_by_label("Line & text colour value", exact=True)
+    value.fill("orange")
+    value.press("Enter")
+    wait_line(page, 1, 'B: box "B" at (2,0) fill white color orange')
+    section = style(page)
+    warning = section.locator(".style-warning:visible")
+    expect(warning).to_have_count(1)
+    expect(warning).to_contain_text("Hard to read in light mode")
+    value = section.get_by_label("Line & text colour value", exact=True)
+    value.fill("black")
+    value.press("Enter")
+    wait_line(page, 1, 'B: box "B" at (2,0) fill white color black')
+    expect(style(page).locator(".style-warning:visible")).to_have_count(0)
+    # The palette never warns; a dark custom fill under black ink fails in both themes.
+    section = style(page)
+    section.get_by_role("button", name="Line & text black", exact=True).click()
+    wait_line(page, 1, 'B: box "B" at (2,0) fill white color black')
+    expect(style(page).locator(".style-warning:visible")).to_have_count(0)
+    section = style(page)
+    section.get_by_role("button", name="Custom fill colour", exact=True).click()
+    section.get_by_label("Fill colour value", exact=True).fill("#101010")
+    section.get_by_label("Fill colour value", exact=True).press("Enter")
+    wait_line(page, 1, 'B: box "B" at (2,0) color black fill 0x101010')
+    warning = style(page).locator(".style-warning:visible")
+    expect(warning).to_have_count(1)
+    expect(warning).to_contain_text("light mode")
+    expect(warning).to_contain_text("dark mode")
+    section = style(page)
+    section.get_by_role("group", name="Fill", exact=True).get_by_role("button", name="Fill white", exact=True).click()
+    wait_line(page, 1, 'B: box "B" at (2,0) color black fill white')
+
+    # Dark theme: the white fill swatch shows the near-black the canvas draws.
+    swatch = lambda: style(page).get_by_role("button", name="Fill white", exact=True)
+    light_colour = swatch().evaluate("e=>getComputedStyle(e).backgroundColor")
+    assert light_colour == "rgb(255, 255, 255)", light_colour
+    page.emulate_media(color_scheme="dark")
+    page.wait_for_function("document.body.classList.contains('cl-dark')")
+    settled(page)
+    page.wait_for_function("""()=>{const e=[...document.querySelectorAll('#inspector .style-swatch')].find(b=>b.getAttribute('aria-label')==='Fill white');return e&&getComputedStyle(e).backgroundColor==='rgb(0, 0, 0)'}""")
+    page.emulate_media(color_scheme="light")
+    page.wait_for_function("!document.body.classList.contains('cl-dark')")
+    settled(page)
+    page.wait_for_function("""()=>{const e=[...document.querySelectorAll('#inspector .style-swatch')].find(b=>b.getAttribute('aria-label')==='Fill white');return e&&getComputedStyle(e).backgroundColor==='rgb(255, 255, 255)'}""")
+
+    set_source(page, SOURCE)
+    settled(page)
 
     # Queue mode: the change waits in the queue like other inspector edits.
     set_auto_apply(page, False)

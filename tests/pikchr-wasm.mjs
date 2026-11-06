@@ -35,3 +35,10 @@ export function compileStudio(source) {
   const scene = JSON.parse(stdout);
   return {status: scene.error ? 1 : 0, stdout, stderr: '', scene};
 }
+
+// Like compileSvg with explicit flags (1 plain-text errors, 2 dark mode).
+export function renderSvg(source, flags = PLAINTEXT_ERRORS) {
+  const width = wasm._malloc(8);
+  try { return take(legacy(source, null, flags, width, width + 4)); }
+  finally { wasm._free(width); }
+}

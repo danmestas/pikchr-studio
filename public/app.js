@@ -1,27 +1,27 @@
-import {candidates,snap,applyPatch,byteOffsetToIndex,routeCandidates} from './edits.js?v=20261106d';
-import {routeStyleCandidates} from './route-styles.js?v=20261106d';
-import {correspondingObject} from './candidate-target.js?v=20261106d';
-import {alignmentGuides,gapMarks} from './guides.js?v=20261106d';
-import {constrainDrag,smartSnap} from './constrain.js?v=20261106d';
+import {candidates,snap,applyPatch,byteOffsetToIndex,routeCandidates} from './edits.js?v=20261106e';
+import {routeStyleCandidates} from './route-styles.js?v=20261106e';
+import {correspondingObject} from './candidate-target.js?v=20261106e';
+import {alignmentGuides,gapMarks} from './guides.js?v=20261106e';
+import {constrainDrag,smartSnap} from './constrain.js?v=20261106e';
 const params=new URL(location.href).searchParams;
-import {arrowEditor,connectorCapabilities,connectorLabel,connectorRows,editingBlocked} from './arrow-ui.js?v=20261106d';
-import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20261106d';
-import {propertyEditor,styleControls} from './property-ui.js?v=20261106d';
-import {fitText,canFitText,inspectProperties,readProperties,documentThickness} from './properties.js?v=20261106d';
-import {duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20261106d';
-import {decodeLinkSource,encodeLinkSource,linkFragment,linkPayload} from './link-import.js?v=20261106d';
-import {createDocumentStore} from './documents.js?v=20261106d';
-import {canvasNavigation,clampZoom} from './canvas-navigation.js?v=20261106d';
-import {examplePicker} from './example-picker.js?v=20261106d';
-import {canvasTools} from './canvas-tools.js?v=20261106d';
-import {copySelection,pasteSelection} from './subgraph.js?v=20261106d';
-import {createComponentLibrary} from './component-library.js?v=20261106d';
-import {exportWorkspace,parseWorkspace} from './workspace-backup.js?v=20261106d';
-import {tidyRouteCandidate} from './route-suggestions.js?v=20261106d';
-import {createCandidateReview} from './candidate-review.js?v=20261106d';
-import {cleanSVG,downloadPNG} from './diagram-export.js?v=20261106d';
-import {readSizingPreference,writeSizingPreference} from './sizing-preferences.js?v=20261106d';
-import {detachCandidates,macroBlocked,macroUses} from './macro-detach.js?v=20261106d';
+import {arrowEditor,connectorCapabilities,connectorLabel,connectorRows,editingBlocked} from './arrow-ui.js?v=20261106e';
+import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20261106e';
+import {propertyEditor,styleControls,setSwatchTheme} from './property-ui.js?v=20261106e';
+import {fitText,canFitText,inspectProperties,readProperties,documentThickness} from './properties.js?v=20261106e';
+import {duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20261106e';
+import {decodeLinkSource,encodeLinkSource,linkFragment,linkPayload} from './link-import.js?v=20261106e';
+import {createDocumentStore} from './documents.js?v=20261106e';
+import {canvasNavigation,clampZoom} from './canvas-navigation.js?v=20261106e';
+import {examplePicker} from './example-picker.js?v=20261106e';
+import {canvasTools} from './canvas-tools.js?v=20261106e';
+import {copySelection,pasteSelection} from './subgraph.js?v=20261106e';
+import {createComponentLibrary} from './component-library.js?v=20261106e';
+import {exportWorkspace,parseWorkspace} from './workspace-backup.js?v=20261106e';
+import {tidyRouteCandidate} from './route-suggestions.js?v=20261106e';
+import {createCandidateReview} from './candidate-review.js?v=20261106e';
+import {cleanSVG,downloadPNG} from './diagram-export.js?v=20261106e';
+import {readSizingPreference,writeSizingPreference} from './sizing-preferences.js?v=20261106e';
+import {detachCandidates,macroBlocked,macroUses} from './macro-detach.js?v=20261106e';
 const $=id=>document.getElementById(id);
 const examples={
   pipeline:'Client: box "Client" at (0,0)\nAPI: box "API" at (2,0)\nDatabase: cylinder "Database" at (4,0)\narrow from Client.e to API.w\narrow from API.e to Database.w\n',
@@ -1225,7 +1225,7 @@ window.pikchrStudio={
     valid:!!scene&&!rendering&&source.value===renderedSource&&!$('diagram').classList.contains('stale')}),
   render,propose:options=>validateSuggestions(null,options),select:id=>select(id,false,false,true),
   modelToScreen:p=>{const svg=$('diagram').querySelector('svg');if(!scene||!svg?.getScreenCTM())return null;return new DOMPoint(p.x,p.y).matrixTransform(matrix()).matrixTransform(svg.getScreenCTM());},
-  setDark:on=>{const flags=on?3:1;if(flags===renderFlags)return;renderFlags=flags;for(const id of lastValid.keys())if(id!==activeDocumentId)lastValid.delete(id);if(source.value.trim()||scene)renderSource();},
+  setDark:on=>{setSwatchTheme(on,render);const flags=on?3:1;if(flags===renderFlags)return;renderFlags=flags;for(const id of lastValid.keys())if(id!==activeDocumentId)lastValid.delete(id);if(source.value.trim()||scene)renderSource();},
   refit:()=>{const svg=$('diagram').querySelector('svg');const box=svg?.dataset.exportViewBox;if(!box)return;const [x,y,w,h]=box.split(/[ ,]+/).map(Number);svg.dataset.fitViewBox=fitBox(x,y,w,h);if(zoom===1&&pan.x===0&&pan.y===0){svg.dataset.baseViewBox=svg.dataset.fitViewBox;applyViewport();refreshHandles();}},
   title:()=>activeDocumentTitle,
   setFitInsets:insets=>{fitInsets={top:0,right:0,bottom:0,left:0,...insets};},
