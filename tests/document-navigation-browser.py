@@ -1,4 +1,4 @@
-"""Saved documents remain reachable without enabling advanced tools."""
+"""Saved documents are always reachable from the menu, in order, by keyboard."""
 import os
 from playwright.sync_api import expect, sync_playwright
 from browser_helpers import open_document_menu, set_source, reveal, open_document
@@ -14,7 +14,6 @@ with sync_playwright() as pw:
     page.on("pageerror", lambda error: errors.append(str(error)))
     page.goto(STUDIO + "/")
     open_document_menu(page)
-    expect(page.locator("#advanced-mode")).not_to_be_checked()
     documents = page.locator("#documents")
     source = page.locator("#source")
 
@@ -24,7 +23,7 @@ with sync_playwright() as pw:
 
     def reachable():
         open_document_menu(page)
-        rows = page.locator(".cl-recent button")
+        rows = page.locator(".cl-recent button[data-id]")
         expect(rows.first).to_be_visible()
         assert rows.count() == documents.locator("option").count()
         page.locator("#new-document").focus()
@@ -55,15 +54,16 @@ with sync_playwright() as pw:
         expect(documents).to_have_value(target)
         saved(text)
 
-    # Advanced tools changes other controls, never basic document navigation.
+    # Opening the Advanced disclosure changes nothing about document navigation.
     for advanced in (True, False):
         open_document_menu(page)
-        page.locator("#advanced-mode").set_checked(advanced)
+        details = page.locator("details.cl-advanced")
+        if (details.get_attribute("open") is not None) != advanced:
+            details.locator("summary").click()
         reachable()
     page.reload()
     saved(FIRST)
     reachable()
-    expect(page.locator("#advanced-mode")).not_to_be_checked()
     open_document(page, id=second)
     saved(SECOND)
     reachable()
@@ -72,4 +72,4 @@ with sync_playwright() as pw:
     assert not errors, errors
     browser.close()
     print("PASS: default-mode saved documents are visible and keyboard reachable; "
-          "independent sources survive switching, advanced-mode toggles, and reload")
+          "independent sources survive switching, the Advanced disclosure, and reload")

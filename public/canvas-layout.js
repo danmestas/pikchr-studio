@@ -67,6 +67,7 @@ function install(studio){
   // Paths are Lucide (lucide.dev, ISC license): 24-unit, round caps and joins,
   // drawn at the one stroke weight iconMarkup sets.
   const CHROME_ICONS={
+    trash:[['path',{d:'M3 6h18'}],['path',{d:'M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6'}],['path',{d:'M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2'}],['path',{d:'M10 11v6'}],['path',{d:'M14 11v6'}]],
     menu:[['path',{d:'M4 5h16'}],['path',{d:'M4 12h16'}],['path',{d:'M4 19h16'}]],
     source:[['path',{d:'m18 16 4-4-4-4'}],['path',{d:'m6 8-4 4 4 4'}],['path',{d:'m14.5 4-5 16'}]],
     export:[['path',{d:'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'}],['path',{d:'m7 10 5 5 5-5'}],['path',{d:'M12 15V3'}]],
@@ -97,7 +98,7 @@ function install(studio){
 
   const menuButton=el('button',{type:'button',class:'cl-icon','aria-label':'Menu',title:'Menu','aria-expanded':'false'},iconMarkup(CHROME_ICONS.menu));
   const sourceButton=el('button',{type:'button',class:'cl-icon','aria-label':'Source','aria-pressed':'false',title:'Source (S)'},iconMarkup(CHROME_ICONS.source));
-  const title=el('strong',{class:'cl-title'},'Untitled');
+  const title=el('button',{type:'button',class:'cl-title',title:'Rename document'},'Untitled');
   const exportButton=el('button',{type:'button',class:'cl-icon','aria-label':'Export',title:'Export','aria-expanded':'false'},iconMarkup(CHROME_ICONS.export));
   const chip=el('div',{class:'cl-float cl-doc'},menuButton,title,el('span',{class:'cl-sep'}),sourceButton,exportButton);
   document.body.append(chip);
@@ -116,22 +117,39 @@ function install(studio){
   const documents=$('documents');
   const recent=el('div',{class:'cl-recent','aria-label':'Saved documents'});
   const ago=t=>{const s=Math.max(0,(Date.now()-t)/1000);return s<45?'just now':s<3600?Math.round(s/60)+' min ago':s<86400?Math.round(s/3600)+' h ago':s<604800?Math.round(s/86400)+' d ago':new Date(t).toLocaleDateString();};
+  // Deleting asks first, in place, and says what is removed: only this browser's copy.
+  let confirming=null;
+  function confirmRow(o){
+    const yes=el('button',{type:'button',class:'cl-danger'},'Delete'),no=el('button',{type:'button'},'Cancel');
+    yes.onclick=()=>{confirming=null;studio.removeDocument?.(o.value);syncRecent();recent.querySelector('button[data-id]')?.focus();};
+    no.onclick=()=>{confirming=null;syncRecent();recent.querySelector(`.cl-recent-row [data-id="${o.value}"]`)?.nextElementSibling?.focus();};
+    return el('div',{class:'cl-recent-confirm',role:'group','aria-label':'Confirm delete'},
+      el('p',{},'Delete \u201c'+o.textContent+'\u201d? This removes the document, its undo history and queued changes from this browser. It cannot be undone. Backups you downloaded are not affected.'),
+      el('div',{class:'cl-row'},yes,no));
+  }
   function syncRecent(){
     if(!documents)return;
     const all=[...documents.options],keep=all.slice(0,5);
     const active=all.find(o=>o.value===documents.value);if(active&&!keep.includes(active))keep.push(active);
+    if(confirming&&!keep.some(o=>o.value===confirming))confirming=null;
     recent.replaceChildren(...keep.map(o=>{
+      if(o.value===confirming)return confirmRow(o);
       const on=o===active,b=el('button',{type:'button','data-id':o.value,'aria-current':on?'true':null},el('span',{class:'cl-recent-name'},o.textContent),el('span',{class:'cl-muted'},o.dataset.updated?ago(+o.dataset.updated):''));
-      b.onclick=()=>{toggle(menu,menuButton,false);if(on)return;documents.value=o.value;documents.dispatchEvent(new Event('change',{bubbles:true}));};
-      return b;
+      b.onclick=()=>{toggle(menu,menuButton,false);menuButton.focus();if(on)return;documents.value=o.value;documents.dispatchEvent(new Event('change',{bubbles:true}));};
+      const del=el('button',{type:'button',class:'cl-recent-delete','aria-label':'Delete '+o.textContent,title:'Delete this document'},iconMarkup(CHROME_ICONS.trash));
+      del.onclick=()=>{confirming=o.value;syncRecent();recent.querySelector('.cl-recent-confirm button:last-child')?.focus();};
+      return el('div',{class:'cl-recent-row'},b,del);
     }));
   }
   const saveState=$('save-state');saveState?.classList.add('cl-muted','cl-save-state');
   const newDoc=$('new-document'),openDoc=$('open-document');
   if(newDoc)newDoc.textContent='New';if(openDoc)openDoc.textContent='Open file…';
   const examples=$('choose-example');if(examples)examples.textContent='Examples…';
+  // The menu would otherwise stay open behind the dialog and swallow its first Escape.
+  examples?.addEventListener('click',()=>toggle(menu,menuButton,false));
+  $('example-picker')?.addEventListener('close',()=>menuButton.focus());
   const docSection=section('Document',row(newDoc,openDoc,examples,$('file-input')),recent,saveState);
-  const prefsSection=section('Preferences',labelled('anchors','Show anchors'),labelled('auto-apply','Apply accepted changes immediately'),labelled('snap-resize','Snap resize to 0.1 in'),labelled('advanced-mode','Advanced tools'));
+  const prefsSection=section('Preferences',labelled('anchors','Show anchors'),labelled('auto-apply','Apply accepted changes immediately'),labelled('snap-resize','Snap resize to 0.1 in'));
   const view=q('.canvas-view-options');if(view)view.hidden=true;
   // Changes live in a popover opened from the status chip (see syncStatus).
   const draft=q('.draft-toolbar'),queueStatus=$('queue-status');
@@ -153,6 +171,7 @@ function install(studio){
     components.replaceChildren(sum,
       el('div',{class:'cl-component-row'},field('Name',$('component-name')),$('save-component')),
       el('div',{class:'cl-component-row'},field('Components',$('components')),$('insert-component')));
+    componentsDialog.addEventListener('close',()=>menuButton.focus());
     const closeComponents=el('button',{type:'button'},'Close');closeComponents.onclick=()=>componentsDialog.close();
     componentsDialog.append(el('div',{class:'example-heading'},el('h2',{id:'components-title'},'Reusable components'),closeComponents),el('p',{},'Saved on this browser, separately from document backups. Save the current selection, then insert it into any document.'),components);
     document.body.append(componentsDialog);
@@ -161,8 +180,8 @@ function install(studio){
   componentsButton.onclick=()=>{toggle(menu,menuButton,false);componentsDialog.showModal();};
   const backup=$('backup-workspace'),restore=$('restore-workspace');
   if(backup)backup.textContent='Back up documents…';if(restore)restore.textContent='Restore…';
-  const advancedSection=section('Advanced',row(componentsButton,backup,restore,$('backup-input')));
-  advancedSection.classList.add('cl-advanced-only');
+  const advancedSection=section('',el('details',{class:'cl-advanced'},el('summary',{},'Advanced'),row(componentsButton,backup,restore,$('backup-input'))));
+  advancedSection.setAttribute('aria-label','Advanced');
   // Footer: where the code lives, and credit for the Pikchr renderer.
   const link=(href,text)=>{const a=el('a',{href,class:'cl-link'},text);if(/^https?:/.test(href)){a.target='_blank';a.rel='noopener';}return a;};
   if(help){help.textContent='How it works';help.classList.add('cl-link');}
@@ -174,7 +193,7 @@ function install(studio){
   // Remaining toolbar controls (render, undo, redo, downloads, the documents
   // select) stay reachable by id but off-stage; the export menu takes the downloads.
   if(nav){nav.classList.add('cl-offstage');document.body.append(nav);}
-  menuButton.onclick=()=>{syncRecent();toggle(menu,menuButton);};
+  menuButton.onclick=()=>{confirming=null;syncRecent();toggle(menu,menuButton);};
   const exportMenu=popover('cl-export','Export');
   // Two titled groups share one "Selection only" switch. The buttons are declared in
   // index.html and moved here, so each keeps its id and handler.
@@ -189,15 +208,56 @@ function install(studio){
   const selectionOnly=$('selection-only'),selectionLabel=selectionOnly?.closest('label');
   if(selectionLabel){selectionLabel.classList.add('cl-check-row');selectionLabel.replaceChildren(selectionOnly,el('span',{},'Selection only'));}
   const selectionHint=el('span',{id:'selection-only-hint',class:'cl-muted'},'select objects first');
+  const exportNote=el('p',{id:'export-note',class:'cl-muted cl-export-note',role:'status',hidden:''});
   const fallback=el('div',{id:'copy-fallback',class:'cl-copy-fallback',hidden:''},el('label',{class:'cl-field'},el('span',{class:'cl-field-name'},'Copy this text yourself'),el('textarea',{readonly:'',rows:'4',spellcheck:'false','aria-label':'Text to copy manually'})));
   exportMenu.append(el('strong',{},'Export'),
     section('Copy',exportItem('copy-link','Copy','link','Share link'),exportItem('copy-source','Copy','code','Pikchr source'),exportItem('copy-svg','Copy','svg','SVG')),
     section('Download',exportItem('export-svg','Download','svg','SVG'),exportItem('export-png','Download','png','PNG'),exportItem('download','Download','file','Source (.pikchr)')),
-    el('div',{class:'cl-export-scope'},selectionLabel,selectionHint),fallback);
-  exportButton.onclick=()=>toggle(exportMenu,exportButton);
+    el('div',{class:'cl-export-scope'},selectionLabel,selectionHint),exportNote,fallback);
+  // The source drawer sits where this popover opens; one closes when the other opens.
+  exportButton.onclick=()=>{
+    if(exportMenu.hidden&&drawer.classList.contains('open')){drawer.classList.remove('open');sourceButton.setAttribute('aria-pressed','false');}
+    toggle(exportMenu,exportButton);
+  };
+  // Image exports need a valid render, and Source always exports the whole document.
+  const INVALID_REASON='Fix the syntax error to export',WHOLE_REASON='Source always exports the whole document';
+  function setOff(button,off,why){
+    if(!button)return;
+    if(button.disabled!==off)button.disabled=off;
+    if(off){if(button.title!==why)button.title=why;}else if(button.hasAttribute('title'))button.removeAttribute('title');
+  }
+  function syncExport(){
+    const invalid=diagram.classList.contains('stale')&&!!$('diagnostic')?.textContent.trim();
+    const scoped=!!selectionOnly&&selectionOnly.checked&&!selectionOnly.disabled;
+    for(const id of ['copy-svg','export-svg','export-png'])setOff($(id),invalid,INVALID_REASON);
+    for(const id of ['copy-source','download'])setOff($(id),scoped,WHOLE_REASON);
+    const note=[invalid&&INVALID_REASON,scoped&&WHOLE_REASON].filter(Boolean).join('. ');
+    if(exportNote.textContent!==note)exportNote.textContent=note;
+    if(exportNote.hidden!==!note)exportNote.hidden=!note;
+  }
+  selectionOnly?.addEventListener('change',syncExport);
   const syncTitle=()=>{const own=studio.title?.();const text=own||documents?.selectedOptions?.[0]?.textContent?.trim();const next=text&&text!=='Current diagram'?text:'Untitled';if(title.textContent!==next)title.textContent=next;};
   documents?.addEventListener('change',()=>{syncTitle();syncRecent();});syncTitle();syncRecent();
   if(documents)new MutationObserver(()=>{syncTitle();syncRecent();}).observe(documents,{childList:true,subtree:true,characterData:true});
+  // Rename: click or Enter on the title edits it in place; Enter saves, Escape cancels.
+  // A name the author gave stops the automatic one (the first label).
+  title.onclick=()=>{
+    const initial=title.textContent;
+    const input=el('input',{class:'cl-title-input',type:'text',maxlength:'100','aria-label':'Document name',placeholder:'Untitled',value:initial});
+    let done=false;
+    const finish=(save,refocus=true)=>{
+      if(done)return;done=true;
+      const value=input.value;
+      input.replaceWith(title);if(refocus)title.focus();
+      if(save&&value.trim()!==initial)studio.rename?.(value);
+    };
+    input.onkeydown=e=>{
+      if(e.key==='Enter'){e.preventDefault();finish(true);}
+      else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finish(false);}
+    };
+    input.onblur=()=>finish(true,false);
+    title.replaceWith(input);input.focus();input.select();
+  };
 
   // ---- source drawer ---------------------------------------------------------
   const drawer=el('section',{class:'cl-drawer','aria-label':'Source drawer'});
@@ -490,7 +550,8 @@ function install(studio){
     const objects=cls.contains('objects-open');
     cls.remove('inspector-open','objects-open');
     showMoreView(objects?'objects':'properties');syncMoreHead();
-    const focus=objects?menuButton:(document.activeElement?.closest('.cl-context button')||more.returnFocus||moreButton);
+    const from=document.activeElement,opener=from&&from!==document.body&&!more.contains(from)&&from.getClientRects().length?from:null;
+    const focus=objects?(opener||(more.hidden?null:more.returnFocus)||diagram):(document.activeElement?.closest('.cl-context button')||more.returnFocus||moreButton);
     toggle(more,moreButton,true);more.returnFocus=focus;
     if(objects)return;
     const s=$('inspector')?.querySelector('.appearance-editor[open]');if(s){s.scrollIntoView({block:'nearest'});s.querySelector('input,select')?.focus({preventScroll:true});}
@@ -548,7 +609,7 @@ function install(studio){
     for(const g of svg.querySelectorAll('[data-pikchr-id]')){const on=ids.has(g.getAttribute('data-pikchr-id'));if(g.classList.contains('cl-selected')!==on)g.classList.toggle('cl-selected',on);}
   }
   function layout(){
-    syncStatus();syncTitle();markSelection();syncCandidate();syncMoreHead();
+    syncStatus();syncTitle();syncExport();markSelection();syncCandidate();syncMoreHead();
     if(!more.hidden){
       const padding=(more.querySelector('.cl-popover-head').offsetHeight+8)+'px';
       if(more.style.scrollPaddingTop!==padding)more.style.scrollPaddingTop=padding;

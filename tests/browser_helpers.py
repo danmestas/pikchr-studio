@@ -54,14 +54,20 @@ def open_adding(page):
     """The palette chevron's Adding shapes popover."""
     _open(page, ADDING, '.cl-palette [aria-label="Adding shapes"]')
 
+def open_advanced(page):
+    """Expand the menu's collapsed Advanced disclosure."""
+    details = page.locator('.cl-menu details.cl-advanced')
+    if details.get_attribute('open') is None:
+        details.locator('summary').click()
+    expect(details.locator('#open-components')).to_be_visible()
+
 def open_components(page):
     """☰ › Advanced › Components… (turns on Advanced tools first)."""
     dialog = page.locator('#components-dialog')
     if dialog.is_visible():
         return dialog
     open_document_menu(page)
-    if not page.locator('#advanced-mode').is_checked():
-        page.locator('#advanced-mode').check()
+    open_advanced(page)
     page.locator('#open-components').click()
     expect(dialog).to_be_visible()
     return dialog
@@ -133,6 +139,8 @@ def reveal(page, selector):
             open_adding(page)
         elif where['menu']:
             open_document_menu(page)
+            if page.evaluate("sel=>!!document.querySelector(sel).closest('details.cl-advanced')", selector):
+                open_advanced(page)
         elif where['more']:
             open_more(page)
         elif where['exp']:

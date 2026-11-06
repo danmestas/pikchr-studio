@@ -30,6 +30,8 @@ const examples={
 };
 const source=$('source');
 source.value=examples.pipeline;
+// Each document's own last valid render; an invalid document never shows another's.
+const lastValid=new Map();let diagramOwner=null;
 let worker,requests=new Map(),requestId=0,revision=0,scene=null,renderedSource='',selectedId=null,proposal=null,gesture=0,preview=null;
 const undo=[],redo=[];
 const draft=[];
@@ -50,12 +52,6 @@ let routeReview=null,clipboardFragment=null,pasteCount=0;
 let sizingPreferences={};
 let viewportDocumentId=null;
 const componentLibrary=createComponentLibrary();
-// Advanced tools (components, document store, arrange, shape conversion) stay
-// out of the way until asked for, so the core drag-to-source loop is the product.
-let advanced=params.get('advanced')==='1'||(()=>{try{return localStorage.getItem('pikchr-studio-advanced')==='1';}catch{return false;}})();
-function applyAdvanced(){document.body.classList.toggle('advanced',advanced);$('advanced-mode').checked=advanced;}
-$('advanced-mode').onchange=()=>{advanced=$('advanced-mode').checked;try{localStorage.setItem('pikchr-studio-advanced',advanced?'1':'0');}catch{}applyAdvanced();status(advanced?'Advanced tools shown.':'Advanced tools hidden.');};
-applyAdvanced();
 // inspector-open / objects-open ask the layout to open the ⋯ inspector popover.
 function openInspector(){document.body.classList.remove('objects-open','creation-open');document.body.classList.add('inspector-open');$('inspector').scrollIntoView({block:'nearest'});}
 $('mobile-objects').onclick=()=>{document.body.classList.remove('inspector-open','creation-open');document.body.classList.toggle('objects-open');};
@@ -195,11 +191,17 @@ async function renderSource(preRendered=null){
   if(rev!==revision)return;
   if(result.unavailable){showRendererDown();return;}
   $('diagram').classList.remove('renderer-down');$('diagram').querySelector('.renderer-down-card')?.remove();
-  if(result.error||!result.svg){announceError(result.error||'No diagram returned.');$('diagram').classList.add('stale');status('Invalid source. Last valid diagram retained; editing disabled.');return;}
+  if(result.error||!result.svg){
+    if(diagramOwner!==activeDocumentId){
+      const keep=lastValid.get(activeDocumentId);
+      scene=keep?.scene||null;renderedSource=keep?.source??'';$('diagram').innerHTML=keep?.svg||'';diagramOwner=activeDocumentId;if(scene)populateObjects();else $('objects').replaceChildren();select(null,false,false,true);
+    }
+    announceError(result.error||'No diagram returned.');$('diagram').classList.add('stale');
+    status($('diagram').querySelector('svg')?'Invalid source. Last valid diagram retained; editing disabled.':'Invalid source. Nothing to show yet; editing disabled.');return;}
   scene=result;
   if(manualEditBase!==null){if(manualEditBase!==text){undo.push(manualEditBase);redo.length=0;}manualEditBase=null;historyButtons();}
   for(const o of scene.objects){if(o.kind==='text'&&candidates(text,o,scene,o.center).length)o.editable=true;if(o.editable&&!candidates(text,o,scene,o.center).length){o.editable=false;o.reason='Placement or attributes are outside the supported literal subset.';}}
-  renderedSource=text;$('diagram').innerHTML=result.svg;$('diagram').classList.remove('stale','previewing');announceError('');
+  renderedSource=text;$('diagram').innerHTML=result.svg;diagramOwner=activeDocumentId;lastValid.set(activeDocumentId,{svg:result.svg,scene:result,source:text});$('diagram').classList.remove('stale','previewing');announceError('');
   modeHint();
   const matches=scene.objects.filter(o=>o.name&&o.name===(desiredName||name));
   const saved=selectionHistory.get(text);
@@ -1182,6 +1184,17 @@ window.pikchrStudio={
   setDark:on=>{const flags=on?3:1;if(flags===renderFlags)return;renderFlags=flags;if(source.value.trim()||scene)renderSource();},
   refit:()=>{const svg=$('diagram').querySelector('svg');const box=svg?.dataset.exportViewBox;if(!box)return;const [x,y,w,h]=box.split(/[ ,]+/).map(Number);svg.dataset.fitViewBox=fitBox(x,y,w,h);if(zoom===1&&pan.x===0&&pan.y===0){svg.dataset.baseViewBox=svg.dataset.fitViewBox;applyViewport();refreshHandles();}},
   title:()=>activeDocumentTitle,
+  // An explicit name is stored with the document and stops the automatic one (first label).
+  rename:text=>{
+    const name=String(text).trim().slice(0,100),before=activeDocumentTitle;
+    activeDocumentTitle=name||null;
+    const saved=persistDocument();
+    if(!saved.ok)activeDocumentTitle=before;
+    status(saved.ok?(name?'Renamed to '+name:'Using the automatic name'):'Not renamed: '+saved.error);
+    return saved.ok;
+  },
+  // Removes one stored document. Deleting the open one opens the next most recent, or a blank one.
+  removeDocument:id=>removeDocument(id),
   // Pan (never zoom) just enough that the selection sits inside the screen band between
   // `top` px from the top and `bottom` px from the bottom, e.g. above a bottom sheet.
   reveal:({top=0,bottom=0}={})=>{
@@ -1214,7 +1227,7 @@ document.addEventListener('keydown',e=>{
 $('render').onclick=renderSource;
 $('download').onclick=()=>{
   const url=URL.createObjectURL(new Blob([source.value],{type:'text/plain;charset=utf-8'})),a=document.createElement('a');
-  a.href=url;a.download='diagram.pikchr';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  a.href=url;a.download='diagram.pikchr';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);status('Downloaded diagram.pikchr');
 };
 function restoreDocument(state,preRendered=null){
   routeReview?.cancel();
@@ -1229,7 +1242,7 @@ function restoreDocument(state,preRendered=null){
   // undone — keeps its mode: a queued redo only exists in queue mode.
   const queued=!!state.draft.length||!!state.draftRedo?.length;
   $('auto-apply').checked=queued?!!state.autoApply:!prefersQueue();applied=state.applied;selectedId=null;selectedIds.clear();
-  zoom=1;pan={x:0,y:0};++revision;return renderSource(preRendered);
+  zoom=1;pan={x:0,y:0};$('zoom-level').textContent='100%';++revision;return renderSource(preRendered);
 }
 async function newDocument(text='',preRendered=null,title=null){
   const saved=persistDocument();if(!saved.ok){status('Not opened: '+saved.error+' Download your source before switching documents.');return false;}
@@ -1240,6 +1253,19 @@ async function newDocument(text='',preRendered=null,title=null){
 $('new-document').onclick=()=>newDocument();
 $('open-document').onclick=()=>$('file-input').click();
 $('file-input').onchange=async e=>{const file=e.target.files[0];if(!file)return;if(file.size>2*1024*1024){status('File must be smaller than 2 MB.');return;}newDocument(await file.text());e.target.value='';};
+function removeDocument(id){
+  if(!storageReady)return false;
+  const title=documents.list().find(item=>item.id===id)?.title||'Untitled',wasActive=id===activeDocumentId;
+  try{
+    if(wasActive)clearTimeout(saveTimer);
+    documents.remove(id);
+    if(!wasActive){refreshDocuments();status('Deleted '+title+' from this browser.');return true;}
+    const next=documents.list()[0];
+    if(next){const record=documents.open(next.id);activeDocumentId=next.id;refreshDocuments();restoreDocument(record.state);}
+    else{activeDocumentId=documents.create();refreshDocuments();restoreDocument({source:'',draft:[],draftBase:null,undo:[],redo:[],autoApply:!prefersQueue(),applied:false});}
+    status('Deleted '+title+' from this browser.');return true;
+  }catch(error){status('Not deleted: '+error.message);return false;}
+}
 $('documents').onchange=()=>{const id=$('documents').value;const saved=persistDocument();if(!saved.ok){$('documents').value=activeDocumentId;status('Not opened: '+saved.error);return;}try{const record=documents.open(id);if(record){activeDocumentId=id;refreshDocuments();restoreDocument(record.state);}}catch(error){status(error.message);}};
 // "Selection only" crops Copy SVG, Download SVG and Download PNG to the selected objects.
 const cropped=()=>{const c=$('selection-only');return !!c&&c.checked&&!c.disabled;};
@@ -1248,10 +1274,10 @@ async function exportedSVG(verb){
   const svg=await exportSvgElement();if(!svg)throw Error('Nothing to export yet.');
   return cleanSVG(svg,cropped()?{bounds:selectedBounds()}:{});
 }
-$('export-svg').onclick=async()=>{try{downloadFile(await exportedSVG('exporting'),cropped()?'selection.svg':'diagram.svg','image/svg+xml');}catch(e){status(e.message);}};
+$('export-svg').onclick=async()=>{try{const name=cropped()?'selection.svg':'diagram.svg';downloadFile(await exportedSVG('exporting'),name,'image/svg+xml');status('Downloaded '+name);}catch(e){status(e.message);}};
 function downloadFile(data,name,type){const url=URL.createObjectURL(new Blob([data],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function selectedBounds(){const objects=scene?.objects.filter(o=>selectedIds.has(o.id));if(!objects?.length)throw Error('Select objects to export.');const p=objects.flatMap(o=>[svgPoint({x:o.bbox.x,y:o.bbox.y}),svgPoint({x:o.bbox.x+o.bbox.width,y:o.bbox.y+o.bbox.height})]);const xs=p.map(p=>p.x),ys=p.map(p=>p.y);return{x:Math.min(...xs),y:Math.min(...ys),width:Math.max(...xs)-Math.min(...xs),height:Math.max(...ys)-Math.min(...ys)};}
-$('export-png').onclick=async()=>{try{if(source.value!==renderedSource)throw Error('Render the current source first.');await downloadPNG(await exportSvgElement(),cropped()?'selection.png':'diagram.png',cropped()?{bounds:selectedBounds()}:{});status('PNG downloaded.');}catch(e){status(e.message);}};
+$('export-png').onclick=async()=>{try{if(source.value!==renderedSource)throw Error('Render the current source first.');await downloadPNG(await exportSvgElement(),cropped()?'selection.png':'diagram.png',cropped()?{bounds:selectedBounds()}:{});status('Downloaded '+(cropped()?'selection.png':'diagram.png'));}catch(e){status(e.message);}};
 // Copy actions write plain text to the clipboard. If it refuses, the text goes to a
 // selectable field in the export popover so nothing is lost.
 async function copyText(label,make){
@@ -1286,7 +1312,7 @@ routeReview=createCandidateReview({host:$('diagram'),render,propose:validateSugg
 $('tidy-route').onclick=()=>{directTools.cancel(false);try{const option=tidyRouteCandidate(source.value,scene,current());if(option.source===source.value){status('This connector already takes the tidiest route. Nothing to change.');return;}routeReview.review(option);}catch(error){status(error.message);}};
 refreshComponents();
 window.addEventListener('pagehide',persistDocument);
-try{const record=documents.load();storageReady=true;if(record){activeDocumentId=record.id;restoreDocument(record.state);}else{activeDocumentId=documents.create();renderSource();}}catch(error){$('save-state').textContent='Recovery needed: '+error.message;renderSource();}
+try{const record=documents.load();storageReady=true;if(record){activeDocumentId=record.id;refreshDocuments();restoreDocument(record.state);}else{activeDocumentId=documents.create();renderSource();}}catch(error){$('save-state').textContent='Recovery needed: '+error.message;renderSource();}
 const sample=params.get('sample');
 const samplePaths={'polished-gates':'ux-audit/polished-gates.pikchr','polished-stacks':'ux-audit/polished-stacks.pikchr','gitflow-mobile':'ux-audit/gitflow-mobile.pikchr','gitflow-guide':'examples/gitflow.pikchr'};
 async function loadSample(key){if(!samplePaths[key])return;try{const response=await fetch(samplePaths[key]);if(!response.ok)throw Error('Could not load example.');await newDocument(await response.text());history.replaceState(null,'',location.pathname);}catch(error){status(error.message);}}

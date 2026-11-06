@@ -78,6 +78,15 @@ export function createDocumentStore({local=globalThis.localStorage,session=globa
       current=id;baseline=null;blocked=false;
       return id;
     },
+    // Deletes only this record from browser storage; backups already downloaded are separate files.
+    remove(id){
+      storage();
+      if(!validId(id))throw Error('Invalid document ID.');
+      local.removeItem(PREFIX+id);
+      if(local.getItem(LAST)===id)local.removeItem(LAST);
+      if(session.getItem(CURRENT)===id)session.removeItem(CURRENT);
+      if(current===id){current=null;baseline=null;blocked=false;}
+    },
     save(state){
       try{
         storage();
