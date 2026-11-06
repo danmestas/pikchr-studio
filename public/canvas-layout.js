@@ -234,12 +234,16 @@ function install(studio){
     clearTimeout(toastTimer);toastTimer=setTimeout(()=>{toast.classList.add('cl-fade');toastTimer=setTimeout(()=>{toast.hidden=true;},400);},3000);
   }).observe(statusText,{childList:true,characterData:true,subtree:true});
   const diagnostic=$('diagnostic');if(diagnostic){diagnostic.setAttribute('aria-live','assertive');statusChip.append(diagnostic);}
+  // A syntax error is fixed in the source, so the error offers it directly.
+  const fixSource=el('button',{type:'button',class:'cl-fix-source',hidden:''},'Open Source to fix (S)');
+  fixSource.onclick=()=>setDrawer(true);statusChip.append(fixSource);
   document.body.append(statusChip);
   function syncStatus(){
     const s=studio.state(),invalid=diagram.classList.contains('stale')&&!!diagnostic?.textContent.trim();
     const queued=s.queued;
     summary.textContent=diagram.classList.contains('renderer-down')?'Renderer unavailable':invalid?'Invalid':queued?'Rendered · '+queued+' queued':s.valid?'Rendered':'Rendering…';
     statusChip.dataset.state=invalid||diagram.classList.contains('renderer-down')?'invalid':queued?'queued':'ok';
+    if(fixSource.hidden===invalid)fixSource.hidden=!invalid;
     apply.disabled=$('accept')?.disabled??true;discard.disabled=$('cancel')?.disabled??true;
     apply.hidden=discard.hidden=!queued;
     // The queue and Undo last are reachable only while there is something to review.
@@ -271,8 +275,11 @@ function install(studio){
     syncPalette();
   }
   for(const [kind,button] of Object.entries(shapeButtons))button.onclick=()=>placeShape(kind);
+  // canvas-tools marks connect mode with data-active; aria-pressed shows
+  // which of Arrow and Line is the active tool.
+  const connecting=()=>connectTool?.dataset.active==='true';
   function setConnect(kind){
-    const on=connectTool?.getAttribute('aria-pressed')==='true';
+    const on=connecting();
     if(on&&connectKind===kind){selectTool?.click();return;}
     if(!on)connectTool?.click();
     connectKind=kind;syncPalette();
@@ -301,9 +308,10 @@ function install(studio){
   function syncPalette(){
     const placing=placeTool?.getAttribute('aria-pressed')==='true';
     for(const [kind,button] of Object.entries(shapeButtons))press(button,placing&&kindSelect?.value===kind);
-    const connecting=connectTool?.getAttribute('aria-pressed')==='true';
-    if(!connecting)connectKind='arrow';
-    press(lineButton,connecting&&connectKind==='line');
+    const on=connecting();
+    if(!on)connectKind='arrow';
+    press(lineButton,on&&connectKind==='line');
+    if(connectTool)press(connectTool,on&&connectKind!=='line');
   }
   // canvas-tools sets aria-pressed on its own buttons; mirror that.
   new MutationObserver(syncPalette).observe(palette,{subtree:true,attributes:true,attributeFilter:['aria-pressed']});
@@ -329,7 +337,7 @@ function install(studio){
   // One list under three headings; keep in step with public/help.html.
   const keys=[
     ['Tools',[['V  M  H','Select, area, pan'],['B  C  D  R  T','Box, circle, cylinder, diamond, text'],['A  L','Arrow, line (drag to draw)']]],
-    ['Editing',[['Enter · double-click','Edit text (Shift+Enter: new line)'],['⌘D  Del','Duplicate, delete'],['⌘A  Shift-drag','Select all, select area'],['Arrows','Nudge 0.1 in (Shift 1 in, Alt 0.01 in)'],['[  ]  Enter  Esc','Cycle, accept, discard a preview'],['⌘Z  ⇧⌘Z','Undo, redo']]],
+    ['Editing',[['Enter','Accept a preview or apply queued changes; otherwise edit text'],['Double-click','Edit text (Shift+Enter: new line)'],['⌘D  Del','Duplicate, delete'],['⌘A  Shift-drag','Select all, select area'],['Arrows','Nudge 0.1 in (Shift 1 in, Alt 0.01 in)'],['[  ]  Esc','Cycle, discard a preview (queued changes stay)'],['⌘Z  ⇧⌘Z','Undo, redo']]],
     ['View',[['+  −  0  F','Zoom in, out, fit, focus selection'],['Space-drag','Pan over shapes'],['⌘-scroll · pinch','Zoom at pointer'],['/','Find object'],['S  ?','Source drawer, this panel']]],
   ];
   helpPanel.append(el('h2',{},'Shortcuts'),...keys.flatMap(([name,rows])=>[el('h3',{},name),el('dl',{},...rows.flatMap(([k,v])=>[el('dt',{},k),el('dd',{},v)]))]));
@@ -653,7 +661,7 @@ function install(studio){
     if(cache.scene!==s.scene||cache.source!==s.source){let list=[];try{list=connectableShapes(s.source,s.scene);}catch{}cache={scene:s.scene,source:s.source,list};}
     return cache.list;
   }
-  const connectMode=()=>connectTool?.getAttribute('aria-pressed')==='true';
+  const connectMode=connecting;
   // The arrow editor draws the connector endpoint handles. They are drawn by
   // another module, so recognise them by their own attribute and let the
   // endpoint gesture own the press: no creation dot or shape drag may start.
@@ -900,7 +908,7 @@ function install(studio){
   addEventListener('keydown',e=>{
     if(e.key!=='Enter'||inline||e.shiftKey||e.ctrlKey||e.metaKey||e.altKey)return;
     if(!e.target.closest?.('#diagram')||e.target.closest('input,textarea,select,[data-resize]'))return;
-    if(selectTool?.getAttribute('aria-pressed')!=='true'||(previewActions&&!previewActions.hidden))return;
+    if(selectTool?.getAttribute('aria-pressed')!=='true'||(previewActions&&!previewActions.hidden)||studio.state().queued)return;
     if(openInline(studio.state().object)){e.preventDefault();e.stopImmediatePropagation();}
   },true);
 

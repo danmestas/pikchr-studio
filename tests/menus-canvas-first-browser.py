@@ -76,7 +76,7 @@ def inspect_macro_source(page):
     selected_id = page.evaluate("pikchrStudio.state().object.id")
     for control in ("#delete-selected", "#duplicate-selected"):
         page.locator(control).click()
-        expect(page.locator("#state")).to_contain_text("read-only")
+        expect(page.locator("#state")).to_contain_text("Choose Detach from macro in the inspector")
         assert page.locator("#source").input_value() == macro_source
         assert page.evaluate("pikchrStudio.state().selectedIds") == [selected_id]
         assert page.evaluate("pikchrStudio.state().queued") == 0

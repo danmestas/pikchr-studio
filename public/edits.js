@@ -396,7 +396,10 @@ export function rankCandidates(list, target, referencedNames = []) {
 
 // `precise` marks exact input (keyboard nudges, layout) where snapping and
 // alignment tolerances would silently discard the requested position.
-export function candidates(source, object, scene, target, {precise=false}={}) {
+// `keepForm` (keyboard nudges) ranks first the candidates that reference
+// exactly what the current placement does, so a nudge never ties the shape
+// to a new neighbour or drops its existing reference.
+export function candidates(source, object, scene, target, {precise=false, keepForm=false}={}) {
   if (!object || (object.editable === false && object.kind!=='text') || !topLevel(object,scene) || !movableKinds.includes(object.kind)
       || !/^[A-Z][A-Za-z0-9_]*$/.test(object.name || '')
       || !point(target)) return [];
@@ -468,5 +471,8 @@ export function candidates(source, object, scene, target, {precise=false}={}) {
     }
   }
   const unique = result.filter((candidate,index,all) => all.findIndex(item => item.source === candidate.source) === index);
-  return rankCandidates(unique, target, range.referenceName ? [range.referenceName] : []);
+  const ranked = rankCandidates(unique, target, range.referenceName ? [range.referenceName] : []);
+  if (!keepForm) return ranked;
+  const same = c => c.references.join() === (range.referenceName || '');
+  return [...ranked.filter(same), ...ranked.filter(c => !same(c))];
 }

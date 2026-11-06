@@ -21,7 +21,7 @@ import {tidyRouteCandidate} from './route-suggestions.js?v=20261031a';
 import {createCandidateReview} from './candidate-review.js?v=20261031a';
 import {cleanSVG,downloadPNG} from './diagram-export.js?v=20261031a';
 import {readSizingPreference,writeSizingPreference} from './sizing-preferences.js?v=20261031a';
-import {detachCandidates,macroUses} from './macro-detach.js?v=20261031a';
+import {detachCandidates,macroBlocked,macroUses} from './macro-detach.js?v=20261031a';
 const $=id=>document.getElementById(id);
 const examples={
   pipeline:'Client: box "Client" at (0,0)\nAPI: box "API" at (2,0)\nDatabase: cylinder "Database" at (4,0)\narrow from Client.e to API.w\narrow from API.e to Database.w\n',
@@ -35,7 +35,7 @@ const undo=[],redo=[];
 const draft=[];
 const draftRedo=[];
 let cancelCanvasEdit=()=>{},manualEditBase=null;
-let draftBase=null;
+let draftBase=null,discarded=null;
 let rendering=false,renderVersion=0;
 const selectionHistory=new Map();
 // Counts select() calls, so a render can tell the selection changed while it ran.
@@ -86,6 +86,19 @@ function refreshDocuments(){
 let statusTimer=null;
 const status=text=>{ $('state').textContent=text;$('state').title=text;clearTimeout(statusTimer);statusTimer=setTimeout(()=>{$('canvas-feedback').textContent=text;},120); };
 const announceError=text=>{$('diagnostic').textContent=text;};
+// While the source does not parse, editing actions are off and say why;
+// rendering cannot help, only fixing the source can.
+const FIX_SOURCE='Fix the syntax error in Source (S) to edit.';
+const sourceInvalid=()=>$('diagram').classList.contains('stale')&&!!$('diagnostic').textContent.trim();
+const notReady=()=>sourceInvalid()?FIX_SOURCE:'Render the current source before editing.';
+function gateEditing(){
+  const off=sourceInvalid();
+  for(const id of ['edit-selected','fit-text','duplicate-selected','delete-selected','appearance-selected','route-selected','tidy-route','paste-selection','arrange']){
+    const b=$(id);if(!b)continue;
+    if(off){if(b.title!==FIX_SOURCE)b.dataset.validTitle=b.title;b.disabled=true;b.title=FIX_SOURCE;}
+    else if(b.title===FIX_SOURCE){b.title=b.dataset.validTitle||'';delete b.dataset.validTitle;}
+  }
+}
 function modeHint(){
   document.querySelector('.diagram-pane .hint').textContent=$('auto-apply').checked
     ?'Auto-apply is on. Accepted changes update the source immediately; Undo reverses them. Groups and macros are inspect-only.'
@@ -195,7 +208,7 @@ async function renderSource(preRendered=null){
   if(rev!==revision)return;
   if(result.unavailable){showRendererDown();return;}
   $('diagram').classList.remove('renderer-down');$('diagram').querySelector('.renderer-down-card')?.remove();
-  if(result.error||!result.svg){announceError(result.error||'No diagram returned.');$('diagram').classList.add('stale');status('Invalid source. Last valid diagram retained; editing disabled.');return;}
+  if(result.error||!result.svg){announceError(result.error||'No diagram returned.');$('diagram').classList.add('stale');gateEditing();status('Invalid source. Last valid diagram retained. '+FIX_SOURCE);return;}
   scene=result;
   if(manualEditBase!==null){if(manualEditBase!==text){undo.push(manualEditBase);redo.length=0;}manualEditBase=null;historyButtons();}
   for(const o of scene.objects){if(o.kind==='text'&&candidates(text,o,scene,o.center).length)o.editable=true;if(o.editable&&!candidates(text,o,scene,o.center).length){o.editable=false;o.reason='Placement or attributes are outside the supported literal subset.';}}
@@ -304,6 +317,7 @@ function select(id,highlight=false,additive=false,preserve=false){
   $('arrange').disabled=selectedIds.size<2;
   $('focus-selection').disabled=$('clear-selection').disabled=!selectedIds.size;
   {const only=$('selection-only');only.disabled=!selectedIds.size;if(only.disabled)only.checked=false;$('selection-only-hint')?.toggleAttribute('hidden',!only.disabled);}
+  gateEditing();
   $('inspector').replaceChildren();
   if(!o){$('inspector').textContent='Select an object in the diagram or object list.';drawOverlay();directTools?.sync();return;}
   if(!single){
@@ -343,7 +357,7 @@ function select(id,highlight=false,additive=false,preserve=false){
     origin.textContent='This shape comes from the macro '+(uses?.name||'that generated it')+', which other shapes may share. Detach it to edit it on its own.';
     sourceButton.textContent='Inspect generating source';
     const detachButton=(id,label)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.disabled=!uses?.uses;
-      b.title=uses?.uses?'Preview the source with this macro use inlined; the define stays':uses?'This macro is only used inside other macro definitions':'Studio cannot tell which macro generated this shape';b.onclick=()=>detachMacro(o,id);return b;};
+      b.title=uses?.uses?(id==='detach-all'?'Preview the source with every use of this macro inlined; the define stays':'Preview the source with this macro use inlined; the define stays'):uses?'This macro is only used inside other macro definitions':'Studio cannot tell which macro generated this shape';b.onclick=()=>detachMacro(o,id);return b;};
     const detachRow=document.createElement('div');detachRow.className='inspector-detach';detachRow.style.cssText='display:flex;flex-wrap:wrap;gap:8px';
     detachRow.append(detachButton('detach','Detach from macro'));
     if(uses?.uses>1)detachRow.append(detachButton('detach-all','Detach all '+uses.uses+' uses'));
@@ -508,10 +522,13 @@ $('route-selected').onclick=()=>{
 // toolbar and any other chrome call this instead of open-coding the mode.
 const reconnectSelected=which=>{const o=current();if(!o||!['arrow','line','spline','arc'].includes(o.kind))return;directTools?.reconnect(which);};
 $('show-source-selected').onclick=()=>{const o=current();if(!o?.span)return;source.focus();source.setSelectionRange(byteOffsetToIndex(source.value,o.span.start),byteOffsetToIndex(source.value,o.span.end));};
-function action(fn){if(rendering||source.value!==renderedSource){status('Render the current source before editing.');return;}try{return validateSuggestions(current(),[fn()]);}catch(error){status(error.message);}}
-$('duplicate-selected').onclick=()=>action(()=>duplicateObject(source.value,current(),scene));
+function action(fn){if(rendering||source.value!==renderedSource||sourceInvalid()){status(notReady());return;}try{return validateSuggestions(current(),[fn()]);}catch(error){status(error.message);}}
+// A macro shape is refused with the way out (Detach from macro), per action.
+const refuseMacro=(objects,verb)=>{const o=objects.find(n=>n?.reason==='Macro-expanded object');if(o)throw Error(macroBlocked(renderedSource,o,verb));};
+const named=objects=>objects.length>3?objects.length+' objects':objects.map(o=>o.name||o.kind).join(', ');
+$('duplicate-selected').onclick=()=>action(()=>{refuseMacro([current()],'duplicated');return {...duplicateObject(source.value,current(),scene),summary:'Duplicated '+named([current()])};});
 $('delete-selected').title='Delete selected objects and attached connectors. Undo restores them.';
-$('delete-selected').onclick=()=>action(()=>({...deleteObjects(source.value,scene.objects.filter(o=>selectedIds.has(o.id)),scene,{includeConnectors:true,pinDependents:true}),clearSelection:true}));
+$('delete-selected').onclick=()=>action(()=>{const objects=scene.objects.filter(o=>selectedIds.has(o.id));refuseMacro(objects,'deleted');return {...deleteObjects(source.value,objects,scene,{includeConnectors:true,pinDependents:true}),clearSelection:true,summary:'Deleted '+named(objects)};});
 $('arrange').onclick=()=>action(()=>({...layoutObjects(source.value,scene.objects.filter(o=>selectedIds.has(o.id)),scene,$('layout-mode').value),selectionNames:scene.objects.filter(o=>selectedIds.has(o.id)).map(o=>o.name)}));
 $('fit-text').onclick=()=>{
   const o=current();if(!o||source.value!==renderedSource)return;
@@ -690,7 +707,7 @@ function bindDiagram(svg){
       // Typing is still debouncing: render now, then replay this press on the
       // fresh diagram so the gesture proceeds instead of being refused.
       if(!draft.length&&source.value!==renderedSource&&!e.studioReplay){flushAndReplay(e);return;}
-      status('Source changed. Render to update the diagram before dragging.');return;
+      status(sourceInvalid()?FIX_SOURCE:'Source changed. Render to update the diagram before dragging.');return;
     }
     if(!o?.editable){
       const capabilities=connectorCapabilities({object:o,scene,source:renderedSource});
@@ -746,6 +763,11 @@ $('diagram').addEventListener('keydown',e=>{
     if(e.key==='Escape')discardPreview();else if(e.key==='Enter')acceptPreview();else cyclePreview(e.key===']'?1:-1);
     return;
   }
+  // Enter accepts what is pending: queued changes apply as one batch.
+  // Only with nothing pending does Enter edit the selected label.
+  if(e.key==='Enter'&&draft.length&&!e.shiftKey&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.target.closest('.canvas-overlay,.arrow-overlay,[data-resize]')){
+    e.preventDefault();e.stopImmediatePropagation();$('accept').onclick();return;
+  }
   // A focused rendered object: Space selects it; Enter selects it and then
   // lets the canvas tools open its label editor.
   const group=e.target.closest?.('[data-pikchr-id]');
@@ -756,7 +778,7 @@ $('diagram').addEventListener('keydown',e=>{
   }
 },true);
 $('diagram').addEventListener('keydown',e=>{
-  if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();$('delete-selected').click();return;}
+  if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();if(selectedIds.size&&sourceInvalid())status(FIX_SOURCE);else $('delete-selected').click();return;}
   if(e.key==='Escape'){panMode=false;$('pan-mode').setAttribute('aria-pressed','false');$('diagram').style.cursor='';cancelCanvasEdit();clearProposal();clearSelection();return;}
   const delta={ArrowLeft:[-.1,0],ArrowRight:[.1,0],ArrowUp:[0,.1],ArrowDown:[0,-.1]}[e.key],o=current();
   // Focus on a rendered object: arrows walk the object list. Focus on the
@@ -765,13 +787,22 @@ $('diagram').addEventListener('keydown',e=>{
     e.preventDefault();const groups=[...$('diagram').querySelectorAll('[data-pikchr-id]')],i=groups.indexOf(e.target.closest('[data-pikchr-id]'));
     groups[(i+(delta[0]>0||delta[1]<0?1:-1)+groups.length)%groups.length]?.focus({preventScroll:true});return;
   }
-  if(!delta||!o?.editable||source.value!==renderedSource)return;
-  const step=e.shiftKey?10:e.altKey?.1:1;
-  e.preventDefault();suggest(o,{x:o.center.x+delta[0]*step,y:o.center.y+delta[1]*step});
+  nudge(e,delta);
 });
-async function suggest(o,target,withPreview=false,{precise=!withPreview,bringAlong=false}={}){
+// Arrow keys nudge the selection by 0.1 in (Shift 1 in, Alt 0.01 in). A
+// refused nudge says why rather than doing nothing.
+function nudge(e,delta){
+  const o=current();
+  if(!delta||!o)return;
+  e.preventDefault();
+  if(rendering||source.value!==renderedSource||$('diagram').classList.contains('stale')){status(sourceInvalid()?FIX_SOURCE:'Wait for a valid diagram before editing.');return;}
+  if(!o.editable){status(dragBlocked(o).replace('dragged','moved'));return;}
+  const step=e.shiftKey?10:e.altKey?.1:1;
+  suggest(o,{x:o.center.x+delta[0]*step,y:o.center.y+delta[1]*step},false,{precise:true,keepForm:true});
+}
+async function suggest(o,target,withPreview=false,{precise=!withPreview,bringAlong=false,keepForm=false}={}){
   let options;
-  try{options=selectedIds.size>1?[{...moveObjects(source.value,scene.objects.filter(n=>selectedIds.has(n.id)),scene,target.x-o.center.x,target.y-o.center.y,{pinDependents:!bringAlong}),selectionNames:scene.objects.filter(n=>selectedIds.has(n.id)).map(n=>n.name)}]:candidates(source.value,o,scene,target,{precise}).slice(0,6).map(option=>bringAlong?option:pinMove(source.value,scene,option,[o.id]));}catch(e){status(e.message);return;}
+  try{options=selectedIds.size>1?[{...moveObjects(source.value,scene.objects.filter(n=>selectedIds.has(n.id)),scene,target.x-o.center.x,target.y-o.center.y,{pinDependents:!bringAlong}),selectionNames:scene.objects.filter(n=>selectedIds.has(n.id)).map(n=>n.name)}]:candidates(source.value,o,scene,target,{precise,keepForm}).slice(0,6).map(option=>bringAlong?option:pinMove(source.value,scene,option,[o.id]));}catch(e){status(e.message);return;}
   if(!options.length){status('This placement expression is inspect-only. Try a named box with a literal at (x,y) clause.');drawOverlay();return;}
   return withPreview&&selectedIds.size<=1?previewSuggestions(o,options):validateSuggestions(o,options);
 }
@@ -1107,10 +1138,10 @@ async function choose(option){
     const previousSizing=scene.objects.flatMap(o=>{const preference=sizingFor(o);if(!preference)return[];try{return[{name:o.name,kind:o.kind,box:o.bbox,text:inspectProperties(source.value,o,scene).text,preference}];}catch{return[];}});
     const next=applyPatch(source.value,option.patch);
     if(next===source.value){if(option.sizingPreference&&current()){sizingPreferences=writeSizingPreference(source.value,scene,current(),sizingPreferences,option.sizingPreference);scheduleSave();status('Label behavior saved. Diagram geometry is unchanged.');}else status('No change to queue.');drawOverlay();installArrowEditor();directTools?.sync();return;}
-    draftRedo.length=0;
+    draftRedo.length=0;discarded=null;
     if(!draft.length)draftBase=source.value;
     const a=byteOffsetToIndex(option.base,option.patch.start),b=byteOffsetToIndex(option.base,option.patch.end);
-    draft.push({before:source.value,after:next,label:(option.subject?option.subject+': ':'')+option.label,
+    draft.push({before:source.value,after:next,label:(option.subject?option.subject+': ':'')+option.label,summary:appliedSummary(option),
       diff:'- '+option.base.slice(a,b)+'\n+ '+option.patch.text});
     requestedSelectionName=option.selectionIds?null:option.selectName||current()?.name||null;
     requestedSelectionIds=option.selectionIds||null;
@@ -1129,20 +1160,31 @@ async function choose(option){
     status(draft.length+(draft.length===1?' change queued.':' changes queued.')+' Continue editing, Apply all, or Discard all.');
   }catch(error){status(error.message);}
 }
+// What a change did, for the status line: "Moved API", "Deleted Client".
+function appliedSummary(option){
+  if(option.summary)return option.summary;
+  const subject=option.subject||'',label=option.label||'Change';
+  if('relational' in option&&subject)return 'Moved '+subject;
+  const many=/^Move (\d+) objects/.exec(label);if(many)return 'Moved '+many[1]+' objects';
+  return (subject&&!label.includes(subject)?subject+': ':'')+label+' applied';
+}
 $('accept').onclick=()=>{
   if(!draft.length||rendering)return;
   ++revision;clearProposal();
-  undo.push(draftBase);redo.length=0;
-  draft.length=0;draftRedo.length=0;draftBase=null;updateDraft();
+  undo.push(draftBase);redo.length=0;discarded=null;
+  const batch=draft.splice(0);
+  draftRedo.length=0;draftBase=null;updateDraft();
   applied=true;updateDraft();
   // Handles snapshot the revision; rebuild them so the next gesture is valid.
   refreshHandles();
-  status('All queued changes applied. Undo restores the whole batch.');
+  status(batch.length===1?(batch[0].summary||batch[0].label+' applied')+'.':'Applied '+batch.length+' changes. Undo restores the whole batch.');
 };
+// Discard all is undoable: Undo puts the discarded changes back in the queue.
 $('cancel').onclick=async()=>{
   if(!draft.length||rendering)return;
-  source.value=draftBase;draft.length=0;draftRedo.length=0;draftBase=null;
-  dirty();updateDraft();await renderSource();status('All queued changes discarded.');
+  discarded={base:draftBase,draft:draft.splice(0)};
+  source.value=draftBase;draftRedo.length=0;draftBase=null;
+  dirty();updateDraft();await renderSource();status('All queued changes discarded. Undo restores them.');
 };
 $('undo-draft').onclick=async()=>{
   if(!draft.length||rendering)return;
@@ -1153,16 +1195,23 @@ $('undo-draft').onclick=async()=>{
   status(draft.length?draft.length+' changes remain queued.':'Last queued change undone.');
 };
 function historyButtons(){
-  $('undo').disabled=rendering||(!draft.length&&!undo.length&&manualEditBase===null);
+  $('undo').disabled=rendering||(!draft.length&&!undo.length&&manualEditBase===null&&!restorable());
   $('redo').disabled=rendering||(!draftRedo.length&&(!!draft.length||!redo.length));
-  $('undo').title=draft.length?'Undo latest queued change':'Undo last applied change';
+  $('undo').title=draft.length?'Undo latest queued change':restorable()?'Restore the discarded changes':'Undo last applied change';
   $('redo').title=draftRedo.length?'Redo queued change':'Redo applied change';
   for(const kind of ['undo','redo']){const button=$('canvas-'+kind);button.disabled=$(kind).disabled;button.title=$(kind).title+' (Ctrl/⌘ '+(kind==='undo'?'Z':'Shift+Z')+')';}
   $('render').disabled=!!draft.length;
 }
+const restorable=()=>!!discarded&&!draft.length&&manualEditBase===null&&source.value===discarded.base;
 $('undo').onclick=async()=>{
   if(rendering)return;cancelCanvasEdit();
   if(draft.length){await $('undo-draft').onclick();return;}
+  if(restorable()){
+    draftBase=discarded.base;draft.push(...discarded.draft);discarded=null;
+    source.value=draft.at(-1).after;dirty();updateDraft();await renderSource();
+    status(draft.length+(draft.length===1?' discarded change':' discarded changes')+' restored to the queue.');return;
+  }
+  discarded=null;
   if(manualEditBase!==null){redo.push(source.value);source.value=manualEditBase;manualEditBase=null;}
   else {if(!undo.length)return;draftRedo.length=0;redo.push(source.value);source.value=undo.pop();}
   dirty();await renderSource();status('Undone. Redo restores the change.');
@@ -1206,10 +1255,16 @@ document.addEventListener('keydown',e=>{
   if(mod&&(key==='z'||key==='y')){e.preventDefault();$(key==='y'||e.shiftKey?'redo':'undo').click();return;}
   if(mod&&key==='d'){e.preventDefault();$('duplicate-selected').click();return;}
   if(mod&&key==='a'&&$('diagram').contains(document.activeElement)){e.preventDefault();selectedIds=new Set(scene?.objects.filter(o=>!['arrow','line'].includes(o.kind)&&o.editable).map(o=>o.id));select([...selectedIds][0]||null,false,false,true);return;}
-  if(!$('diagram').contains(document.activeElement))return;
+  // View keys work wherever focus rests outside a text field, including the
+  // zoom buttons just clicked; a dialog or menu list keeps its own keys.
+  if(mod||e.altKey||e.target.closest('dialog,[role=listbox],[role=menu]'))return;
   if(key==='0'||key==='1'||key==='f'){e.preventDefault();$(key==='f'?'focus-selection':'fit-view').click();}
   if(key==='+'||key==='='){e.preventDefault();$('zoom-in').click();}
   if(key==='-'){e.preventDefault();$('zoom-out').click();}
+  // Focus left on the selection toolbar (after ⋯ or a toolbar action) still
+  // belongs to the selection: arrows nudge it as on the canvas.
+  const delta={ArrowLeft:[-.1,0],ArrowRight:[.1,0],ArrowUp:[0,.1],ArrowDown:[0,-.1]}[e.key];
+  if(delta&&(e.target===document.body||e.target.closest('.cl-context')))nudge(e,delta);
 });
 $('render').onclick=renderSource;
 $('download').onclick=()=>{
@@ -1221,7 +1276,7 @@ function restoreDocument(state,preRendered=null){
   directTools?.cancel(false);
   activeDocumentTitle=state.title||null;
   sizingPreferences=state.sizingPreferences||{};
-  manualEditBase=null;draftRedo.splice(0,draftRedo.length,...(state.draftRedo||[]));
+  manualEditBase=null;discarded=null;draftRedo.splice(0,draftRedo.length,...(state.draftRedo||[]));
   source.value=state.source;draft.splice(0,draft.length,...state.draft);draftBase=state.draftBase;
   undo.splice(0,undo.length,...state.undo);redo.splice(0,redo.length,...state.redo);
   // Changes apply immediately (undo reverts them) unless the author chose
