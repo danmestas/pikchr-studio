@@ -1,8 +1,8 @@
-import {endpointCandidates,moveVertexCandidates,routeCandidates,byteOffsetToIndex} from './edits.js?v=20261106e';
-import {routeEditor,routeStyleGallery} from './route-ui.js?v=20261106e';
-import {connectorState,routeStyleCandidates} from './route-styles.js?v=20261106e';
-import {inspectProperties,changeTermination} from './properties.js?v=20261106e';
-import {reverseConnector} from './reverse-connector.js?v=20261106e';
+import {endpointCandidates,moveVertexCandidates,routeCandidates,byteOffsetToIndex} from './edits.js?v=20261106f';
+import {routeEditor,routeStyleGallery} from './route-ui.js?v=20261106f';
+import {connectorState,routeStyleCandidates} from './route-styles.js?v=20261106f';
+import {inspectProperties,changeTermination} from './properties.js?v=20261106f';
+import {reverseConnector} from './reverse-connector.js?v=20261106f';
 const ns='http://www.w3.org/2000/svg';
 let preferredMode='endpoints';
 const names={n:'North',ne:'Northeast',e:'East',se:'Southeast',s:'South',sw:'Southwest',w:'West',nw:'Northwest',c:'Center'};

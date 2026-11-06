@@ -1,5 +1,5 @@
-import {applyPatch,byteOffsetToIndex} from './edits.js?v=20261106e';
-import {encodeLabel} from './properties.js?v=20261106e';
+import {applyPatch,byteOffsetToIndex} from './edits.js?v=20261106f';
+import {encodeLabel} from './properties.js?v=20261106f';
 const bytes=value=>new TextEncoder().encode(value).length;
 const format=value=>{if(!Number.isFinite(value)||Math.abs(value)>1000000)throw new Error('Choose finite diagram coordinates.');return Number(value.toFixed(4));};
 function parameters({kind,width=1.5,height=1,label=''}){
