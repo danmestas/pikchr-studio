@@ -1230,7 +1230,7 @@ window.pikchrStudio={
     valid:!!scene&&!rendering&&source.value===renderedSource&&!$('diagram').classList.contains('stale')}),
   render,propose:options=>validateSuggestions(null,options),select:id=>select(id,false,false,true),
   modelToScreen:p=>{const svg=$('diagram').querySelector('svg');if(!scene||!svg?.getScreenCTM())return null;return new DOMPoint(p.x,p.y).matrixTransform(matrix()).matrixTransform(svg.getScreenCTM());},
-  setDark:on=>{const flags=on?3:1;if(flags===renderFlags)return;renderFlags=flags;if(source.value.trim()||scene)renderSource();},
+  setDark:on=>{const flags=on?3:1;if(flags===renderFlags)return;renderFlags=flags;for(const id of lastValid.keys())if(id!==activeDocumentId)lastValid.delete(id);if(source.value.trim()||scene)renderSource();},
   refit:()=>{const svg=$('diagram').querySelector('svg');const box=svg?.dataset.exportViewBox;if(!box)return;const [x,y,w,h]=box.split(/[ ,]+/).map(Number);svg.dataset.fitViewBox=fitBox(x,y,w,h);if(zoom===1&&pan.x===0&&pan.y===0){svg.dataset.baseViewBox=svg.dataset.fitViewBox;applyViewport();refreshHandles();}},
   title:()=>activeDocumentTitle,
   // An explicit name is stored with the document and stops the automatic one (first label).
@@ -1314,6 +1314,7 @@ function removeDocument(id){
   try{
     if(wasActive)clearTimeout(saveTimer);
     documents.remove(id);
+    lastValid.delete(id);
     if(!wasActive){refreshDocuments();status('Deleted '+title+' from this browser.');return true;}
     const next=documents.list()[0];
     if(next){const record=documents.open(next.id);activeDocumentId=next.id;refreshDocuments();restoreDocument(record.state);}
