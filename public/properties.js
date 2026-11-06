@@ -1,5 +1,5 @@
-import { applyPatch, byteOffsetToIndex, editability, safeAttributes } from './edits.js?v=20261031a';
-import { macroBlocked } from './macro-detach.js?v=20261031a';
+import { applyPatch, byteOffsetToIndex, editability, safeAttributes } from './edits.js?v=20261106a';
+import { macroBlocked } from './macro-detach.js?v=20261106a';
 
 const bytes = text => new TextEncoder().encode(text).length;
 const kinds = ['box','cylinder','circle','ellipse','oval','diamond','line','arrow','text'];
