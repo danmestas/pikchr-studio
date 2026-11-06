@@ -47,7 +47,9 @@ export function macroDefinitions(source) {
 }
 
 // Call sites outside every define, after NAME's own define: `name` or
-// `name(args)` with the parenthesis touching the name, as Pikchr requires.
+// `name(args)` with the parenthesis touching the name, as Pikchr requires,
+// optionally labelled (`L: name`). A label's site starts at the label, which
+// inlining keeps in front of the expanded text.
 function sites(source, name, defs = definitions(source)) {
   const def = defs.find(d => d.name === name);
   if (!def) return [];
@@ -58,6 +60,8 @@ function sites(source, name, defs = definitions(source)) {
     if (t.type !== 'id' || t.text !== name || t.start < def.end) continue;
     if (defs.some(d => t.start >= d.start && t.start < d.end)) continue;
     if (toks[k-1]?.text === '.' || toks[k-1]?.text === 'define' || toks[k+1]?.text === ':') continue;
+    const labelled = toks[k-1]?.text === ':' && toks[k-2]?.type === 'id' && /^[A-Z]\w*$/.test(toks[k-2].text);
+    const start = labelled ? toks[k-2].start : t.start, label = labelled ? toks[k-2].text : null;
     let end = t.end, args = [];
     if (toks[k+1]?.text === '(' && toks[k+1].start === t.end) {
       let depth = 0, from = toks[k+1].end, j = k + 1;
@@ -72,7 +76,7 @@ function sites(source, name, defs = definitions(source)) {
       if (args.length === 1 && !args[0]) args = [];
       end = toks[j].end;
     }
-    found.push({name, start:t.start, end, args, enclosed:parens > 0, text:source.slice(t.start, end), span:span(source, t.start, end)});
+    found.push({name, label, start, end, args, enclosed:parens > 0, text:source.slice(start, end), span:span(source, start, end)});
   }
   return found;
 }
@@ -98,6 +102,7 @@ function expansion(source, site, def) {
   const last = lex(trimmed.join('\n')).at(-1);
   const eol = source.includes('\r\n') ? '\r\n' : '\n', nl = l => l ? eol + indent + l : eol;
   const tail = last?.type === 'comment' && !last.text.startsWith('/*') && source.slice(site.end).split('\n')[0].trim() ? eol + indent : '';
+  if (site.label) trimmed[0] = `${site.label}: ${trimmed[0]}`;
   return (ownLine ? `# detached from ${site.name}` + trimmed.map(nl).join('') : trimmed[0] + trimmed.slice(1).map(nl).join('')) + tail;
 }
 
@@ -137,7 +142,10 @@ function difference(scene, result) {
   if (result.objects.length !== scene.objects.length) return `it would draw ${result.objects.length} objects instead of ${scene.objects.length}`;
   const ta = looks(scene.svg), tb = looks(result.svg);
   const k = scene.objects.findIndex((o, i) => !sameShape(o, ta.get(o.id), result.objects[i], tb.get(result.objects[i].id)));
-  return k < 0 ? null : `object ${k + 1} (${scene.objects[k].kind}) would change`;
+  if (k >= 0) return `object ${k + 1} (${scene.objects[k].kind}) would change`;
+  // References such as N1.e depend on labels, so a label must stay on its object.
+  const n = scene.objects.findIndex((o, i) => (o.name || '') !== (result.objects[i].name || ''));
+  return n < 0 ? null : `object ${n + 1} (${scene.objects[n].kind}) would lose its label ${scene.objects[n].name || ''}`.trimEnd();
 }
 
 // Which macro generated an object: the define whose body holds its span, or
@@ -161,6 +169,15 @@ const nestedNote = (def, defs) => {
 export function macroUses(source, object) {
   const defs = definitions(source), def = origin(source, object, defs);
   return def ? {name:def.name, uses:sites(source, def.name, defs).length} : null;
+}
+
+// Why a macro shape refuses a direct edit (`verb`: deleted, duplicated,
+// edited), pointing to Detach from macro when a top-level use exists.
+export function macroBlocked(source, object, verb = 'edited') {
+  const uses = macroUses(source, object);
+  if (!uses) return `Studio cannot tell which macro generated this shape, so it can’t be ${verb} here. Edit it in the source (S).`;
+  if (!uses.uses) return `This shape comes from the macro ${uses.name}, which is only used inside other macro definitions, so it can’t be ${verb} here. Detach the outer macro first.`;
+  return `This shape comes from the macro ${uses.name}, so it can’t be ${verb} here. Choose Detach from macro in the inspector to edit it on its own.`;
 }
 
 // Options {id,label,note,source,patch,base,result,selectId,selectionIds,targetKind} that

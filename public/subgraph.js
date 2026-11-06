@@ -1,5 +1,5 @@
-import {applyPatch,routeCandidates,safeAttributes} from './edits.js?v=20261031a';
-import {readProperties} from './properties.js?v=20261031a';
+import {applyPatch,routeCandidates,safeAttributes} from './edits.js?v=20261106a';
+import {readProperties} from './properties.js?v=20261106a';
 
 const bytes = value => new TextEncoder().encode(value).length;
 const mask = value => value.replace(/"(?:\\.|[^"\\])*"/g,label=>' '.repeat(label.length));

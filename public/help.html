@@ -32,18 +32,19 @@
 <p>The diagram fills the window. Around it float a few controls: ☰ opens the menu (documents, preferences, advanced tools), <kbd>&lt;/&gt;</kbd> opens the source drawer, ⤓ exports, the tool palette sits at the top (at the bottom on phones), the status chip at the top right shows whether the diagram rendered, and undo, redo and zoom sit at the bottom corners. Click the status chip to review queued changes when there are any. Select an object and a toolbar floats above it; its ⋯ button opens the inspector with size, style, connector and label options.</p>
 <p>The source text is the document. Every gesture becomes a small Pikchr edit that is rendered before it is applied, so the canvas never shows geometry the source cannot reproduce. Open the source drawer to read or type Pikchr; the diagram re-renders as you type.</p>
 <h2>Tools and shortcuts</h2>
-<p>Press <kbd>?</kbd> for the same list in the app. <kbd>Escape</kbd> cancels a gesture and returns to Select.</p>
+<p>Press <kbd>?</kbd> for the same list in the app. <kbd>Escape</kbd> cancels a gesture and returns to Select; with nothing in progress it clears the selection.</p>
 <table class="shortcuts">
 <tr><th colspan="2">Tools</th></tr>
 <tr><td><kbd>V</kbd> <kbd>M</kbd> <kbd>H</kbd></td><td>Select, area, pan</td></tr>
 <tr><td><kbd>B</kbd> <kbd>C</kbd> <kbd>D</kbd> <kbd>R</kbd> <kbd>T</kbd></td><td>Box, circle, cylinder, diamond, text</td></tr>
 <tr><td><kbd>A</kbd> <kbd>L</kbd></td><td>Arrow, line (drag to draw)</td></tr>
 <tr><th colspan="2">Editing</th></tr>
-<tr><td><kbd>Enter</kbd> or double-click</td><td>Edit text (<kbd>Shift</kbd>+<kbd>Enter</kbd> new line)</td></tr>
+<tr><td><kbd>Enter</kbd></td><td>Accept a preview or apply queued changes; otherwise edit text</td></tr>
+<tr><td>Double-click</td><td>Edit text (<kbd>Shift</kbd>+<kbd>Enter</kbd> new line)</td></tr>
 <tr><td><kbd>⌘D</kbd> <kbd>Del</kbd></td><td>Duplicate, delete</td></tr>
 <tr><td><kbd>⌘A</kbd> <kbd>Shift</kbd>-drag</td><td>Select all, select area</td></tr>
 <tr><td>Arrow keys</td><td>Nudge 0.1 in (<kbd>Shift</kbd> 1 in, <kbd>Alt</kbd> 0.01 in)</td></tr>
-<tr><td><kbd>[</kbd> <kbd>]</kbd> <kbd>Enter</kbd> <kbd>Esc</kbd></td><td>Cycle, accept, discard a preview</td></tr>
+<tr><td><kbd>[</kbd> <kbd>]</kbd> <kbd>Esc</kbd></td><td>Cycle, discard a preview (queued changes stay)</td></tr>
 <tr><td><kbd>⌘Z</kbd> <kbd>⇧⌘Z</kbd></td><td>Undo, redo</td></tr>
 <tr><th colspan="2">View</th></tr>
 <tr><td><kbd>+</kbd> <kbd>−</kbd> <kbd>0</kbd> <kbd>F</kbd></td><td>Zoom in, out, fit, focus selection</td></tr>
@@ -72,7 +73,7 @@
 <h2>Delete</h2>
 <p>Delete or Backspace removes the selection and its connectors. A shape positioned relative to a deleted one is pinned where it is, so nothing else moves; the change says which shapes were pinned.</p>
 <h2>Queue mode</h2>
-<p>Changes apply immediately by default. To review edits before they apply, turn off Apply accepted changes immediately in ☰ › Preferences: accepted edits then join a draft, the status chip shows how many are queued, and clicking it opens Apply all, Discard all, Undo last and the diff. While changes are queued the source is read-only.</p>
+<p>Changes apply immediately by default. To review edits before they apply, turn off Apply accepted changes immediately in ☰ › Preferences: accepted edits then join a draft, the status chip shows how many are queued, and clicking it opens Apply all, Discard all, Undo last and the diff. <kbd>Enter</kbd> on the canvas applies the queue; <kbd>Escape</kbd> leaves it queued. Undo after Discard all puts the discarded changes back. While changes are queued the source is read-only.</p>
 <h2>Advanced tools</h2>
 <p>Reusable components, workspace backups, and shape-type conversion are hidden by default. Saved documents are always available in ☰ › Document. Turn on Advanced tools in ☰ › Preferences, or open the editor with <code>?advanced=1</code>.</p>
 <h2>Supported scope</h2>

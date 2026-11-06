@@ -58,7 +58,7 @@ with sync_playwright() as pw:
     assert '"The Node of the Day"' in source.input_value()
     menu_click(page, "#cancel")
     expect(source).to_have_value(baseline)
-    expect(page.locator("#state")).to_have_text("All queued changes discarded.")
+    expect(page.locator("#state")).to_have_text("All queued changes discarded. Undo restores them.")
     assert abs(geometry()["width"] - initial["width"]) < .01
 
     # A fixed-size label edit remains possible by opting out.
@@ -74,7 +74,7 @@ with sync_playwright() as pw:
     # The preview action fixes existing overflow and is one undoable auto-edit.
     set_auto_apply(page, True)
     page.locator("#fit-text").click()
-    expect(page.locator("#state")).to_have_text("All queued changes applied. Undo restores the whole batch.")
+    expect(page.locator("#state")).to_have_text("A: Fit shape to text applied.")
     expect(source).not_to_have_value(overflow_source)
     fitted()
     expect(page.locator("#queue-list li")).to_have_count(0)
