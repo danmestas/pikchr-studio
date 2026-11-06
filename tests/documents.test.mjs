@@ -122,3 +122,19 @@ test('corrupt draft redo chains are rejected without overwriting the saved docum
     assert.equal(reload.save(state()).ok,false);assert.equal(storage.local.getItem(key),corrupt);
   }
 });
+test('remove deletes one document, leaves the others, and forgets it as current or last',()=>{
+  const storage=setup(),store=createDocumentStore(storage);
+  store.save(state('box "Keep"'));const keep=storage.session.getItem('pikchr-studio.current-document.v1');
+  store.create();store.save(state('box "Drop"'));
+  const drop=storage.session.getItem('pikchr-studio.current-document.v1');
+  assert.equal(store.list().length,2);
+  store.remove(drop);
+  assert.deepEqual(store.list().map(item=>item.id),[keep]);
+  assert.equal(storage.local.getItem('pikchr-studio.last-document.v1'),null);
+  assert.equal(storage.session.getItem('pikchr-studio.current-document.v1'),null);
+  assert.equal(createDocumentStore(storage).load(),null);
+  // The surviving document is untouched and the store can start a new one.
+  assert.equal(store.open(keep).state.source,'box "Keep"');
+  store.remove('11111111');assert.equal(store.list().length,1);
+  assert.throws(()=>store.remove('../bad'),/Invalid document ID/);
+});
