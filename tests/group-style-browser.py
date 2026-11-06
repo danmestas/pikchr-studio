@@ -365,6 +365,9 @@ with sync_playwright() as pw:
     # ---- reload keeps the styled source ------------------------------------
     page.set_viewport_size({"width": 1440, "height": 900})
     page.emulate_media(color_scheme="light")
+    # The phone pass panned the selection clear of the sheet and its chips; fit
+    # so the shapes are on screen at desktop width again.
+    page.locator("#fit-view").click()
     select_group("A", "B", "C")
     panel = open_group_style()
     panel.get_by_label("Stroke / text color", exact=True).fill("#123456")

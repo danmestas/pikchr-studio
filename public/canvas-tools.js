@@ -136,7 +136,11 @@ export function canvasTools({clearSelection,host,toolbar,getState,render,propose
   const horizontalOnly=handle=>handle==='e'||handle==='w';
   const dragPolicy=(s,handle)=>s.sizing?.mode==='grow'?(horizontalOnly(handle)&&s.object.kind==='box'?'wrap':'fixed'):s.sizing?.mode==='wrap'&&!horizontalOnly(handle)?'fixed':s.sizing?.mode||'fixed';
   function reconnectStart(which){closeInspector();setMode(which);}
-  function setMode(next){cancel(false);if(next!=='select'&&!getState().valid){status('Render valid source before using canvas tools.');return;}mode=next;modeKey=getState().key;stopPan();sync();status(next==='marquee'?'Drag a rectangle around shapes. Escape cancels; the object list is a tap/keyboard alternative.':next==='place'?'Tap the canvas to place a '+kinds.select.value+'. Escape cancels.':next==='connect'?'Choose the first shape, then the destination.':next==='from'?'Reconnecting the start. Choose the destination shape; Escape cancels.':next==='to'?'Reconnecting the arrowhead. Choose the destination shape; Escape cancels.':'Select and drag shapes.');}
+  // Touch screens have no Escape key: hints name the tap that stops instead.
+  const touch=()=>matchMedia('(pointer:coarse)').matches;
+  function setMode(next){cancel(false);if(next!=='select'&&!getState().valid){status('Render valid source before using canvas tools.');return;}mode=next;modeKey=getState().key;stopPan();sync();
+    const stop=touch()?'tap Select to stop':'Escape cancels',away=touch()?'tap empty canvas to cancel':'Escape cancels';
+    status(next==='marquee'?'Drag a rectangle around shapes. '+(touch()?'Tap Select to stop':'Escape cancels')+'; the object list is a tap/keyboard alternative.':next==='place'?'Tap the canvas to place a '+kinds.select.value+'. '+stop[0].toUpperCase()+stop.slice(1)+'.':next==='connect'?'Choose the first shape, then the destination.':next==='from'?'Reconnecting the start. Choose the destination shape; '+away+'.':next==='to'?'Reconnecting the arrowhead. Choose the destination shape; '+away+'.':'Select and drag shapes.');}
   function cancel(announce=true){if(dialogSession)closeText();++epoch;invalidate?.();pending=null;if(resize)liveClear?.();resize=null;startShape=null;mode='select';modeKey=null;if(announce)stopPan();host.querySelectorAll('.canvas-preview').forEach(n=>n.remove());sync();if(announce)status('Cancelled. No change applied.');}
   function point(event){const s=getState(),svg=host.querySelector('svg');if(!svg?.getScreenCTM())return {x:0,y:0};const t=s.scene.transform;return new DOMPoint(event.clientX,event.clientY).matrixTransform(svg.getScreenCTM().inverse()).matrixTransform(new DOMMatrix([t.a,t.b,t.c,t.d,t.e,t.f]).inverse());}
   function drawPoint(p){const t=getState().scene.transform;return new DOMPoint(p.x,p.y).matrixTransform(new DOMMatrix([t.a,t.b,t.c,t.d,t.e,t.f]));}
@@ -173,8 +177,12 @@ export function canvasTools({clearSelection,host,toolbar,getState,render,propose
     try{resizeShape(s.source,s.scene,o,{width:o.bbox.width,height:o.bbox.height});}catch{return;}
     const layer=svgElement('g',{class:'canvas-overlay'}),scale=Math.hypot(svg.getScreenCTM()?.a||1,svg.getScreenCTM()?.b||0);
     // Four visible corner handles plus a grab strip along each edge. The
-    // edge midpoints stay free for the connector attach dots.
-    const B=o.bbox,L=B.x,R=B.x+B.width,Bot=B.y,T=B.y+B.height,hit=(matchMedia('(pointer:coarse)').matches?44:18)/scale;
+    // edge midpoints stay free for the connector attach dots. A finger needs
+    // 44 px targets, which would cover a small shape's whole body: on coarse
+    // pointers the targets sit outside the shape, reaching only `inset` px in,
+    // so the interior always moves the shape.
+    const coarse=matchMedia('(pointer:coarse)').matches,inset=(coarse?6:0)/scale;
+    const B=o.bbox,L=B.x,R=B.x+B.width,Bot=B.y,T=B.y+B.height,hit=(coarse?44:18)/scale;
     const cursors={n:'ns-resize',s:'ns-resize',e:'ew-resize',w:'ew-resize',ne:'nesw-resize',sw:'nesw-resize',nw:'nwse-resize',se:'nwse-resize'};
     const labels={n:'top edge',s:'bottom edge',e:'right edge',w:'left edge',ne:'top-right corner',nw:'top-left corner',se:'bottom-right corner',sw:'bottom-left corner'};
     const at={n:[o.center.x,T],s:[o.center.x,Bot],e:[R,o.center.y],w:[L,o.center.y],ne:[R,T],nw:[L,T],se:[R,Bot],sw:[L,Bot]};
@@ -189,20 +197,24 @@ export function canvasTools({clearSelection,host,toolbar,getState,render,propose
       });
       return handle;
     };
+    const out=coarse?hit/2-inset:0;
     for(const name of ['nw','ne','se','sw']){
       const p=drawPoint({x:at[name][0],y:at[name][1]}),handle=make(name);
-      handle.append(svgElement('rect',{x:p.x-hit/2,y:p.y-hit/2,width:hit,height:hit,fill:'transparent'}),
+      const ox=(name[1]==='e'?1:-1)*out,oy=(name[0]==='s'?1:-1)*out;
+      handle.append(svgElement('rect',{x:p.x-hit/2+ox,y:p.y-hit/2+oy,width:hit,height:hit,fill:'transparent'}),
         svgElement('rect',{class:'resize-corner',x:p.x-5/scale,y:p.y-5/scale,width:10/scale,height:10/scale,rx:2/scale,'vector-effect':'non-scaling-stroke'}));
       layer.append(handle);
     }
     // Edge strips run the full edge between the corner hit zones. Attach dots
     // (canvas layout) are drawn above this layer, so they still win.
-    const a=drawPoint({x:L,y:T}),z=drawPoint({x:R,y:Bot}),band=(matchMedia('(pointer:coarse)').matches?44:10)/scale;
+    const a=drawPoint({x:L,y:T}),z=drawPoint({x:R,y:Bot}),band=(coarse?24:10)/scale;
     const strips={n:[a.x,a.y,z.x,a.y],s:[a.x,z.y,z.x,z.y],w:[a.x,a.y,a.x,z.y],e:[z.x,a.y,z.x,z.y]};
+    // Touch strips lie just outside their edge, between the corner targets.
+    const along=coarse?2*inset:hit,shiftOut={n:-1,w:-1,s:1,e:1};
     for(const [name,[x1,y1,x2,y2]] of Object.entries(strips)){
-      const handle=make(name),horiz=y1===y2;
-      const x=horiz?Math.min(x1,x2)+hit/2:x1-band/2,y=horiz?y1-band/2:Math.min(y1,y2)+hit/2;
-      handle.append(svgElement('rect',{x,y,width:horiz?Math.max(0,Math.abs(x2-x1)-hit):band,height:horiz?band:Math.max(0,Math.abs(y2-y1)-hit),fill:'transparent'}));
+      const handle=make(name),horiz=y1===y2,off=coarse?shiftOut[name]*(band/2-inset/2):0;
+      const x=horiz?Math.min(x1,x2)+along/2:x1-band/2+off,y=horiz?y1-band/2+off:Math.min(y1,y2)+along/2;
+      handle.append(svgElement('rect',{x,y,width:horiz?Math.max(0,Math.abs(x2-x1)-along):band,height:horiz?band:Math.max(0,Math.abs(y2-y1)-along),fill:'transparent'}));
       layer.prepend(handle);
     }
     const dots=svg.querySelector('.cl-dots');if(dots)svg.insertBefore(layer,dots);else svg.append(layer);
