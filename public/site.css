@@ -1,6 +1,7 @@
 /* Shared styling for the small static pages (404, licenses). */
 :root{--bg:#fff;--chip:#f6f8fa;--ink:#1f2328;--muted:#656d76;--line:#d0d7de;--accent:#0969da;--grid:#d0d7de}
-@media (prefers-color-scheme:dark){:root{--bg:#0d1117;--chip:#161b22;--ink:#e6edf3;--muted:#9198a1;--line:#30363d;--accent:#4493f8;--grid:#30363d}}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0d1117;--chip:#161b22;--ink:#e6edf3;--muted:#9198a1;--line:#30363d;--accent:#4493f8;--grid:#30363d}}
+:root[data-theme=dark]{--bg:#0d1117;--chip:#161b22;--ink:#e6edf3;--muted:#9198a1;--line:#30363d;--accent:#4493f8;--grid:#30363d}
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%}
 body{font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:var(--bg);background-image:radial-gradient(var(--grid) 1px,transparent 1px);background-size:24px 24px}

@@ -2,14 +2,14 @@
 // the controls declared in index.html into chips, menus and popovers; every
 // control keeps its own handler. It also adds drag-to-connect, which submits
 // ordinary candidate edits.
-import {attachPoints,nearestAnchor,targetAnchor,hitShape,connectCandidate,connectionLabel,elbowRoute} from './connect-drag.js?v=20261106e';
-import {connectableShapes} from './creation.js?v=20261106e';
-import {connectorCapabilities,connectorTitle} from './arrow-ui.js?v=20261106e';
-import {freeLineCandidate,pointText,snapToGrid,literalRoute,lineEnds,translateLineCandidate,moveEndpointCandidate} from './free-lines.js?v=20261106e';
-import {lockDirection} from './constrain.js?v=20261106e';
-import {inspectProperties} from './properties.js?v=20261106e';
-import {buildTextEdit} from './text-sizing.js?v=20261106e';
-import {textStyle,textStyleCandidate,textSizes,textColours} from './text-style.js?v=20261106e';
+import {attachPoints,nearestAnchor,targetAnchor,hitShape,connectCandidate,connectionLabel,elbowRoute} from './connect-drag.js?v=20261106f';
+import {connectableShapes} from './creation.js?v=20261106f';
+import {connectorCapabilities,connectorTitle} from './arrow-ui.js?v=20261106f';
+import {freeLineCandidate,pointText,snapToGrid,literalRoute,lineEnds,translateLineCandidate,moveEndpointCandidate} from './free-lines.js?v=20261106f';
+import {lockDirection} from './constrain.js?v=20261106f';
+import {inspectProperties} from './properties.js?v=20261106f';
+import {buildTextEdit} from './text-sizing.js?v=20261106f';
+import {textStyle,textStyleCandidate,textSizes,textColours} from './text-style.js?v=20261106f';
 
 
 const $=id=>document.getElementById(id);
@@ -68,6 +68,9 @@ function install(studio){
   // Paths are Lucide (lucide.dev, ISC license): 24-unit, round caps and joins,
   // drawn at the one stroke weight iconMarkup sets.
   const CHROME_ICONS={
+    monitor:[['rect',{x:'2',y:'3',width:'20',height:'14',rx:'2'}],['path',{d:'M8 21h8'}],['path',{d:'M12 17v4'}]],
+    sun:[['circle',{cx:'12',cy:'12',r:'4'}],['path',{d:'M12 2v2'}],['path',{d:'M12 20v2'}],['path',{d:'m4.93 4.93 1.41 1.41'}],['path',{d:'m17.66 17.66 1.41 1.41'}],['path',{d:'M2 12h2'}],['path',{d:'M20 12h2'}],['path',{d:'m6.34 17.66-1.41 1.41'}],['path',{d:'m19.07 4.93-1.41 1.41'}]],
+    moon:[['path',{d:'M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z'}]],
     trash:[['path',{d:'M3 6h18'}],['path',{d:'M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6'}],['path',{d:'M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2'}],['path',{d:'M10 11v6'}],['path',{d:'M14 11v6'}]],
     menu:[['path',{d:'M4 5h16'}],['path',{d:'M4 12h16'}],['path',{d:'M4 19h16'}]],
     source:[['path',{d:'m18 16 4-4-4-4'}],['path',{d:'m6 8-4 4 4 4'}],['path',{d:'m14.5 4-5 16'}]],
@@ -150,7 +153,19 @@ function install(studio){
   examples?.addEventListener('click',()=>toggle(menu,menuButton,false));
   $('example-picker')?.addEventListener('close',()=>menuButton.focus());
   const docSection=section('Document',row(newDoc,openDoc,examples,$('file-input')),recent,saveState);
-  const prefsSection=section('Preferences',labelled('anchors','Show anchors'),labelled('auto-apply','Apply accepted changes immediately'),labelled('snap-resize','Snap resize to 0.1 in'));
+  // Theme: System follows the OS; Light and Dark pin it (theme.js applies and stores it).
+  const themeGroup=el('div',{class:'cl-seg cl-theme',role:'group','aria-label':'Theme'});
+  const themeButtons=[['system','System','monitor'],['light','Light','sun'],['dark','Dark','moon']].map(([value,text,icon])=>{
+    const b=el('button',{type:'button','data-theme-choice':value,'aria-pressed':'false'},iconMarkup(CHROME_ICONS[icon]),el('span',{},text));
+    b.onclick=()=>{window.pikchrTheme?.set(value);syncThemeButtons();};
+    return b;
+  });
+  themeGroup.append(...themeButtons);
+  const syncThemeButtons=()=>{const current=window.pikchrTheme?.get()||'system';for(const b of themeButtons)b.setAttribute('aria-pressed',String(b.dataset.themeChoice===current));};
+  addEventListener('storage',e=>{if(e.key==='pikchr-studio.theme')syncThemeButtons();});
+  syncThemeButtons();
+  const themeRow=el('div',{class:'cl-theme-row'},el('span',{},'Theme'),themeGroup);
+  const prefsSection=section('Preferences',themeRow,labelled('anchors','Show anchors'),labelled('auto-apply','Apply accepted changes immediately'),labelled('snap-resize','Snap resize to 0.1 in'));
   const view=q('.canvas-view-options');if(view)view.hidden=true;
   // Changes live in a popover opened from the status chip (see syncStatus).
   const draft=q('.draft-toolbar'),queueStatus=$('queue-status');

@@ -560,3 +560,12 @@ body.layout-canvas .cl-export button:disabled{opacity:.5}
   body.layout-canvas .cl-zoom :is(.cl-sep,[aria-label=Shortcuts]){display:none}
   body.layout-canvas .cl-status{top:72px}
 }
+/* Theme switcher in the menu's Preferences. */
+body.layout-canvas .cl-theme-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;min-height:32px}
+body.layout-canvas .cl-menu .cl-theme{display:inline-flex}
+body.layout-canvas .cl-menu .cl-theme>button{display:inline-flex;align-items:center;gap:5px;width:auto;min-height:30px;padding:0 9px;border-radius:0;margin-left:-1px;font-size:12px;justify-content:center}
+body.layout-canvas .cl-menu .cl-theme>button svg{width:15px;height:15px;flex:none}
+body.layout-canvas .cl-menu .cl-theme>button:first-child{margin-left:0;border-radius:7px 0 0 7px}
+body.layout-canvas .cl-menu .cl-theme>button:last-child{border-radius:0 7px 7px 0}
+body.layout-canvas .cl-menu .cl-theme>button[aria-pressed=true]{position:relative;z-index:1;background:var(--cl-accent-bg);border-color:var(--cl-accent);color:var(--cl-accent);font-weight:600}
+@media (pointer:coarse){body.layout-canvas .cl-menu .cl-theme>button{min-height:44px}}
