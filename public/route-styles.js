@@ -1,8 +1,8 @@
 // Route styles: every connector restyle is a whole-statement source edit that
 // the caller renders and checks before showing it. Only style tokens this
 // module recognises are rewritten; every other token keeps its bytes.
-import { byteOffsetToIndex, applyPatch, editability } from './edits.js?v=20261106b';
-import { obstacleRects } from './route-suggestions.js?v=20261106b';
+import { byteOffsetToIndex, applyPatch, editability, colourNames } from './edits.js?v=20261106c';
+import { obstacleRects } from './route-suggestions.js?v=20261106c';
 
 const CONNECTORS = ['arrow','line','spline','arc'];
 const NON_OBSTACLES = [...CONNECTORS, 'move'];
@@ -15,8 +15,6 @@ const HEX = /^0x[0-9a-fA-F]+$/;
 const TEXT_ATTRS = new Set(['above','below','aligned','ljust','rjust','center','bold','italic','big','small','mono','monospace']);
 const PLACEMENTS = ['above','below','aligned','center'];
 const ANCHOR_ORDER = ['c','n','s','e','w','ne','nw','se','sw'];
-export const routeColours = ['black','white','red','blue','green','yellow','gray'];
-const COLOUR_WORDS = new Set([...routeColours, 'grey', 'none']);
 const LOCKED = 'Another object refers to this connector, so changing its type could move that object.';
 const MARGIN = 0.2, LOOP = 0.25, TIE = 0.05, EPS = 1e-6;
 
@@ -55,7 +53,7 @@ export function parseConnector(source, object, scene) {
     else if (t === 'solid') i = take(i, 'dash');
     else if (t === 'thin' || t === 'thick') i = take(i, 'weight');
     else if (t === 'thickness') { if (!NUMBER.test(next || '')) return null; i = take(i, 'weight', 1); }
-    else if (t === 'color') { if (!(COLOUR_WORDS.has(next) || HEX.test(next || '') || NUMBER.test(next || ''))) return null; i = take(i, 'color', 1); }
+    else if (t === 'color') { if (!(colourNames.has((next || '').toLowerCase()) || HEX.test(next || '') || NUMBER.test(next || ''))) return null; i = take(i, 'color', 1); }
     else if (t === 'rad' || t === 'radius') { if (!NUMBER.test(next || '')) return null; i = take(i, 'rad', 1); }
     else if (t === 'chop') i = take(i, 'chop');
     else if (t === 'cw' || t === 'ccw') i = take(i, 'turn');
@@ -181,7 +179,10 @@ export function connectorStyleCandidate(source, object, scene, { color, thicknes
   }
   const set = {};
   if (color !== undefined && color !== '') set.color = 'color ' + color;
-  if (thickness !== undefined && thickness !== '') set.weight = 'thickness ' + thickness;
+  // null resets the weight to the document default.
+  if (thickness === null) set.weight = null;
+  else if (thickness === 'thin' || thickness === 'thick') set.weight = thickness;
+  else if (thickness !== undefined && thickness !== '') set.weight = 'thickness ' + thickness;
   if (!Object.keys(set).length) return null;
   // An unchanged member is valid in an atomic group edit; other members may
   // still need the same style. Interactive preset lists keep omitting no-ops.
@@ -192,18 +193,6 @@ export function strokeCandidates(source, object, scene, dash) {
   const model = parseConnector(source, object, scene);
   if (!model || !['solid','dashed','dotted'].includes(dash)) return [];
   const option = makeOption(model, { set:{ dash:dash === 'solid' ? null : dash } }, { id:'stroke-' + dash, group:'Stroke', label:dash[0].toUpperCase() + dash.slice(1) });
-  return option ? [option] : [];
-}
-export function weightCandidates(source, object, scene, weight) {
-  const model = parseConnector(source, object, scene);
-  if (!model || !['thin','normal','thick'].includes(weight)) return [];
-  const option = makeOption(model, { set:{ weight:weight === 'normal' ? null : weight } }, { id:'weight-' + weight, group:'Weight', label:weight[0].toUpperCase() + weight.slice(1) + ' line' });
-  return option ? [option] : [];
-}
-export function colourCandidates(source, object, scene, colour) {
-  const model = parseConnector(source, object, scene);
-  if (!model || !(colour === 'default' || routeColours.includes(colour))) return [];
-  const option = makeOption(model, { set:{ color:colour === 'default' ? null : 'color ' + colour } }, { id:'colour-' + colour, group:'Colour', label:colour === 'default' ? 'Default colour' : 'Colour ' + colour });
   return option ? [option] : [];
 }
 export function chopCandidates(source, object, scene, on) {

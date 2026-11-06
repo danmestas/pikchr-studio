@@ -79,10 +79,16 @@ function placementRange(statement, object) {
 // (above/below) are attributes only when they do not start a placement.
 export const permittedAttributes = new Set(['fit','width','wid','height','ht','radius','rad','diameter','fill','color','thickness','dashed','dotted','invis','invisible','bold','italic','small','big','thin','thick','solid','behind','black','white','red','blue','green','yellow','gray','grey','none','ljust','rjust','above','below','chop','aligned','center']);
 export const numericToken = new RegExp(`^${number}${unit}$`);
+// Pikchr's colour names (the CSS names plus none and off), case-insensitive.
+export const colourNames=new Set('aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown burlywood cadetblue chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey darkkhaki darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen darkslateblue darkslategray darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite forestgreen fuchsia gainsboro ghostwhite gold goldenrod gray grey green greenyellow honeydew hotpink indianred indigo ivory khaki lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen lightgrey lightpink lightsalmon lightseagreen lightskyblue lightslategray lightslategrey lightsteelblue lightyellow lime limegreen linen magenta maroon mediumaquamarine mediumblue mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid palegoldenrod palegreen paleturquoise palevioletred papayawhip peachpuff peru pink plum powderblue purple rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown seagreen seashell sienna silver skyblue slateblue slategray slategrey snow springgreen steelblue tan teal thistle tomato turquoise violet wheat white whitesmoke yellow yellowgreen none off'.split(' '));
+// A colour value Studio can write: a known name, #rrggbb or 0xrrggbb.
+export const isColour=value=>typeof value==='string'&&(/^(?:#|0x)[0-9a-f]{6}$/i.test(value)||colourNames.has(value.toLowerCase()));
 export function safeAttributes(body) {
   const tokens = body.trim().split(/\s+/).filter(Boolean);
   return !tokens.some((token,index) => {
     if (['<-','->','<->'].includes(token) || /^0x[0-9a-f]{6}$/i.test(token) || numericToken.test(token)) return false;
+    // Any Pikchr colour name may follow fill or color, as the basic ones may anywhere.
+    if (colourNames.has(token.toLowerCase()) && ['fill','color'].includes(tokens[index-1])) return false;
     if (!permittedAttributes.has(token)) return true;
     if ((token==='above'||token==='below') && /^[A-Z]/.test(tokens[index+1]||'')) return true;
     return false;

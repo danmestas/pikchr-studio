@@ -2,14 +2,14 @@
 // the controls declared in index.html into chips, menus and popovers; every
 // control keeps its own handler. It also adds drag-to-connect, which submits
 // ordinary candidate edits.
-import {attachPoints,nearestAnchor,targetAnchor,hitShape,connectCandidate,connectionLabel,elbowRoute} from './connect-drag.js?v=20261106b';
-import {connectableShapes} from './creation.js?v=20261106b';
-import {connectorCapabilities,connectorTitle} from './arrow-ui.js?v=20261106b';
-import {freeLineCandidate,pointText,snapToGrid,literalRoute,lineEnds,translateLineCandidate,moveEndpointCandidate} from './free-lines.js?v=20261106b';
-import {lockDirection} from './constrain.js?v=20261106b';
-import {inspectProperties} from './properties.js?v=20261106b';
-import {buildTextEdit} from './text-sizing.js?v=20261106b';
-import {textStyle,textStyleCandidate,textSizes,textColours} from './text-style.js?v=20261106b';
+import {attachPoints,nearestAnchor,targetAnchor,hitShape,connectCandidate,connectionLabel,elbowRoute} from './connect-drag.js?v=20261106c';
+import {connectableShapes} from './creation.js?v=20261106c';
+import {connectorCapabilities,connectorTitle} from './arrow-ui.js?v=20261106c';
+import {freeLineCandidate,pointText,snapToGrid,literalRoute,lineEnds,translateLineCandidate,moveEndpointCandidate} from './free-lines.js?v=20261106c';
+import {lockDirection} from './constrain.js?v=20261106c';
+import {inspectProperties} from './properties.js?v=20261106c';
+import {buildTextEdit} from './text-sizing.js?v=20261106c';
+import {textStyle,textStyleCandidate,textSizes,textColours} from './text-style.js?v=20261106c';
 
 
 const $=id=>document.getElementById(id);
@@ -562,7 +562,7 @@ function install(studio){
     const focus=objects?(opener||(more.hidden?null:more.returnFocus)||diagram):(document.activeElement?.closest('.cl-context button')||more.returnFocus||moreButton);
     toggle(more,moreButton,true);more.returnFocus=focus;
     if(objects)return;
-    const s=$('inspector')?.querySelector('.appearance-editor[open]');if(s){s.scrollIntoView({block:'nearest'});s.querySelector('input,select')?.focus({preventScroll:true});}
+    const s=$('inspector')?.querySelector('.appearance-editor[open]');if(s){s.scrollIntoView({block:'nearest'});[...s.querySelectorAll('button,input,select')].find(e=>e.offsetParent&&!e.disabled)?.focus({preventScroll:true});}
   }).observe(document.body,{attributes:true,attributeFilter:['class']});
   // Choosing an object from the outline returns to its properties, so the
   // list is a way in rather than a place to get stuck.
@@ -900,7 +900,7 @@ function install(studio){
   // Text is edited where it sits: T places a text object and opens an editor
   // over it; double-click or Enter edits any label. Enter commits, Shift+Enter
   // adds a line, Escape cancels. Commits go through the normal validated path.
-  const textKinds=['box','cylinder','circle','ellipse','oval','diamond','text'];
+  const textKinds=['box','cylinder','circle','ellipse','oval','diamond','file','text'];
   let inline=null,pendingText=0;
   function labelText(o){const s=studio.state();if(!o||!textKinds.includes(o.kind))return null;try{return inspectProperties(s.source,o,s.scene).text;}catch{return null;}}
   function maybeEditNewText(){
@@ -926,33 +926,67 @@ function install(studio){
     const hidden=[...(group?.querySelectorAll('text')||[])];for(const t of hidden)t.style.visibility='hidden';
     document.body.append(ta);fit();ta.focus();if(created)ta.select();else ta.setSelectionRange(ta.value.length,ta.value.length);
     inline={object,ta,created,original:text,source:s.source,hidden};context.hidden=true;textBar.hidden=true;
-    ta.addEventListener('input',fit);
+    ta.addEventListener('input',()=>{fit();inlineError(null);});
     ta.addEventListener('keydown',e=>{
       e.stopPropagation();
       if(e.key==='Escape'){e.preventDefault();closeInline(false);}
       else if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();closeInline(true);}
     });
-    ta.addEventListener('blur',()=>closeInline(true));
+    ta.addEventListener('blur',()=>{if(inline?.ta===ta&&!inline.busy)closeInline(true,{blurred:true});});
     return true;
   }
-  async function closeInline(commit){
-    const d=inline;if(!d)return;inline=null;
-    d.ta.remove();for(const t of d.hidden)t.style.visibility='';
+  // A refused label is never dropped: the editor stays open with the reason
+  // under it, refocused after Enter and left as it is after a blur.
+  function inlineError(message){
+    const d=inline;if(!d)return;
+    if(!message){d.error?.remove();d.error=null;return;}
+    if(!d.error){d.error=el('p',{class:'cl-inline-error',role:'alert'});document.body.append(d.error);}
+    d.error.textContent=message;
+    const r=d.ta.getBoundingClientRect();
+    Object.assign(d.error.style,{left:r.left+'px',top:(r.bottom+4)+'px',width:Math.max(r.width,220)+'px'});
+  }
+  function removeInline(d){
+    if(inline===d)inline=null;
+    d.ta.remove();d.error?.remove();for(const t of d.hidden)t.style.visibility='';
     diagram.focus({preventScroll:true});schedule();
+  }
+  // A shape that cannot wrap or grow (no explicit position, size expressions)
+  // keeps its size; the reason travels with the edit for the status line.
+  async function labelEdit(s,object,text){
+    const kind=object.kind,modes=kind==='text'?['fixed']:kind==='box'?['wrap','grow','fixed']:['grow','fixed'];
+    let failure;
+    for(const mode of modes){
+      try{return {option:await buildTextEdit(s.source,s.scene,object,{text,mode,width:object.bbox?.width},studio.render),mode,reason:failure?.message};}
+      catch(error){failure=error;if(/plain text|five/.test(error.message))break;}
+    }
+    throw failure;
+  }
+  async function closeInline(commit,{blurred=false}={}){
+    const d=inline;if(!d||d.busy)return;
     const text=d.ta.value.replace(/\r/g,'').replace(/\s+$/,'');
     // A new text that ends up empty is removed again (undo the creation).
-    if(d.created&&(!commit||!text.trim())){$('canvas-undo')?.click();return;}
-    if(!commit||text===d.original)return;
+    if(d.created&&(!commit||!text.trim())){removeInline(d);$('canvas-undo')?.click();return;}
+    if(!commit||text===d.original){removeInline(d);return;}
+    const refuse=message=>{
+      if(inline!==d){$('state').textContent='Label not changed: '+message;return;}
+      inlineError(message);if(!blurred)d.ta.focus();
+    };
     const s=studio.state();
-    if(!s.valid||s.source!==d.source){$('state').textContent='The diagram changed. Edit the text again.';return;}
-    const kind=d.object.kind,mode=kind==='text'?'fixed':kind==='box'?'wrap':'grow';
-    let option;
-    try{option=await buildTextEdit(s.source,s.scene,d.object,{text,mode,width:d.object.bbox?.width},studio.render);}
-    catch(error){
-      if(mode!=='wrap'){$('state').textContent=error.message;return;}
-      try{option=await buildTextEdit(s.source,s.scene,d.object,{text,mode:'grow'},studio.render);}catch(e2){$('state').textContent=e2.message;return;}
-    }
-    await studio.propose([{...option,...(d.object.name?{selectName:d.object.name}:{selectId:d.object.id,targetKind:d.object.kind})}]);
+    if(!s.valid||s.source!==d.source){removeInline(d);$('state').textContent='Label not changed: the diagram changed while you typed. Edit the text again.';return;}
+    if(text.split('\n').length>5)return refuse('Pikchr shows at most five lines of text per shape. Remove some line breaks.');
+    d.busy=true;
+    let edit;
+    try{
+      edit=await labelEdit(s,d.object,text);
+      const check=await studio.render(edit.option.source);
+      if(check.error)throw new Error('Pikchr cannot render this label: '+check.error);
+    }catch(error){d.busy=false;return refuse(error.message);}
+    d.busy=false;
+    if(inline!==d||studio.state().source!==d.source){removeInline(d);$('state').textContent='Label not changed: the diagram changed while you typed. Edit the text again.';return;}
+    removeInline(d);
+    const kept=edit.mode==='fixed'&&d.object.kind!=='text';
+    const applied=await studio.propose([{...edit.option,...(kept?{label:'Change text (keep shape size)'}:{}),...(d.object.name?{selectName:d.object.name}:{selectId:d.object.id,targetKind:d.object.kind})}]);
+    if(applied&&kept)$('state').textContent='Label changed; the shape kept its size. It could not grow to fit: '+edit.reason;
   }
   diagram.addEventListener('dblclick',e=>{
     // Pointer capture on the canvas retargets the event to the SVG root, so

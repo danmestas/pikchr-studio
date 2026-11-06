@@ -1,9 +1,9 @@
-import {createShape,createConnector,connectableShapes,shapeKinds} from './creation.js?v=20261106b';
-import {inspectProperties} from './properties.js?v=20261106b';
-import {endpointCandidates} from './edits.js?v=20261106b';
-import {buildTextEdit} from './text-sizing.js?v=20261106b';
-import {createConnectedNeighbor,resizeShape} from './canvas-operations.js?v=20261106b';
-import {snapResize,resizeBox} from './resize-guides.js?v=20261106b';
+import {createShape,createConnector,connectableShapes,shapeKinds} from './creation.js?v=20261106c';
+import {inspectProperties} from './properties.js?v=20261106c';
+import {endpointCandidates} from './edits.js?v=20261106c';
+import {buildTextEdit} from './text-sizing.js?v=20261106c';
+import {createConnectedNeighbor,resizeShape} from './canvas-operations.js?v=20261106c';
+import {snapResize,resizeBox} from './resize-guides.js?v=20261106c';
 
 const ns='http://www.w3.org/2000/svg';
 const element=(tag,attrs={})=>{const node=document.createElement(tag);for(const[k,v]of Object.entries(attrs))node.setAttribute(k,v);return node;};

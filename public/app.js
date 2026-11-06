@@ -1,27 +1,27 @@
-import {candidates,snap,applyPatch,byteOffsetToIndex,routeCandidates} from './edits.js?v=20261106b';
-import {routeStyleCandidates} from './route-styles.js?v=20261106b';
-import {correspondingObject} from './candidate-target.js?v=20261106b';
-import {alignmentGuides,gapMarks} from './guides.js?v=20261106b';
-import {constrainDrag,smartSnap} from './constrain.js?v=20261106b';
+import {candidates,snap,applyPatch,byteOffsetToIndex,routeCandidates} from './edits.js?v=20261106c';
+import {routeStyleCandidates} from './route-styles.js?v=20261106c';
+import {correspondingObject} from './candidate-target.js?v=20261106c';
+import {alignmentGuides,gapMarks} from './guides.js?v=20261106c';
+import {constrainDrag,smartSnap} from './constrain.js?v=20261106c';
 const params=new URL(location.href).searchParams;
-import {arrowEditor,connectorCapabilities,connectorLabel,connectorRows,editingBlocked} from './arrow-ui.js?v=20261106b';
-import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20261106b';
-import {propertyEditor} from './property-ui.js?v=20261106b';
-import {fitText,canFitText,inspectProperties,readProperties} from './properties.js?v=20261106b';
-import {duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20261106b';
-import {decodeLinkSource,encodeLinkSource,linkFragment,linkPayload} from './link-import.js?v=20261106b';
-import {createDocumentStore} from './documents.js?v=20261106b';
-import {canvasNavigation,clampZoom} from './canvas-navigation.js?v=20261106b';
-import {examplePicker} from './example-picker.js?v=20261106b';
-import {canvasTools} from './canvas-tools.js?v=20261106b';
-import {copySelection,pasteSelection} from './subgraph.js?v=20261106b';
-import {createComponentLibrary} from './component-library.js?v=20261106b';
-import {exportWorkspace,parseWorkspace} from './workspace-backup.js?v=20261106b';
-import {tidyRouteCandidate} from './route-suggestions.js?v=20261106b';
-import {createCandidateReview} from './candidate-review.js?v=20261106b';
-import {cleanSVG,downloadPNG} from './diagram-export.js?v=20261106b';
-import {readSizingPreference,writeSizingPreference} from './sizing-preferences.js?v=20261106b';
-import {detachCandidates,macroBlocked,macroUses} from './macro-detach.js?v=20261106b';
+import {arrowEditor,connectorCapabilities,connectorLabel,connectorRows,editingBlocked} from './arrow-ui.js?v=20261106c';
+import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20261106c';
+import {propertyEditor,styleControls} from './property-ui.js?v=20261106c';
+import {fitText,canFitText,inspectProperties,readProperties,documentThickness} from './properties.js?v=20261106c';
+import {duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20261106c';
+import {decodeLinkSource,encodeLinkSource,linkFragment,linkPayload} from './link-import.js?v=20261106c';
+import {createDocumentStore} from './documents.js?v=20261106c';
+import {canvasNavigation,clampZoom} from './canvas-navigation.js?v=20261106c';
+import {examplePicker} from './example-picker.js?v=20261106c';
+import {canvasTools} from './canvas-tools.js?v=20261106c';
+import {copySelection,pasteSelection} from './subgraph.js?v=20261106c';
+import {createComponentLibrary} from './component-library.js?v=20261106c';
+import {exportWorkspace,parseWorkspace} from './workspace-backup.js?v=20261106c';
+import {tidyRouteCandidate} from './route-suggestions.js?v=20261106c';
+import {createCandidateReview} from './candidate-review.js?v=20261106c';
+import {cleanSVG,downloadPNG} from './diagram-export.js?v=20261106c';
+import {readSizingPreference,writeSizingPreference} from './sizing-preferences.js?v=20261106c';
+import {detachCandidates,macroBlocked,macroUses} from './macro-detach.js?v=20261106c';
 const $=id=>document.getElementById(id);
 const examples={
   pipeline:'Client: box "Client" at (0,0)\nAPI: box "API" at (2,0)\nDatabase: cylinder "Database" at (4,0)\narrow from Client.e to API.w\narrow from API.e to Database.w\n',
@@ -473,39 +473,26 @@ function drawGroupInspector(){
   const details=document.createElement('details'),summary=document.createElement('summary');
   details.className='appearance-editor group-style';details.open=groupStyleOpen;
   details.ontoggle=()=>{if(details.isConnected)groupStyleOpen=details.open;};
-  summary.textContent='Style all '+objects.length+' objects';details.append(summary);
-  const form=document.createElement('form');form.className='appearance-form';
-  const fields=[['stroke','Stroke / text color'],['thickness','Line thickness (pixels)'],...(capabilities.fill?[['fill','Fill color']]:[])];
-  const controls={};
-  for(const [key,title] of fields){
-    const label=document.createElement('label');label.textContent=title;
-    const input=document.createElement('input');input.setAttribute('aria-label',title);
-    input.dataset.initial=input.value='';
-    if(key==='thickness'){input.type='number';input.step='any';input.min='0';}
-    else input.placeholder=key==='fill'?'none, white, or #ffffff':'black or #000000';
-    controls[key]=input;label.append(input);form.append(label);
-  }
-  const error=document.createElement('p');error.className='property-error';error.setAttribute('role','alert');
-  const apply=document.createElement('button');apply.type='submit';apply.textContent='Style '+objects.length+' objects';form.append(apply);
-  form.onsubmit=e=>{
-    e.preventDefault();
-    if(rendering||source.value!==renderedSource||$('diagram').classList.contains('stale')){error.textContent='Render the current source before styling the group.';status(error.textContent);return;}
-    const values={};
-    for(const [key,input] of Object.entries(controls)){
-      const value=input.value.trim();
-      if(value!==''&&value!==input.dataset.initial)values[key]=key==='thickness'?Number(value):value;
-    }
-    if(!Object.keys(values).length){error.textContent='Change a stroke, thickness or fill value first.';status(error.textContent);return;}
-    let option;
-    try{option=changeSelectionAppearance(renderedSource,objects,scene,values);}
-    catch(problem){error.textContent=problem.message;status('Edit not applied. '+problem.message);return;}
-    error.textContent='';
-    validateSuggestions(objects[0],[{...option,selectionIds:option.selectionIds}]);
-  };
-  details.append(form,error);$('inspector').append(details);
+  summary.append('Style all '+objects.length+' objects');details.append(summary);
+  // The same controls as one object's Style; a value shows only when every
+  // member agrees (null reads as mixed). Each choice is one validated edit.
+  const props=objects.map(o=>{try{return inspectProperties(renderedSource,o,scene);}catch{return {};}});
+  const common=key=>{const values=props.map(p=>p[key]);return values.every(v=>v===values[0])?values[0]:null;};
+  const {body,preview}=styleControls({fill:capabilities.fill,stroke:true,
+    current:{fill:common('fill'),color:common('color'),thickness:common('thickness'),thicknessSet:props.some(p=>p.thicknessSet)},
+    base:documentThickness(renderedSource),
+    apply:values=>{
+      if(rendering||source.value!==renderedSource||$('diagram').classList.contains('stale'))throw new Error('Render the current source before styling the group.');
+      let option;
+      try{option=changeSelectionAppearance(renderedSource,objects,scene,values);}
+      catch(problem){status('Edit not applied. '+problem.message);throw problem;}
+      validateSuggestions(objects[0],[{...option,selectionIds:option.selectionIds}]);
+    }});
+  summary.append(preview);
+  details.append(body);$('inspector').append(details);
 }
 $('edit-selected').onclick=()=>directTools?.editText();
-$('appearance-selected').onclick=()=>{openInspector();const section=$('inspector').querySelector('.appearance-editor');if(section){section.open=true;section.scrollIntoView({block:'nearest'});section.querySelector('input')?.focus({preventScroll:true});}};
+$('appearance-selected').onclick=()=>{openInspector();const section=$('inspector').querySelector('.appearance-editor');if(section){section.open=true;section.scrollIntoView({block:'nearest'});[...section.querySelectorAll('button,input,select')].find(e=>e.offsetParent&&!e.disabled)?.focus({preventScroll:true});}};
 $('route-selected').onclick=()=>{
   openInspector();
   const button=[...$('inspector').querySelectorAll('button')].find(b=>b.textContent==='Routing');button?.click();
@@ -658,7 +645,7 @@ function bindDiagram(svg){
       group.setAttribute('tabindex','0');group.setAttribute('role','button');
       group.setAttribute('aria-label',(object.name||object.kind)+', '+(connector||(object.editable?'movable':'inspect only')));
     }
-    if(['box','circle','ellipse','oval','cylinder','diamond'].includes(object?.kind)){
+    if(['box','circle','ellipse','oval','cylinder','diamond','file'].includes(object?.kind)){
       // Pikchr's unfilled shapes otherwise only receive events on ink (the
       // stroke and label). Use the real outline, not a rectangular hit box, so
       // rounded/diamond corners do not capture clicks outside the shape.

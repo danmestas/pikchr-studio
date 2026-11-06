@@ -15,7 +15,7 @@ function render(source){const pointer=native(source);try{return JSON.parse(modul
 function fixture(statement){const source='# café 😀\r\nA: box at (0,0)\r\nB: box at (2,-1)\r\n'+statement+'\r\n# untouched\r\n';const scene=render(source);assert.equal(scene.error,null);return {source,scene,object:scene.objects.at(-1)};}
 
 test('text editing preserves native types, styles, Unicode, placement and CRLF',()=>{
-  for(const kind of ['box','cylinder','circle','ellipse','oval','diamond','line','arrow']){
+  for(const kind of ['box','cylinder','circle','ellipse','oval','diamond','file','line','arrow']){
     const statement=`C: ${kind} "old 😀" color blue `+(['line','arrow'].includes(kind)?'from A.e to (B.w,A.e) then to B.w':'at (4,-2)');
     const {source,object,scene}=fixture(statement);
     const edit=changeText(source,object,scene,'new café 🥳');

@@ -112,7 +112,7 @@ with sync_playwright() as pw:
     open_more(page)
     assert title(page) == ("Client", "box"), title(page)
     order = page.evaluate("""()=>[...document.querySelectorAll('#inspector > *, #inspector .canvas-sizing > .inspector-row')].filter(e=>e.offsetParent)
-      .map(e=>e.querySelector(':scope > .row-name')?.textContent||e.querySelector(':scope > summary')?.textContent||e.className)""")
+      .map(e=>e.querySelector(':scope > .row-name')?.textContent||e.querySelector(':scope > summary')?.firstChild.textContent||e.className)""")
     assert order[:4] == ["Label", "canvas-sizing", "Text fit", "Size (in)"] and order[4:] == ["Shape", "Style", "Advanced & source"], order
     expect(inspector.locator(".label-row .label-preview")).to_have_text("Client")
     expect(inspector.locator(".label-row").get_by_role("button", name="Edit label", exact=True)).to_have_text("Edit")
