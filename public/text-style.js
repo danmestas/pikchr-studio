@@ -1,7 +1,7 @@
 // One-click text styling for text objects and labelled shapes. Pikchr text
 // attributes follow each string ("A" bold big), so every label string gets
 // the same managed attributes; colour is a statement attribute.
-import {readProperties,propertyCandidate} from './properties.js?v=20261106d';
+import {readProperties,propertyCandidate} from './properties.js?v=20261106e';
 
 export const textSizes=['small','normal','big','bigger'];
 export const textAligns=['left','center','right'];

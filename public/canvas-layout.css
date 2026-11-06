@@ -350,6 +350,9 @@ body.layout-canvas .cl-more .style-swatch{flex:none;width:26px;height:26px;min-w
   border:1px solid var(--cl-line);background:var(--swatch,transparent);box-shadow:none;cursor:pointer}
 body.layout-canvas .cl-more .style-swatch[data-colour=none]{background:linear-gradient(135deg,transparent calc(50% - 1px),var(--cl-bad) calc(50% - 1px),var(--cl-bad) calc(50% + 1px),transparent calc(50% + 1px)),var(--cl-canvas)}
 body.layout-canvas .cl-more .style-swatch:hover{border-color:var(--cl-muted)}
+/* The shared button hover tint must not repaint a colour swatch. */
+body.layout-canvas .cl-more button.style-swatch:hover:not(:disabled){background:var(--swatch,transparent)}
+body.layout-canvas .cl-more button.style-swatch[data-colour=none]:hover:not(:disabled){background:linear-gradient(135deg,transparent calc(50% - 1px),var(--cl-bad) calc(50% - 1px),var(--cl-bad) calc(50% + 1px),transparent calc(50% + 1px)),var(--cl-canvas)}
 body.layout-canvas .cl-more .style-swatch[aria-pressed=true]{border-color:var(--cl-accent);box-shadow:0 0 0 2px var(--cl-chip),0 0 0 4px var(--cl-accent)}
 body.layout-canvas .cl-more .style-custom{min-height:26px;padding:0 8px;font-size:12px;border-radius:13px}
 body.layout-canvas .cl-more .style-custom[aria-pressed=true]{background:var(--cl-accent-bg);border-color:var(--cl-accent);color:var(--cl-accent);font-weight:600}
@@ -365,6 +368,8 @@ body.layout-canvas .cl-more .style-unit,body.layout-canvas .cl-more .style-hint{
 body.layout-canvas .cl-more .style-hint{margin:0 0 0 76px}
 body.layout-canvas .cl-more .style-error{margin:2px 0 0 76px;font-size:12px;color:var(--cl-bad)}
 body.layout-canvas .cl-more .style-error[hidden]{display:none}
+body.layout-canvas .cl-more .style-warning{margin:2px 0 0 76px;font-size:12px;color:var(--cl-warn)}
+body.layout-canvas .cl-more .style-warning[hidden]{display:none}
 body.layout-canvas .cl-more .style-preview{display:inline-flex;align-items:center;gap:4px;margin-left:auto;font-weight:400;font-size:12px;color:var(--cl-muted)}
 body.layout-canvas .cl-more .style-dot{width:14px;height:14px;border-radius:50%;border:1px solid var(--cl-line);background:var(--swatch,transparent)}
 body.layout-canvas .cl-more .style-dot[data-colour=none]{background:linear-gradient(135deg,transparent 45%,var(--cl-bad) 45%,var(--cl-bad) 55%,transparent 55%),var(--cl-canvas)}
@@ -373,7 +378,7 @@ body.layout-canvas .cl-more .style-weight{margin-left:2px;font-variant-numeric:t
   body.layout-canvas .cl-more .style-row{grid-template-columns:1fr}
   body.layout-canvas .cl-more .style-row>.row-name{padding-top:0}
   body.layout-canvas .cl-more .style-row>:is(.style-swatches,.style-thickness){grid-column:1}
-  body.layout-canvas .cl-more :is(.style-custom-fields,.style-hint,.style-error){margin-left:0}
+  body.layout-canvas .cl-more :is(.style-custom-fields,.style-hint,.style-error,.style-warning){margin-left:0}
   body.layout-canvas .cl-more .style-swatch{width:32px;height:32px}
   body.layout-canvas .cl-more .style-custom{min-height:32px}
 }
