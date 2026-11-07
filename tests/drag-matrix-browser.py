@@ -55,6 +55,7 @@ CASES = [
     ("left chain", 'left\nbox "A"\narrow\ncircle "B"\n', {"A": move(), "B": move()}),
     ("move", 'box "A"\nmove\nbox "B"\n', {"A": move(), "B": move()}),
     ("then", 'A: box "A"\nline right then down then right\nB: box "B"\n', {"A": move(), "B": move()}),
+    ("then with lengths", 'down\nA: box "A"\narrow down 0.4 then right 1 then down\nB: box "B"\n', {"A": move(), "B": move()}),
     ("arrow with length", 'A: box "A"\narrow 1\nB: box "B"\n', {"A": move(), "B": move()}),
     ("chop", 'A: circle "A"\nB: circle "B" at 1.5in right of A\narrow from A to B chop\n', {"A": move("B"), "B": move()}),
     ("same", 'A: box "A" wid 1.2\nB: box "B" same at A + (2,0)\n', {"B": move()}),
@@ -138,6 +139,16 @@ def check_move(where, source, state, message, obj, delta, along, contains, objec
     for oid, c in before.items():
         if c["kind"] not in ("arrow", "line"):
             continue
+        # A routed connector keeps its legs: same count, each still horizontal or vertical.
+        was, now = c["path"], after[oid]["path"]
+        if len(was) > 2:
+            if len(now) != len(was):
+                return f"connector {oid} has {len(now) - 1} legs, had {len(was) - 1}; source={state['source']!r}"
+            for i in range(len(was) - 1):
+                for axis in ("x", "y"):
+                    if abs(was[i + 1][axis] - was[i][axis]) < 1e-6 and abs(now[i + 1][axis] - now[i][axis]) > 1e-3:
+                        return f"connector {oid} leg {i + 1} is no longer axis-aligned; source={state['source']!r}"
+
         for end in (0, -1):
             was, now = touched(c["path"][end], objects_before), touched(after[oid]["path"][end], state["scene"]["objects"])
             if not was <= now:

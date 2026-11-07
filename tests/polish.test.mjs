@@ -193,7 +193,7 @@ test('chain followers stay put, pinned against an unmoved named shape or by thei
   assert.equal(edit.source,'A: box "A"\nB: box "B" at (1.25, -0.3)\nC: box "C" at A + (1.5, 0)\n');
   // A then-path keeps both ends: its last leg goes to where B is.
   edit=await settled('A: box "A"\nline right then down then right\nB: box "B"\n','o1',.5,-.3);
-  assert.equal(edit.source,'A: box "A" at (0.5, -0.3)\nline right then down then right to (1.375, -0.5)\nB: box "B"\n');
+  assert.equal(edit.source,'A: box "A" at (0.5, -0.3)\nline right 0.25 then down 0.2 then right 0.25\nB: box "B"\n');
   // A following [ ] block is pinned against A; a bracket in a comment is not a block.
   edit=await settled('A: box "A"\nB: box "B"\n/* old: [ box ] */\n[ box "in" ]\nC: box "C"\n','o2',.5,-.3);
   assert.equal(edit.source,'A: box "A"\nB: box "B" at (1.25, -0.3)\n/* old: [ box ] */\n[ box "in" ] at A + (1.5, 0)\nC: box "C"\n');

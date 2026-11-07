@@ -425,7 +425,7 @@ test('drag rewrite: a shape chained after a bare connector extends the connector
   assert.equal(dragged('left\nbox "A"\nline\ncircle "B"\n', 'B', -.5, .3), 'line to (-1.375, 0.3)');
   assert.equal(dragged('box "A"\nmove\nbox "B"\n', 'B', .5, -.3), 'move to (1.375, -0.3)');
   // A routed connector keeps its route; its last leg goes to the moved shape.
-  assert.equal(dragged('box "A"\narrow right 1 then down\nbox "B"\n', 'B', .5, -.3), 'arrow right 1 then down to (1.875, -0.8)');
+  assert.equal(dragged('box "A"\narrow right 1 then down\nbox "B"\n', 'B', .5, -.3), 'arrow right 1.5 then down 0.8');
   // A connector with its own endpoints is left alone; the shape is placed instead.
   assert.match(dragged('box "A"\narrow from 1st box.e right 1\nbox "B"\n', 'B', .5, -.3), /^box "B" at/);
 });
@@ -463,8 +463,15 @@ test('comments never count as placement or blocks', () => {
   assert.equal(dragged('A: box "A"\nB: box "B" at A + (2,0) // at here\n', 'B', .5, 0), 'B: box "B" at A + (2.5, 0) // at here');
 });
 test('a then-path or a bare length before an unplaced shape is extended to the moved shape', () => {
+  // Legs keep their direction; the change goes to the leg nearest the shape,
+  // or is shared when that leg would vanish.
+  assert.equal(dragged('A: box "A"\nline right then down then right\nB: box "B"\n', 'B', -.7, .2),
+    'line right 0.15 then down 0.3 then right 0.15');
+  assert.equal(dragged('A: box "A"\nline right then left then down\nB: box "B"\n', 'B', .7, 0), 'line right 1.2 then left then down');
+  // With no leg along the move's axis the route cannot absorb it: the shape is placed instead.
+  assert.match(dragged('A: box "A"\nline down then down\nB: box "B"\n', 'B', .7, 0), /^B: box "B" at/);
   assert.equal(dragged('A: box "A"\narrow 1\nB: box "B"\n', 'B', .5, -.3), 'arrow to (1.875, -0.3)');
-  assert.equal(dragged('A: box "A"\nline right then down then right\nB: box "B"\n', 'B', .5, -.3), 'line right then down then right to (1.875, -0.8)');
+  assert.equal(dragged('A: box "A"\nline right then down then right\nB: box "B"\n', 'B', .5, -.3), 'line right then down 0.8 then right 1');
 });
 test('movementBlocked words [ ] groups properly', () => {
   const source = 'A: [ box ]\n', scene = compileStudio(source).scene;

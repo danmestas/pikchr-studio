@@ -635,7 +635,7 @@ function keptPlacement(placement, object, earlier, delta, round = value => value
 // An unplaced shape sits where the connector before it ends. Moving the shape
 // can then extend that connector, so both stay attached and the shape keeps
 // its implicit placement. Only a bare connector qualifies.
-function connectorExtension(source, object, scene, delta) {
+function connectorExtension(source, object, scene, delta, absorb = 'end') {
   const before = (scene?.objects || []).filter(other => other.span?.end <= object.span.start && other.span.start >= 0)
     .sort((a, b) => b.span.end - a.span.end)[0];
   if (!before || !['arrow','line','move'].includes(before.kind) || !topLevel(before, scene)
@@ -658,11 +658,52 @@ function connectorExtension(source, object, scene, delta) {
     .sort((x, y) => x.gap - y.gap)[0];
   if (!entry || entry.gap > 0.1) return null;
   const end = object.anchors[entry.name];
+  if (before.path.length > 2) {
+    const text = legsMoved(statement, masked, header[0].length, [...before.path.slice(0, -1), end], delta, absorb);
+    return text && {start:before.span.start, end:before.span.end, expected:statement, text, kind:before.kind};
+  }
   // A bare length (arrow 1) would still apply after `to`; the end replaces it.
   const length = masked.slice(header[0].length).match(new RegExp(`^\\s+${number}${unit}(?=\\s|$)`));
   const kept = length ? statement.slice(0, header[0].length) + statement.slice(header[0].length + length[0].length) : statement;
   const text = kept.trimEnd() + ` to ${offsetText(end.x + delta.x, end.y + delta.y)}` + kept.slice(kept.trimEnd().length);
   return {start:before.span.start, end:before.span.end, expected:statement, text, kind:before.kind};
+}
+
+// A routed connector (right then down then right) keeps its legs: the end
+// moves by `delta` while each leg stays horizontal or vertical. The change on
+// each axis goes to the leg nearest the moved end (absorb: 'start' or 'end')
+// that can take it without vanishing or flipping, else is shared by all legs
+// on that axis in proportion. Null when the legs cannot absorb it.
+function legsMoved(statement, masked, from, points, delta, absorb) {
+  const parts = [], splitter = /\bthen\b/g;
+  let at = from, m;
+  while ((m = splitter.exec(masked))) { parts.push([at, m.index]); at = m.index + m[0].length; }
+  parts.push([at, masked.length]);
+  if (parts.length !== points.length - 1) return null;
+  const legs = [];
+  for (const [i, [a, b]] of parts.entries()) {
+    const words = [...masked.slice(a, b).matchAll(new RegExp(`\\b(up|down|left|right)\\b(?:\\s+(${number})(in)?(?![\\w.%]))?`, 'g'))];
+    if (words.length !== 1 || new RegExp(`(?:^|\\s)${number}`).test(masked.slice(a, b).replace(words[0][0], ''))) return null;
+    const [dx, dy] = [points[i + 1].x - points[i].x, points[i + 1].y - points[i].y];
+    const axis = /left|right/.test(words[0][1]) ? 'x' : 'y', sign = /right|up/.test(words[0][1]) ? 1 : -1;
+    if (Math.abs(axis === 'x' ? dy : dx) > 1e-6) return null;
+    legs.push({start:a + words[0].index, end:a + words[0].index + words[0][0].length, word:words[0][1], axis, sign, length:sign * (axis === 'x' ? dx : dy)});
+  }
+  for (const axis of ['x', 'y']) {
+    const change = delta[axis];
+    if (Math.abs(change) < 1e-9) continue;
+    const mine = legs.filter(leg => leg.axis === axis);
+    if (!mine.length) return null;
+    const near = (absorb === 'start' ? mine : [...mine].reverse()).find(leg => leg.length + leg.sign * change > 1e-6);
+    if (near) { near.length += near.sign * change; near.changed = true; continue; }
+    const total = mine.reduce((sum, leg) => sum + leg.length, 0), sign = mine[0].sign;
+    if (mine.some(leg => leg.sign !== sign) || total + sign * change <= 1e-6) return null;
+    for (const leg of mine) { leg.length *= (total + sign * change) / total; leg.changed = true; }
+  }
+  let text = statement;
+  for (const leg of [...legs].reverse()) if (leg.changed)
+    text = text.slice(0, leg.start) + `${leg.word} ${fmt(leg.length)}` + text.slice(leg.end);
+  return text;
 }
 
 // `precise` marks exact input (keyboard nudges, layout) where snapping and
@@ -674,7 +715,9 @@ function connectorExtension(source, object, scene, delta) {
 // a relational form first too; literal and implicit placements rank freely.
 // `anchorTo` names a shape that stays put: an unplaced shape is then pinned as
 // an offset from it rather than at a literal position.
-export function candidates(source, object, scene, target, {precise=false, keepForm=false, anchorTo=null}={}) {
+// `absorb` says which end of a routed connector before the shape moved:
+// 'end' (the shape itself is dragged) or 'start' (pinning a follower).
+export function candidates(source, object, scene, target, {precise=false, keepForm=false, anchorTo=null, absorb='end'}={}) {
   if (!object || !topLevel(object,scene) || !movableKinds.includes(object.kind) || !point(target)) return [];
   let start, end;
   try {
@@ -749,7 +792,7 @@ export function candidates(source, object, scene, target, {precise=false, keepFo
   const ranked = rankCandidates(unique, target, referenceName ? [referenceName] : []);
   const delta = point(object.center) ? { x: position.x - object.center.x, y: position.y - object.center.y } : null;
   const first = [];
-  const extension = range.implicit && delta && connectorExtension(source, object, scene, delta);
+  const extension = range.implicit && delta && connectorExtension(source, object, scene, delta, absorb);
   if (extension) {
     const patch = {start:extension.start, end:extension.end, text:extension.text, expected:extension.expected, base:source};
     first.push({label:`Move with its ${extension.kind}`, source:applyPatch(source, patch), patch, target:position,

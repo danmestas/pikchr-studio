@@ -225,7 +225,7 @@ export async function settleMove(source,scene,option,object,render,{bringAlong=f
     const origin=before.get(next.id);
     const stable=stableReference(text,result,before,moving,next,origin);
     const patch=next.kind==='[]'?blockPin(text,result,next,origin.center,stable)
-      :editability(next,result).editable?candidates(text,next,result,origin.center,{precise:true,keepForm:true,anchorTo:stable?.name})[0]?.patch:null;
+      :editability(next,result).editable?candidates(text,next,result,origin.center,{precise:true,keepForm:true,anchorTo:stable?.name,absorb:'start'})[0]?.patch:null;
     if(!patch){
       carried.add(next.id);
       // Everything inside a carried block moves with it.
