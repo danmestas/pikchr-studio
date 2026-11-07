@@ -1,4 +1,4 @@
-import {applyPatch,byteOffsetToIndex,candidates,editability} from './edits.js?v=20261106h';
+import {applyPatch,byteOffsetToIndex,candidates,editability,maskCode} from './edits.js?v=20261106h';
 import {readProperties,propertyCandidate,isColour,attributeClauses,lockedMessage} from './properties.js?v=20261106h';
 import {literalRoute,translateLineCandidate} from './free-lines.js?v=20261106h';
 import {connectorStyleCandidate} from './route-styles.js?v=20261106h';
@@ -168,7 +168,7 @@ const same=(p,q,tolerance=1e-4)=>Math.abs(p.x-q.x)<=tolerance&&Math.abs(p.y-q.y)
 const shifted=(before,after)=>!same(before.center,after.center)
   ||(before.path||[]).length!==(after.path||[]).length||(before.path||[]).some((p,i)=>!same(p,after.path[i]));
 // Mask strings, comments and macro bodies so brackets are only real blocks.
-const code=text=>text.replace(/"(?:\\.|[^"\\])*"|#[^\n]*|\/\/[^\n]*/g,m=>' '.repeat(m.length))
+const code=text=>maskCode(text)
   .replace(/\bdefine\s+\w+\s*\{[^}]*\}/g,m=>' '.repeat(m.length));
 // The k-th top-level [ ] block: the offsets of its brackets and of the end of
 // its statement.
@@ -182,41 +182,50 @@ function blockStatement(text,k){
   return null;
 }
 // Give a displaced [ ] block an explicit centre where it was.
-function blockPin(text,scene,block,center){
+function blockPin(text,scene,block,center,anchor){
   const blocks=scene.objects.filter(o=>o.kind==='[]'&&!/nested|macro/i.test(o.reason||''));
   const at=blockStatement(text,blocks.indexOf(block));
   if(!at||/\b(?:at|with)\b/.test(code(text).slice(at.close+1,at.end)))return null;
-  const insert=bytes(text.slice(0,at.close+1)),add=` at (${coordinate(center.x)}, ${coordinate(center.y)})`;
+  const insert=bytes(text.slice(0,at.close+1));
+  const add=anchor?` at ${anchor.name} + (${coordinate(center.x-anchor.center.x)}, ${coordinate(center.y-anchor.center.y)})`:` at (${coordinate(center.x)}, ${coordinate(center.y)})`;
   return {base:text,start:insert,end:insert,expected:'',text:add};
 }
 const coordinate=value=>Number(Number(value).toFixed(4)).toString();
 
-// A dragged shape moves alone. Pikchr chains place an unplaced object after
-// the one before it, and placements name other shapes, so moving one shape
-// can carry others along. Render, find the first shape that moved and should
-// not have, give it an explicit placement where it was (keeping its own form,
-// or extending the bare connector it hangs from), and repeat until only the
-// dragged shape and the connectors attached to it have moved. A follower that
-// cannot be pinned (a macro use) moves along and the label says so.
-// render(source) returns a scene ({objects, error}), synchronously or not.
-export async function settleMove(source,scene,option,object,render){
+// What follows a dragged shape. Shapes placed against it (B at A + ..., 1in
+// below A, with .n at A.s) say so in their source, so they move with it and
+// are not rewritten. Shapes that follow only because they come next in a
+// chain stay where they are: each is pinned, by extending the connector it
+// hangs from, else as an offset from the nearest earlier named shape that
+// stays put, else at a literal position. bringAlong (Alt) inverts this: chain
+// followers move and shapes placed against the dragged one are pinned.
+// Render, pin the first shape that moved and should not have, and repeat. A
+// follower that cannot be pinned (a macro use) moves along and the label says
+// so. render(source) returns a scene ({objects, error}), sync or async.
+export async function settleMove(source,scene,option,object,render,{bringAlong=false}={}){
   const before=new Map(scene.objects.map(o=>[o.id,o]));
-  const pinned=[],carried=new Set();let text=option.source,result=null;
+  const moving=new Set([object.id]),pinned=[],carried=new Set();let text=option.source,result=null;
   for(let round=0;;round++){
     if(round>scene.objects.length+1)return null;
     result=await render(text);
     if(!result||result.error||!Array.isArray(result.objects))return null;
     const now=result.objects.find(o=>o.id===object.id);
     if(!now||!option.target||!same(now.center,option.target,1e-3))return null;
+    const order=o=>o.span?.start>=0?o.span.start:blockStart(text,result,o);
     // Connectors never block: they follow the shapes they are attached to.
-    // Shapes inside a [ ] block follow the block, which is pinned instead.
-    const order=o=>o.span?.start>=0?o.span.start:Infinity;
-    const next=result.objects.filter(o=>before.has(o.id)&&o.id!==object.id&&!carried.has(o.id)&&!/nested/i.test(o.reason||'')
-      &&(shapeKinds.includes(o.kind)||o.kind==='[]')&&shifted(before.get(o.id),o)).sort((a,b)=>order(a)-order(b))[0];
+    // Shapes inside a [ ] block follow the block.
+    const displaced=result.objects.filter(o=>before.has(o.id)&&o.id!==object.id&&!carried.has(o.id)&&!/nested/i.test(o.reason||'')
+      &&(shapeKinds.includes(o.kind)||o.kind==='[]')&&shifted(before.get(o.id),o)).sort((a,b)=>order(a)-order(b));
+    for(let grown=true;grown;){
+      grown=false;
+      for(const o of displaced)if(!moving.has(o.id)&&(o.dependencies||[]).some(id=>moving.has(id))!==bringAlong){moving.add(o.id);grown=true;}
+    }
+    const next=displaced.find(o=>!moving.has(o.id));
     if(!next)break;
     const origin=before.get(next.id);
-    const patch=next.kind==='[]'?blockPin(text,result,next,origin.center)
-      :editability(next,result).editable?candidates(text,next,result,origin.center,{precise:true,keepForm:true})[0]?.patch:null;
+    const stable=stableReference(text,result,before,moving,next,origin);
+    const patch=next.kind==='[]'?blockPin(text,result,next,origin.center,stable)
+      :editability(next,result).editable?candidates(text,next,result,origin.center,{precise:true,keepForm:true,anchorTo:stable?.name})[0]?.patch:null;
     if(!patch){
       carried.add(next.id);
       // Everything inside a carried block moves with it.
@@ -227,11 +236,28 @@ export async function settleMove(source,scene,option,object,render){
     pinned.push(describe(next,text));
     text=applyPatch(text,{...patch,base:text});
   }
-  const names=[...carried].map(id=>result.objects.find(o=>o.id===id)).filter(o=>o&&!/nested/i.test(o.reason||'')).map(o=>describe(o,text));
-  const label=option.label+(pinned.length?`; pin ${pinned.join(', ')} in place`:'')
+  const shown=ids=>[...ids].map(id=>result.objects.find(o=>o.id===id)).filter(o=>o&&o.id!==object.id&&!/nested/i.test(o.reason||'')
+    &&shifted(before.get(o.id),o)).map(o=>describe(o,text));
+  const along=shown(moving),names=shown(carried),subject=describe(object,source);
+  const alongText=along.length?` (and ${along.join(', ')} ${bringAlong?'following':'placed against'} it)`:'';
+  const carriedText=names.length?`; ${names.join(', ')} moved with it (Studio can’t pin ${names.length===1?'it':'them'})`:'';
+  const label=option.label+alongText+(pinned.length?`; pin ${pinned.join(', ')} in place`:'')
     +(names.length?`; ${names.join(', ')} move${names.length===1?'s':''} with it (Studio can’t pin ${names.length===1?'it':'them'})`:'');
   return {...option,label,source:text,patch:linePatch(source,text),selectId:object.id,targetKind:object.kind,result,
-    ...(names.length?{summary:`Moved ${describe(object,source)}; ${names.join(', ')} moved with it (Studio can’t pin ${names.length===1?'it':'them'})`}:{})};
+    ...(along.length||names.length?{summary:`Moved ${subject}${alongText}${carriedText}`}:{})};
+}
+// Where a top-level [ ] block starts in the source, in bytes (it has no span).
+function blockStart(text,scene,block){
+  const blocks=scene.objects.filter(o=>o.kind==='[]'&&!/nested|macro/i.test(o.reason||''));
+  const at=blocks.includes(block)&&blockStatement(text,blocks.indexOf(block));
+  return at?bytes(text.slice(0,at.open)):Infinity;
+}
+// The nearest earlier named shape that stays put, to pin a follower against.
+function stableReference(text,scene,before,moving,object,origin){
+  const at=object.kind==='[]'?blockStart(text,scene,object):object.span?.start;
+  return scene.objects.filter(o=>o.name&&shapeKinds.includes(o.kind)&&o.span?.start>=0&&o.span.end<=at&&!moving.has(o.id)
+    &&before.has(o.id)&&!shifted(before.get(o.id),o)&&editability(o,scene).editable)
+    .sort((a,b)=>Math.hypot(a.center.x-origin.center.x,a.center.y-origin.center.y)-Math.hypot(b.center.x-origin.center.x,b.center.y-origin.center.y))[0]||null;
 }
 // One patch covering the changed lines, so the diff reads as whole statements.
 function linePatch(source,text){

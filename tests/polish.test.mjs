@@ -146,39 +146,59 @@ test('moving shapes pins unselected shapes positioned against them',()=>{
 });
 
 // Drag one shape by (dx, dy) through candidates and settleMove, with the real
-// renderer; every other shape must stay where it was.
+// renderer. The dragged shape and `along` (ids) move by the drag; every other
+// shape stays where it was, and connectors stay attached at both ends.
 const renderAny=source=>{const p=native(source);try{return JSON.parse(module.UTF8ToString(p));}finally{module._free(p);}};
-async function settled(source,id,dx,dy){
+const touching=(p,o,t=0.1)=>p.x>=o.bbox.x-t&&p.x<=o.bbox.x+o.bbox.width+t&&p.y>=o.bbox.y-t&&p.y<=o.bbox.y+o.bbox.height+t;
+const ends=(scene,c)=>[c.path[0],c.path.at(-1)].map(p=>scene.objects.filter(o=>!['arrow','line','move'].includes(o.kind)&&o.bbox&&touching(p,o)).map(o=>o.id).sort().join());
+async function settled(source,id,dx,dy,{along=[],bringAlong=false}={}){
   const scene=render(source),object=scene.objects.find(o=>o.id===id);
   const option=candidates(source,object,scene,{x:object.center.x+dx,y:object.center.y+dy},{precise:true})[0];
-  const edit=await settleMove(source,scene,option,object,renderAny);
+  const edit=await settleMove(source,scene,option,object,renderAny,{bringAlong});
   assert.ok(edit,'not settled: '+option.source);
   const after=render(edit.source);
   for(const o of scene.objects){
-    const now=after.objects.find(n=>n.id===o.id),moved=o.id===id;
-    if(['arrow','line','move'].includes(o.kind))continue;
+    const now=after.objects.find(n=>n.id===o.id),moved=o.id===id||along.includes(o.id);
+    if(['arrow','line','move'].includes(o.kind)){
+      if(o.kind!=='move')ends(scene,o).forEach((was,i)=>{const is=ends(after,now)[i].split(',');
+        assert.ok(was.split(',').every(id=>!id||is.includes(id)),'connector '+o.id+' detached: '+edit.source);});
+      continue;
+    }
     assert.ok(Math.abs(now.center.x-o.center.x-(moved?dx:0))<1e-3&&Math.abs(now.center.y-o.center.y-(moved?dy:0))<1e-3,o.id+' '+edit.source);
   }
   assert.equal(applyPatch(source,edit.patch),edit.source);
   return edit;
 }
-test('a single-shape move pins the shapes that would follow it',async()=>{
+test('shapes placed against the dragged shape move with it, unchanged; Alt pins them instead',async()=>{
+  let edit=await settled('A: box "A"\nB: box "B" at A + (2,0)\nC: box "C" with .n at 1in below B.s\n','o1',.5,-.3,{along:['o2','o3']});
+  assert.equal(edit.source,'A: box "A" at (0.5, -0.3)\nB: box "B" at A + (2,0)\nC: box "C" with .n at 1in below B.s\n');
+  assert.equal(edit.summary,'Moved A (and B, C placed against it)');
+  edit=await settled('A: box "A"\nB: box "B" at A + (2,0)\n','o1',.5,-.3,{bringAlong:true});
+  assert.equal(edit.source,'A: box "A" at (0.5, -0.3)\nB: box "B" at A + (1.5, 0.3)\n');
+  assert.match(edit.label,/pin B in place/);
+  // The owner's diagram: NB hangs below Time, so it moves along; the arrow follows.
+  const owner='Time: oval "Zeit"\nNB: box "Not Before Time" fit with .n at 0.75in below Time.s\narrow dashed from Time.s to NB.n "parameter" ljust\n';
+  edit=await settled(owner,'o1',.5,-.3,{along:['o2']});
+  assert.equal(edit.source,owner.replace('oval "Zeit"','oval "Zeit" at (0.5, -0.3)'));
+});
+test('chain followers stay put, pinned against an unmoved named shape or by their connector; Alt lets them follow',async()=>{
   // An unplaced chain: the arrows stay attached at both ends.
   let edit=await settled('box "A"\narrow\nbox "B"\narrow\nbox "C"\n','o3',.5,-.3);
   assert.equal(edit.source,'box "A"\narrow to (1.375, -0.3)\nbox "B"\narrow to (2.125, 0)\nbox "C"\n');
-  assert.match(edit.label,/pin box "C" in place/);
-  // A reference to the moved shape keeps its form with a new offset.
-  edit=await settled('A: box "A"\nB: box "B" at A + (2,0)\n','o1',.5,-.3);
-  assert.equal(edit.source,'A: box "A" at (0.5, -0.3)\nB: box "B" at A + (1.5, 0.3)\n');
-  assert.match(edit.label,/pin B in place/);
-  // The owner's diagram: the gap below Time becomes an offset; the arrow follows.
-  edit=await settled('Time: oval "Zeit"\nNB: box "Not Before Time" fit with .n at 0.75in below Time.s\narrow dashed from Time.s to NB.n "parameter" ljust\n','o1',.5,-.3);
-  assert.match(edit.source,/NB: box "Not Before Time" fit with \.n at Time\.s \+ \(-0\.5, -0\.45\)/);
-  // A following [ ] block is pinned at its centre.
-  edit=await settled('A: box "A"\n[ C: box "C" ]\n','o1',.5,-.3);
-  assert.equal(edit.source,'A: box "A" at (0.5, -0.3)\n[ C: box "C" ] at (0.75, 0)\n');
+  edit=await settled('box "A"\narrow\nbox "B"\narrow\nbox "C"\n','o3',.5,-.3,{along:['o5'],bringAlong:true});
+  assert.equal(edit.source,'box "A"\narrow to (1.375, -0.3)\nbox "B"\narrow\nbox "C"\n');
+  assert.equal(edit.summary,'Moved box "B" (and box "C" following it)');
+  // Without a connector, a follower is placed against the nearest unmoved named shape.
+  edit=await settled('A: box "A"\nB: box "B"\nC: box "C"\n','o2',.5,-.3);
+  assert.equal(edit.source,'A: box "A"\nB: box "B" at (1.25, -0.3)\nC: box "C" at A + (1.5, 0)\n');
+  // A then-path keeps both ends: its last leg goes to where B is.
+  edit=await settled('A: box "A"\nline right then down then right\nB: box "B"\n','o1',.5,-.3);
+  assert.equal(edit.source,'A: box "A" at (0.5, -0.3)\nline right then down then right to (1.375, -0.5)\nB: box "B"\n');
+  // A following [ ] block is pinned against A; a bracket in a comment is not a block.
+  edit=await settled('A: box "A"\nB: box "B"\n/* old: [ box ] */\n[ box "in" ]\nC: box "C"\n','o2',.5,-.3);
+  assert.equal(edit.source,'A: box "A"\nB: box "B" at (1.25, -0.3)\n/* old: [ box ] */\n[ box "in" ] at A + (1.5, 0)\nC: box "C"\n');
   // The patch covers whole changed lines only.
-  assert.equal(edit.patch.expected,'A: box "A"\n[ C: box "C" ]');
+  assert.equal(edit.patch.expected,'B: box "B"\n/* old: [ box ] */\n[ box "in" ]');
 });
 test('a follower that cannot be pinned moves along, and the label says so',async()=>{
   const source='define m { box "M" }\nA: box "A"\nm\n',scene=render(source),a=scene.objects.find(o=>o.name==='A');

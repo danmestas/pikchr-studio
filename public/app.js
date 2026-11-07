@@ -822,15 +822,20 @@ function nudge(e,delta){
   const step=e.shiftKey?10:e.altKey?.1:1;
   suggest(o,{x:o.center.x+delta[0]*step,y:o.center.y+delta[1]*step},false,{precise:true,keepForm:true});
 }
+const same=(p,q)=>!!p&&!!q&&Math.abs(p.x-q.x)<1e-6&&Math.abs(p.y-q.y)<1e-6;
 async function suggest(o,target,withPreview=false,{precise=!withPreview,bringAlong=false,keepForm=false}={}){
   let options;
   try{
-    if(selectedIds.size>1)options=[{...moveObjects(source.value,scene.objects.filter(n=>selectedIds.has(n.id)),scene,target.x-o.center.x,target.y-o.center.y,{pinDependents:!bringAlong}),selectionNames:scene.objects.filter(n=>selectedIds.has(n.id)).map(n=>n.name)}];
+    if(selectedIds.size>1)options=[{...moveObjects(source.value,scene.objects.filter(n=>selectedIds.has(n.id)),scene,target.x-o.center.x,target.y-o.center.y,{pinDependents:bringAlong}),selectionNames:scene.objects.filter(n=>selectedIds.has(n.id)).map(n=>n.name)}];
     else{
-      // Each candidate is rendered and settled: shapes that would follow the
-      // moved one are pinned where they are, unless Alt brings them along.
-      const base=source.value,rev=revision,raw=candidates(base,o,scene,target,{precise,keepForm}).slice(0,6);
-      options=bringAlong?raw:(await Promise.all(raw.map(option=>settleMove(base,scene,option,o,render)))).filter(Boolean);
+      // Each candidate is rendered and settled (see settleMove): shapes
+      // placed against the moved one move with it, chain followers stay put;
+      // Alt inverts both. A drop that rounds to no movement changes nothing.
+      const base=source.value,rev=revision,flat=text=>text.replace(/\s+/g,'');
+      const raw=candidates(base,o,scene,target,{precise,keepForm}).slice(0,6)
+        .filter(option=>!same(option.target,o.center)&&flat(option.source)!==flat(base));
+      if(!raw.length&&candidates(base,o,scene,target,{precise,keepForm}).length){status('Not moved: the drop is within the snapping grid of where '+describe(o,base)+' already is.');drawOverlay();return;}
+      options=(await Promise.all(raw.map(option=>settleMove(base,scene,option,o,render,{bringAlong})))).filter(Boolean);
       if(rev!==revision||base!==source.value)return;
       if(raw.length&&!options.length){status('Can’t move '+describe(o,base)+' there: Studio could not keep the other shapes in place. Hold Alt to move them along, or edit the source (S).');drawOverlay();return;}
     }
@@ -855,13 +860,16 @@ function liveDragFrame(d){
   // top-ranked placement.
   // Unselected shapes positioned against a moving one stay put (pinned)
   // unless Alt is held, which lets Pikchr carry them along.
-  try{option=selectedIds.size>1
-    ?moveObjects(source.value,scene.objects.filter(n=>selectedIds.has(n.id)),scene,target.x-d.object.center.x,target.y-d.object.center.y,{pinDependents:!d.alt})
-    :candidates(source.value,d.object,scene,target,{precise:!!d.precise})[0];}catch{return;}
-  if(!option)return;
+  let options;
+  try{options=selectedIds.size>1
+    ?[moveObjects(source.value,scene.objects.filter(n=>selectedIds.has(n.id)),scene,target.x-d.object.center.x,target.y-d.object.center.y,{pinDependents:!!d.alt})]
+    :candidates(source.value,d.object,scene,target,{precise:!!d.precise}).slice(0,6);}catch{return;}
+  if(!options.length)return;
   d.busy=true;
-  const settle=selectedIds.size<=1&&!d.alt?settleMove(source.value,scene,option,d.object,render)
-    :render(option.source).then(result=>({...option,result}));
+  // Preview the first candidate that settles, as release would apply it.
+  const base=source.value;
+  const settle=selectedIds.size<=1?(async()=>{for(const option of options){const settled=await settleMove(base,scene,option,d.object,render,{bringAlong:!!d.alt});if(settled)return settled;}return null;})()
+    :render(options[0].source).then(result=>({...options[0],result}));
   settle.then(settled=>{
     d.busy=false;
     if(liveDragState!==d)return;
