@@ -39,12 +39,16 @@ test('editing is reported only when blocked, in plain words',()=>{
   const editable={endpoints:true,route:false,styles:false};
   assert.equal(editingBlocked(object(0),null),null);
   assert.equal(editingBlocked(object(2),editable),null);
-  assert.match(editingBlocked(object(2),{endpoints:false,route:false,styles:false}),/^Editing is blocked: .*Edit it in source\.$/);
+  assert.match(editingBlocked(object(2),{endpoints:false,route:false,styles:false}),/^Editing is blocked: Studio can’t rewrite this connector\. Edit it in Source \(S\)\.$/);
+  assert.equal(editingBlocked(object(2),{endpoints:false,route:false,styles:false},{styleable:true,statement:'line right 1 color $c'}),
+    'Rerouting is blocked: Studio can’t rewrite `line right 1 color $c`. Style and label edits still work.');
   // An unnamed shape moves like any other; a refusal names its real reason.
   assert.equal(editingBlocked({kind:'box',name:'',editable:true,reason:'Only supported named native shapes have movement suggestions'},null),null);
   assert.match(editingBlocked({kind:'box',name:'',editable:false,moveRefusal:'A [ ] group can’t be dragged yet.'},null),/^Editing is blocked: a \[ \] group can’t be dragged yet\. Edit this box in Source \(S\)\.$/);
   assert.match(editingBlocked({kind:'dot',name:'F',editable:false,reason:''},null,{styleable:true}),/^Moving is blocked: .*dot.* Style and label edits still work\.$/);
-  assert.match(editingBlocked({kind:'box',name:'H',editable:false,reason:'Nested object'},null),/^Editing is blocked: this object is inside a \[ \] block/);
+  assert.match(editingBlocked({kind:'box',name:'H',editable:false,reason:'Nested object'},null),/^This shape is inside a \[ \] group, which moves as one\./);
+  assert.match(editingBlocked({kind:'[]',name:'',editable:false},null),/^A \[ \] group moves as one\./);
+  assert.equal(editingBlocked({kind:'move',name:'',editable:false},null),'A move has no outline to style; it only positions what comes next.');
   // Same advice as a blocked drag: Detach from macro, not "inspect the generating source".
   const macro=editingBlocked({kind:'box',name:'M',editable:false,reason:'Macro-expanded object'},null);
   assert.match(macro,/^Editing is blocked: this shape comes from a macro\b.*Choose Detach from macro to edit it on its own\.$/);

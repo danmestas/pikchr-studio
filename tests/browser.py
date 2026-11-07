@@ -175,7 +175,7 @@ with sync_playwright() as pw:
     page.wait_for_function("!document.querySelector('#diagram').classList.contains('stale')")
     page.locator("#objects button").first.click()
     blocked = page.locator("#inspector .inspector-status").inner_text()
-    assert blocked.startswith("Editing is blocked: this object is inside a [ ] block."), blocked
+    assert blocked.startswith("This shape is inside a [ ] group, which moves as one."), blocked
     source.fill("# Empty diagram")
     open_document_menu(page)
     page.locator("#render").click()

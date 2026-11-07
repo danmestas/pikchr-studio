@@ -70,7 +70,9 @@ def run_script(path):
                               capture_output=True, text=True, timeout=SCRIPT_TIMEOUT)
         return proc.returncode, proc.stdout, proc.stderr
     except subprocess.TimeoutExpired as e:
-        return 124, e.stdout or "", (e.stderr or "") + f"\nTIMEOUT after {SCRIPT_TIMEOUT}s"
+        # TimeoutExpired carries bytes even with text=True.
+        text = lambda b: b.decode(errors="replace") if isinstance(b, bytes) else b or ""
+        return 124, text(e.stdout), text(e.stderr) + f"\nTIMEOUT after {SCRIPT_TIMEOUT}s"
 
 
 def main(argv):

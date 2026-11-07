@@ -120,7 +120,6 @@ with sync_playwright() as pw:
 
     select(conn)
     page.get_by_label("Connector label").fill("retry")
-    page.get_by_label("Label placement").select_option("above")
     page.locator(".route-label-form").get_by_role("button", name="Add label").click()
     accept_preview()
     page.wait_for_function("window.pikchrStudio.state().source.includes('\"retry\" above')")

@@ -1,6 +1,6 @@
-import {inspectProperties,isColour,documentThickness,lockedMessage} from './properties.js?v=20261106h';
-import {changeAppearance} from './object-actions.js?v=20261106h';
-import {textStyle,textStyleCandidate,textSizes} from './text-style.js?v=20261106h';
+import {inspectProperties,isColour,documentThickness,lockedMessage} from './properties.js?v=20261106i';
+import {changeAppearance} from './object-actions.js?v=20261106i';
+import {textStyle,textStyleCandidate,textSizes} from './text-style.js?v=20261106i';
 let appearanceOpen=false;
 // Pikchr colour names for the swatches. Every ink keeps at least 4.5:1 (WCAG AA)
 // against both canvases (#ffffff, #161b22) and every fill, in light mode and in
@@ -132,7 +132,8 @@ export function propertyEditor({object,scene,source,propose,status,valid}){
 // (monospace) and alignment, the same rewrites as the canvas text bar. Text
 // colour is Pikchr's color, which also draws the outline, so it stays in
 // Style's Line & text row instead of appearing twice.
-const TEXT_KINDS=['box','cylinder','circle','ellipse','oval','diamond','file','text'];
+const TEXT_KINDS=['box','cylinder','circle','ellipse','oval','diamond','file','text','arrow','line','spline','arc'];
+const LINE_KINDS=['arrow','line','spline','arc'];
 const SIZE_NAMES={small:['S','Small'],normal:['M','Medium'],big:['L','Large'],bigger:['XL','Extra large']};
 function textControls({object,scene,source,propose,status,valid}){
   if(!TEXT_KINDS.includes(object.kind))return null;
@@ -156,10 +157,23 @@ function textControls({object,scene,source,propose,status,valid}){
     toggle('Bold','B',style.bold,bold=>({bold}),'font-weight:700'),
     toggle('Italic','I',style.italic,italic=>({italic}),'font-style:italic'),
     toggle('Monospace','Mono',style.mono,mono=>({mono}),'font-family:ui-monospace,SFMono-Regular,Menlo,monospace'));
-  const aligns=el('div',{class:'cl-seg',role:'group','aria-label':'Text alignment'});
-  for(const [align,name,label] of [['left','alignStart','Align left'],['center','alignCenter','Align center'],['right','alignEnd','Align right']]){
-    const b=el('button',{type:'button','aria-pressed':String(style.align===align),'aria-label':label,title:label},icon(name));
-    b.onclick=()=>{if(style.align!==align)apply({align});};aligns.append(b);
+  // A shape's label is justified; a connector's sits above, on or below the
+  // line, optionally turned along it.
+  let aligns;
+  if(LINE_KINDS.includes(object.kind)){
+    aligns=el('div',{class:'text-style-faces'});
+    const places=el('div',{class:'cl-seg',role:'group','aria-label':'Label placement'});
+    for(const [place,text,title] of [['above','Above','Above the line'],['center','On line','On the line'],['below','Below','Below the line']]){
+      const b=el('button',{type:'button','aria-pressed':String(style.placement===place),title},text);
+      b.onclick=()=>{if(style.placement!==place)apply({placement:place});};places.append(b);
+    }
+    aligns.append(places,toggle('Along the line','Along',style.aligned,aligned=>({aligned})));
+  }else{
+    aligns=el('div',{class:'cl-seg',role:'group','aria-label':'Text alignment'});
+    for(const [align,name,label] of [['left','alignStart','Align left'],['center','alignCenter','Align center'],['right','alignEnd','Align right']]){
+      const b=el('button',{type:'button','aria-pressed':String(style.align===align),'aria-label':label,title:label},icon(name));
+      b.onclick=()=>{if(style.align!==align)apply({align});};aligns.append(b);
+    }
   }
   const hint=el('p',{class:'style-hint'},object.kind==='text'?'Colour: Text under Style.':'Colour: Line & text under Style sets the label and outline together.');
   return el('div',{class:'text-style-group',role:'group','aria-label':'Text style'},
@@ -259,7 +273,8 @@ export function styleControls({fill,stroke,current,base,apply,locked={},reveal=n
     const note=el('p',{class:'style-error',role:'alert',hidden:''});
     const presets=el('div',{class:'cl-seg',role:'group','aria-label':'Thickness presets'});
     for(const[name,word,factor]of PRESETS){
-      const value=round(base*factor),on=known&&Math.abs(effective-value)<1e-6;
+      // Compare unrounded: thin is 0.01005 in, which the title shows as 0.0101.
+      const value=round(base*factor),on=known&&Math.abs(effective-base*factor)<1e-6;
       const b=el('button',{type:'button','aria-pressed':String(on),title:word?`${word}: ${value} in`:`Default: ${value} in`},name);
       // Normal removes thickness, thick and thin so the default applies.
       b.onclick=()=>{if(!on)request(note,{thickness:word});};

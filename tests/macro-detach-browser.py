@@ -42,7 +42,7 @@ with sync_playwright() as pw:
         set_source(page, SOURCE)
         page.wait_for_function("pikchrStudio.state().valid")
         select_shape(page, "B")
-        expect(page.locator("#inspector")).to_contain_text("This shape comes from the macro tile, which other shapes may share. Detach it to edit it on its own.")
+        expect(page.locator("#inspector")).to_contain_text("This shape comes from define tile, shared by 2 uses. Its style and text are set by the macro tile and its arguments at this use; detach it to edit it on its own.")
         expect(page.get_by_role("button", name="Detach all 2 uses", exact=True)).to_be_visible()
 
         # Escape discards the preview: nothing applies.

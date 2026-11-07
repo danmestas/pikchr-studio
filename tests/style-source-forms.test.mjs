@@ -123,7 +123,7 @@ test('expression placements and attributes move; only a shape Studio cannot move
 
 test('text style reads hex and named colours, toggles monospace, and recolours through the Style rewrite',()=>{
   const source=oval('fill 0xe8f0d2 color 0x2d6a4f at NBT.n + (0, 0.6*2)'),scene=render(source),o=time(scene);
-  assert.deepEqual(textStyle(source,o,scene),{size:'normal',bold:false,italic:true,mono:false,align:'center',colour:'#2d6a4f',colourLocked:null});
+  assert.deepEqual(textStyle(source,o,scene),{size:'normal',bold:false,italic:true,mono:false,align:'center',placement:'center',aligned:false,colour:'#2d6a4f',colourLocked:null});
   // A custom colour does not stop other text changes.
   const big=textStyleCandidate(source,o,scene,{size:'big'});
   assert.equal(big.source.split('\n')[1],'Time: oval "Zeit" big italic fill 0xe8f0d2 color 0x2d6a4f at NBT.n + (0, 0.6*2)');

@@ -56,6 +56,8 @@ with sync_playwright() as pw:
     page.keyboard.press('ArrowRight');page.keyboard.press('Escape')
     page.wait_for_timeout(600)
     expect(source).to_have_value(initial)
+    # The dropped nudge says so rather than vanishing.
+    expect(page.locator('#state')).to_have_text('Nudge cancelled.')
     page.evaluate('window.__testRenderDelay=0')
 
     # Exact same source still stores an explicit label policy and restores it.

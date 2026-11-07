@@ -1,8 +1,8 @@
-import {endpointCandidates,moveVertexCandidates,routeCandidates,byteOffsetToIndex} from './edits.js?v=20261106h';
-import {routeEditor,routeStyleGallery} from './route-ui.js?v=20261106h';
-import {connectorState,routeStyleCandidates} from './route-styles.js?v=20261106h';
-import {inspectProperties,changeTermination} from './properties.js?v=20261106h';
-import {reverseConnector} from './reverse-connector.js?v=20261106h';
+import {endpointCandidates,moveVertexCandidates,routeCandidates,byteOffsetToIndex} from './edits.js?v=20261106i';
+import {routeEditor,routeStyleGallery} from './route-ui.js?v=20261106i';
+import {connectorState,routeStyleCandidates} from './route-styles.js?v=20261106i';
+import {inspectProperties,changeTermination} from './properties.js?v=20261106i';
+import {reverseConnector} from './reverse-connector.js?v=20261106i';
 const ns='http://www.w3.org/2000/svg';
 let preferredMode='endpoints';
 const names={n:'North',ne:'Northeast',e:'East',se:'Southeast',s:'South',sw:'Southwest',w:'West',nw:'Northwest',c:'Center'};
@@ -47,11 +47,20 @@ export function connectorTitle({object,scene,source}){
 // A shape that cannot move names the real reason (moveReason, from
 // movementBlocked); when its style and label can still be rewritten
 // (styleable) only moving is reported as blocked.
-export function editingBlocked(object,capabilities,{styleable=false}={}){
+export function editingBlocked(object,capabilities,{styleable=false,statement=''}={}){
   if(!object)return null;
   if(object.reason==='Macro-expanded object')return 'Editing is blocked: this shape comes from a macro, which other shapes may share, so direct canvas edits are disabled. Choose Detach from macro to edit it on its own.';
-  if(object.reason==='Nested object')return 'Editing is blocked: this object is inside a [ ] block. Edit it in source.';
-  if(capabilities)return capabilities.endpoints||capabilities.route||capabilities.styles?null:'Editing is blocked: Studio cannot safely rewrite this connector’s source expression. Edit it in source.';
+  if(object.reason==='Nested object')return 'This shape is inside a [ ] group, which moves as one. Edit the group’s placement or this shape in Source (S).';
+  if(object.kind==='[]')return 'A [ ] group moves as one. Give it an at clause, or edit its members, in Source (S).';
+  if(object.kind==='move')return 'A move has no outline to style; it only positions what comes next.';
+  // A connector whose route Studio cannot rewrite quotes it; its style rows
+  // say for themselves whether they work.
+  if(capabilities){
+    if(capabilities.endpoints||capabilities.route||capabilities.styles)return null;
+    const code=statement?'`'+(statement.length>60?statement.slice(0,59)+'…':statement)+'`':'this connector';
+    return styleable?'Rerouting is blocked: Studio can’t rewrite '+code+'. Style and label edits still work.'
+      :'Editing is blocked: Studio can’t rewrite '+code+'. Edit it in Source (S).';
+  }
   if(object.editable)return null;
   const reason=object.moveReason||(object.moveRefusal?object.moveRefusal.replace(/\.$/,'').replace(/^./,c=>c.toLowerCase()):'Studio can’t move this '+object.kind+' by dragging');
   return styleable?'Moving is blocked: '+reason+'. Style and label edits still work.':'Editing is blocked: '+reason+'. Edit this '+object.kind+' in Source (S).';
