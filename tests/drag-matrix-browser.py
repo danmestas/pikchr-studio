@@ -14,7 +14,7 @@ import os
 import re
 import signal
 from playwright.sync_api import sync_playwright
-from browser_helpers import wait_rendered, set_source, close_popovers
+from browser_helpers import wait_rendered, set_source, close_popovers, clear_selection
 
 
 def deadline(*_):
@@ -101,7 +101,9 @@ def touches(point, bbox, tol=0.06):
 def drag(page, case, source, key, expect):
     set_source(page, source)
     page.wait_for_function("pikchrStudio.state().valid")
-    close_popovers(page)
+    # The previous drag leaves its shape selected; its toolbar may cover this one.
+    clear_selection(page)
+    page.wait_for_function("!pikchrStudio.state().selectedIds.length")
     obj = find(page, key)
     before = shapes(page)
     connectors = [o for o in page.evaluate("pikchrStudio.state().scene.objects")

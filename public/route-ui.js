@@ -1,6 +1,6 @@
-import {routeCandidates,moveVertexCandidates,bendCandidates} from './edits.js?v=20261106f';
-import {suggestedRoutes,connectorState,strokeCandidates,chopCandidates,labelCandidates,checkStyleResult,thumbnailBox} from './route-styles.js?v=20261106f';
-import {lockDirection} from './constrain.js?v=20261106f';
+import {routeCandidates,moveVertexCandidates,bendCandidates} from './edits.js?v=20261106h';
+import {suggestedRoutes,connectorState,strokeCandidates,chopCandidates,labelCandidates,checkStyleResult,thumbnailBox} from './route-styles.js?v=20261106h';
+import {lockDirection} from './constrain.js?v=20261106h';
 const ns='http://www.w3.org/2000/svg';
 const el=(tag,attrs)=>{const e=document.createElementNS(ns,tag);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,v);return e;};
 export function routeEditor({object,scene,source,svg,layer,propose,status,valid,clear,autoApply=()=>document.querySelector('#auto-apply')?.checked!==false}){

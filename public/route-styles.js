@@ -1,8 +1,8 @@
 // Route styles: every connector restyle is a whole-statement source edit that
 // the caller renders and checks before showing it. Only style tokens this
 // module recognises are rewritten; every other token keeps its bytes.
-import { byteOffsetToIndex, applyPatch, editability, colourNames } from './edits.js?v=20261106f';
-import { obstacleRects } from './route-suggestions.js?v=20261106f';
+import { byteOffsetToIndex, applyPatch, editability, colourNames } from './edits.js?v=20261106h';
+import { obstacleRects } from './route-suggestions.js?v=20261106h';
 
 const CONNECTORS = ['arrow','line','spline','arc'];
 const NON_OBSTACLES = [...CONNECTORS, 'move'];

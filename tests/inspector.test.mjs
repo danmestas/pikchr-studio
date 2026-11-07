@@ -42,8 +42,8 @@ test('editing is reported only when blocked, in plain words',()=>{
   assert.match(editingBlocked(object(2),{endpoints:false,route:false,styles:false}),/^Editing is blocked: .*Edit it in source\.$/);
   // An unnamed shape moves like any other; a refusal names its real reason.
   assert.equal(editingBlocked({kind:'box',name:'',editable:true,reason:'Only supported named native shapes have movement suggestions'},null),null);
-  assert.match(editingBlocked({kind:'box',name:'',editable:false,moveRefusal:'A [ ] group can’t be dragged yet.'},null),/^Moving is blocked: a \[ \] group/);
-  assert.match(editingBlocked({kind:'file',name:'F',editable:false,reason:'Only supported named native shapes have movement suggestions'},null),/^Editing is blocked: .*file/);
+  assert.match(editingBlocked({kind:'box',name:'',editable:false,moveRefusal:'A [ ] group can’t be dragged yet.'},null),/^Editing is blocked: a \[ \] group can’t be dragged yet\. Edit this box in Source \(S\)\.$/);
+  assert.match(editingBlocked({kind:'dot',name:'F',editable:false,reason:''},null,{styleable:true}),/^Moving is blocked: .*dot.* Style and label edits still work\.$/);
   assert.match(editingBlocked({kind:'box',name:'H',editable:false,reason:'Nested object'},null),/^Editing is blocked: this object is inside a \[ \] block/);
   // Same advice as a blocked drag: Detach from macro, not "inspect the generating source".
   const macro=editingBlocked({kind:'box',name:'M',editable:false,reason:'Macro-expanded object'},null);

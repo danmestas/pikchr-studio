@@ -49,10 +49,10 @@ test('dimension aliases stay editable without matching partial expressions',()=>
   assert.equal(render(edited.source).objects[0].bbox.width,2);
   assert.ok(candidates(source,scene.objects[0],scene,{x:1,y:1}).length);
   const expression='A: box width (1+2) at (0,0)',rs=render(expression);
-  assert.throws(()=>changeAppearance(expression,rs.objects[0],rs,{width:2}),/expression/);
+  assert.throws(()=>changeAppearance(expression,rs.objects[0],rs,{width:2}),/Written as "width \(1\+2\)" in source/);
   for(const size of ['1+2','1 + 2','1*2']) {
     const source=`A: box width ${size} at (0,0)`,scene=render(source);
-    assert.throws(()=>changeAppearance(source,scene.objects[0],scene,{width:2}),/expression/);
+    assert.throws(()=>changeAppearance(source,scene.objects[0],scene,{width:2}),/can’t rewrite/);
   }
 });
 
@@ -211,7 +211,7 @@ test('every colour name Studio accepts renders in Pikchr, and style edits read a
   // An unknown word after fill is an expression, not a colour Studio can replace.
   const variable='c = 0xff0000\nA: box fill c at (0,0)\n',vs=render(variable);
   assert.equal(inspectProperties(variable,vs.objects[0],vs).fill,undefined);
-  assert.throws(()=>changeAppearance(variable,vs.objects[0],vs,{fill:'red'}),/expression/);
+  assert.throws(()=>changeAppearance(variable,vs.objects[0],vs,{fill:'red'}),/Written as "fill c" in source/);
   // File shapes carry labels and style like the other native shapes.
   const file=scene.objects[1];
   assert.equal(render(changeText(source,file,scene,'notes').source).objects[1].kind,'file');

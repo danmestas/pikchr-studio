@@ -2,14 +2,15 @@
 // the controls declared in index.html into chips, menus and popovers; every
 // control keeps its own handler. It also adds drag-to-connect, which submits
 // ordinary candidate edits.
-import {attachPoints,nearestAnchor,targetAnchor,hitShape,connectCandidate,connectionLabel,elbowRoute} from './connect-drag.js?v=20261106f';
-import {connectableShapes} from './creation.js?v=20261106f';
-import {connectorCapabilities,connectorTitle} from './arrow-ui.js?v=20261106f';
-import {freeLineCandidate,pointText,snapToGrid,literalRoute,lineEnds,translateLineCandidate,moveEndpointCandidate} from './free-lines.js?v=20261106f';
-import {lockDirection} from './constrain.js?v=20261106f';
-import {inspectProperties} from './properties.js?v=20261106f';
-import {buildTextEdit} from './text-sizing.js?v=20261106f';
-import {textStyle,textStyleCandidate,textSizes,textColours} from './text-style.js?v=20261106f';
+import {attachPoints,nearestAnchor,targetAnchor,hitShape,connectCandidate,connectionLabel,elbowRoute} from './connect-drag.js?v=20261106h';
+import {connectableShapes} from './creation.js?v=20261106h';
+import {connectorCapabilities,connectorTitle} from './arrow-ui.js?v=20261106h';
+import {freeLineCandidate,pointText,snapToGrid,literalRoute,lineEnds,translateLineCandidate,moveEndpointCandidate} from './free-lines.js?v=20261106h';
+import {lockDirection} from './constrain.js?v=20261106h';
+import {inspectProperties} from './properties.js?v=20261106h';
+import {paintSwatch} from './property-ui.js?v=20261106h';
+import {buildTextEdit} from './text-sizing.js?v=20261106h';
+import {textStyle,textStyleCandidate,textSizes,textColours} from './text-style.js?v=20261106h';
 
 
 const $=id=>document.getElementById(id);
@@ -683,7 +684,7 @@ function install(studio){
     context.hidden=!visible;
     if(visible)place(context,box,30);
     if(visible&&!more.hidden&&!phoneQuery.matches)stepAside(context,more.getBoundingClientRect());
-    syncTextBar(visible&&!inline);
+    syncTextBar(visible||!!inline);
     if(pendingText&&!inline)maybeEditNewText();
     if(previewActions&&!previewActions.hidden){
       const overlay=diagram.querySelector('.preview-overlay rect')?.getBoundingClientRect();
@@ -1024,14 +1025,15 @@ function install(studio){
     ta.style.width=width+'px';
     const hidden=[...(group?.querySelectorAll('text')||[])];for(const t of hidden)t.style.visibility='hidden';
     document.body.append(ta);fit();ta.focus();if(created)ta.select();else ta.setSelectionRange(ta.value.length,ta.value.length);
-    inline={object,ta,created,original:text,source:s.source,hidden};context.hidden=true;textBar.hidden=true;
+    inline={object,ta,created,original:text,source:s.source,hidden};context.hidden=true;textBarKey='';syncTextBar(true);
     ta.addEventListener('input',()=>{fit();inlineError(null);});
     ta.addEventListener('keydown',e=>{
       e.stopPropagation();
       if(e.key==='Escape'){e.preventDefault();closeInline(false);}
       else if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();closeInline(true);}
     });
-    ta.addEventListener('blur',()=>{if(inline?.ta===ta&&!inline.busy)closeInline(true,{blurred:true});});
+    // Pressing the text bar keeps the editor open; its buttons style the text being typed.
+    ta.addEventListener('blur',e=>{if(inline?.ta===ta&&!inline.busy&&!e.relatedTarget?.closest?.('.cl-textbar'))closeInline(true,{blurred:true});});
     return true;
   }
   // A refused label is never dropped: the editor stays open with the reason
@@ -1107,35 +1109,59 @@ function install(studio){
   },true);
 
   // ---- text style bar ------------------------------------------------------------
-  // One-click size, weight, slant, alignment and colour for the selected label.
+  // One-click size, weight, slant, monospace, alignment and colour for the
+  // selected label, also while it is being edited in place. Colour is Pikchr's
+  // color, which draws the outline too, so shapes call it Line & text as
+  // Style does.
   const textBar=el('div',{class:'cl-float cl-textbar',role:'toolbar','aria-label':'Text style',hidden:''});
   const tb=(label,title,change,extra={})=>{const b=el('button',{type:'button',class:'cl-tb','aria-label':title,title,'aria-pressed':'false',...extra},label);b.onclick=()=>applyTextStyle(change());return b;};
   const sizeButtons=Object.fromEntries(textSizes.map((size,i)=>[size,tb(['S','M','L','XL'][i],`Text size ${size==='bigger'?'extra large':size}`,()=>({size}))]));
   const boldButton=tb('B','Bold',()=>({bold:!textBar.dataset.bold})),italicButton=tb('I','Italic',()=>({italic:!textBar.dataset.italic}));
-  boldButton.style.fontWeight='700';italicButton.style.fontStyle='italic';
+  const monoButton=tb('Mono','Monospace',()=>({mono:!textBar.dataset.mono}));
+  boldButton.style.fontWeight='700';italicButton.style.fontStyle='italic';monoButton.style.fontFamily='ui-monospace,SFMono-Regular,Menlo,monospace';
   const alignButtons={left:tb(iconMarkup(CHROME_ICONS.alignStart),'Align left',()=>({align:'left'})),center:tb(iconMarkup(CHROME_ICONS.alignCenter),'Align center',()=>({align:'center'})),right:tb(iconMarkup(CHROME_ICONS.alignEnd),'Align right',()=>({align:'right'}))};
   const colourButtons=Object.fromEntries(textColours.map(colour=>[colour,tb('',colour==='default'?'Default colour':`Colour ${colour}`,()=>({colour}),{class:'cl-tb cl-swatch','data-colour':colour})]));
+  for(const [colour,b] of Object.entries(colourButtons))if(colour!=='default')paintSwatch(b,'color',colour);
   const tsep=()=>el('span',{class:'cl-sep','aria-hidden':'true'});
-  textBar.append(...Object.values(sizeButtons),tsep(),boldButton,italicButton,tsep(),...Object.values(alignButtons),tsep(),...Object.values(colourButtons));
+  textBar.append(...Object.values(sizeButtons),tsep(),boldButton,italicButton,monoButton,tsep(),...Object.values(alignButtons),tsep(),...Object.values(colourButtons));
+  // A press on the bar must not take focus from the label editor.
+  textBar.addEventListener('mousedown',e=>{if(inline&&e.target.closest('button'))e.preventDefault();});
   document.body.append(textBar);
   let textBarKey='';
   function syncTextBar(visible){
-    const s=studio.state(),o=s.object;
+    const s=studio.state(),o=inline?inline.object:s.object;
     let style=null;
-    if(visible&&s.valid&&o&&(s.selectedIds||[]).length<=1&&textKinds.includes(o.kind)){try{style=textStyle(s.source,o,s.scene);}catch{style=null;}}
+    if(visible&&s.valid&&o&&(inline||(s.selectedIds||[]).length<=1)&&textKinds.includes(o.kind)){try{style=textStyle(s.source,o,s.scene);}catch{style=null;}}
     if(!style){textBar.hidden=true;textBarKey='';return;}
     const key=o.id+'|'+s.source;
     if(key!==textBarKey){
       textBarKey=key;
       for(const [size,b] of Object.entries(sizeButtons))b.setAttribute('aria-pressed',String(style.size===size));
-      boldButton.setAttribute('aria-pressed',String(style.bold));italicButton.setAttribute('aria-pressed',String(style.italic));
-      textBar.dataset.bold=style.bold?'1':'';textBar.dataset.italic=style.italic?'1':'';
-      if(!style.bold)delete textBar.dataset.bold;if(!style.italic)delete textBar.dataset.italic;
+      for(const [word,b] of [['bold',boldButton],['italic',italicButton],['mono',monoButton]]){
+        b.setAttribute('aria-pressed',String(style[word]));
+        if(style[word])textBar.dataset[word]='1';else delete textBar.dataset[word];
+      }
       for(const [align,b] of Object.entries(alignButtons))b.setAttribute('aria-pressed',String(style.align===align));
-      for(const [colour,b] of Object.entries(colourButtons))b.setAttribute('aria-pressed',String(style.colour===colour));
+      const role=o.kind==='text'?'Text':'Line & text';
+      for(const [colour,b] of Object.entries(colourButtons)){
+        b.setAttribute('aria-pressed',String(style.colour===colour||colour==='gray'&&style.colour==='grey'));
+        const name=colour==='default'?`${role} default colour`:`${role} ${colour}`;
+        b.setAttribute('aria-label',name);
+        b.disabled=!!style.colourLocked;
+        b.title=style.colourLocked?`Colour is written as "${style.colourLocked}" in source. Edit it in Source (S).`:o.kind==='text'?name:name+' (Pikchr colours the outline and label together)';
+      }
     }
     textBar.hidden=false;
-    const c=context.getBoundingClientRect(),w=textBar.offsetWidth,h=textBar.offsetHeight;
+    const w=textBar.offsetWidth,h=textBar.offsetHeight;
+    if(inline){
+      // Above the shape and its editor, or below them when there is no room;
+      // never over the text being typed.
+      const r=inline.ta.getBoundingClientRect(),shape=boxOnScreen(o)||r;
+      let top=Math.min(r.top,shape.top)-h-10;if(top<64)top=Math.max(r.bottom+(inline.error?inline.error.offsetHeight+8:0),shape.bottom)+10;
+      textBar.style.left=Math.max(8,Math.min(innerWidth-w-8,(r.left+r.right)/2-w/2))+'px';textBar.style.top=Math.max(8,Math.min(innerHeight-h-8,top))+'px';
+      return;
+    }
+    const c=context.getBoundingClientRect();
     // Opposite side of the selection from the toolbar, so neither covers the
     // other or stacks over neighbouring shapes.
     const box=boxOnScreen(o)||{left:c.left,right:c.right,top:c.top,bottom:c.bottom};
@@ -1145,9 +1171,41 @@ function install(studio){
     textBar.style.left=Math.max(8,Math.min(innerWidth-w-8,(box.left+box.right)/2-w/2))+'px';textBar.style.top=Math.max(64,Math.min(innerHeight-h-64,top))+'px';
   }
   async function applyTextStyle(change){
+    if(inline)return styleWhileEditing(change);
     const s=studio.state(),o=s.object;if(!s.valid||!o)return;
     let option;try{option=textStyleCandidate(s.source,o,s.scene,change);}catch(error){$('state').textContent=error.message;return;}
     await studio.propose([option]);
+  }
+  // Styling a label mid-edit keeps what was typed: the new text and the style
+  // become one validated change, then the editor reopens where it was.
+  async function styleWhileEditing(change){
+    const d=inline;if(!d||d.busy)return;
+    const s=studio.state();
+    if(!s.valid||s.source!==d.source){inlineError('The diagram changed while you typed. Press Escape and edit the text again.');return;}
+    const text=d.ta.value.replace(/\r/g,'').replace(/\s+$/,'');
+    if(text.split('\n').length>5){inlineError('Pikchr shows at most five lines of text per shape. Remove some line breaks.');return;}
+    d.busy=true;
+    let option;
+    try{
+      if(text!==d.original&&text.trim()){
+        const edit=await labelEdit(s,d.object,text),next=edit.option.source;
+        const result=await studio.render(next);
+        if(result.error||!result.objects)throw new Error('Pikchr cannot render this label: '+(result.error||'no diagram'));
+        const object=result.objects.find(n=>d.object.name?n.name===d.object.name:n.id===d.object.id);
+        if(!object)throw new Error('The edited label could not be identified safely.');
+        const styled=textStyleCandidate(next,object,result,change);
+        option={...styled,label:'Change text; '+styled.label.toLowerCase(),source:styled.source,
+          patch:{base:s.source,start:0,end:new TextEncoder().encode(s.source).length,expected:s.source,text:styled.source}};
+      }else option=textStyleCandidate(s.source,d.object,s.scene,change);
+    }catch(error){d.busy=false;inlineError(error.message);d.ta.focus();return;}
+    d.busy=false;
+    if(inline!==d||studio.state().source!==d.source){inlineError('The diagram changed while you typed. Press Escape and edit the text again.');return;}
+    const caret=d.ta.selectionStart,object=d.object;
+    removeInline(d);
+    const applied=await studio.propose([{...option,...(object.name?{selectName:object.name}:{selectId:object.id,targetKind:object.kind})}]);
+    if(!applied)return;
+    const again=studio.state().object;
+    if(again&&openInline(again)){const at=Math.min(caret,inline.ta.value.length);inline.ta.setSelectionRange(at,at);}
   }
   // ---- free lines: body drag and endpoint handles ----------------------------
   // A line whose route is all literal points drags as a whole; any literal
