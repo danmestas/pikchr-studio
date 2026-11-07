@@ -3,8 +3,8 @@
 // the same managed attributes. Colour is Pikchr's statement-wide color, which
 // also draws the outline, so it goes through the same rewrite as Style's
 // Line & text row rather than a second, different one.
-import {readProperties,propertyCandidate,attributeClauses,colourValue,lockedMessage} from './properties.js?v=20261106g';
-import {changeAppearance} from './object-actions.js?v=20261106g';
+import {readProperties,propertyCandidate,attributeClauses,colourValue,lockedMessage} from './properties.js?v=20261106h';
+import {changeAppearance} from './object-actions.js?v=20261106h';
 
 export const textSizes=['small','normal','big','bigger'];
 export const textAligns=['left','center','right'];

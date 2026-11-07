@@ -74,11 +74,10 @@ with sync_playwright() as pw:
     set_source(page, OWNER)
     settled(page)
 
-    # Bug 2: only moving is blocked, for the real reason.
+    # Bug 2: an expression placement no longer blocks moving, so no banner.
     select(page, "Time")
     section = inspector_section(page, "Style")
-    note = page.locator("#inspector > .inspector-status")
-    expect(note).to_have_text("Moving is blocked: its position is an expression Studio can’t rewrite (`at NBT.n + (0, NBT.ht)`). Style and label edits still work.")
+    expect(page.locator("#inspector > .inspector-status")).to_have_count(0)
     # Bug 1: opening Style shows no error and focuses no text field.
     no_errors_shown(page)
     focused = page.evaluate("document.activeElement?.matches('.style-custom-fields input')")
@@ -161,7 +160,7 @@ with sync_playwright() as pw:
     select(page, "Time")
     section = inspector_section(page, "Style")
     no_errors_shown(page)
-    expect(page.locator("#inspector > .inspector-status")).to_contain_text("Moving is blocked")
+    expect(page.locator("#inspector > .inspector-status")).to_have_count(0)
     fill = section.get_by_role("group", name="Fill", exact=True)
     for button in fill.get_by_role("button").all():
         expect(button).to_be_disabled()
@@ -178,6 +177,23 @@ with sync_playwright() as pw:
     section.get_by_role("group", name="Line & text", exact=True).get_by_role("button", name="Line & text blue", exact=True).click()
     wait_time(page, 'Time: oval "Zeit" italic fill $zeit at NBT.n + (0, NBT.ht) color blue')
     no_errors_shown(page)
+
+    # The oval moves by dragging, and keeps its offset from NBT.n.
+    set_source(page, OWNER)
+    settled(page)
+    close_popovers(page)
+    p = page.evaluate(CENTER, "Time")
+    page.mouse.move(p["x"], p["y"])
+    page.mouse.down()
+    page.mouse.move(p["x"] + 50, p["y"], steps=4)
+    page.mouse.move(p["x"] + 100, p["y"], steps=4)
+    page.mouse.up()
+    page.wait_for_function("t=>document.getElementById('source').value!==t", arg=OWNER)
+    settled(page)
+    assert time_line(page).startswith('Time: oval "Zeit" italic fill 0xe8f0d2 at NBT.n + ('), time_line(page)
+    assert "NBT.ht" not in time_line(page), time_line(page)
+    expect(page.locator("#state")).to_have_text("Moved Time.")
+    assert 'P: line dashed from Time.s to NBT.n' in src(page)
 
     # Dark theme: rows still fit.
     page.emulate_media(color_scheme="dark")

@@ -1,7 +1,7 @@
-import {applyPatch,byteOffsetToIndex,candidates,editability} from './edits.js?v=20261106g';
-import {readProperties,propertyCandidate,isColour,attributeClauses,lockedMessage} from './properties.js?v=20261106g';
-import {literalRoute,translateLineCandidate} from './free-lines.js?v=20261106g';
-import {connectorStyleCandidate} from './route-styles.js?v=20261106g';
+import {applyPatch,byteOffsetToIndex,candidates,editability,maskCode} from './edits.js?v=20261106h';
+import {readProperties,propertyCandidate,isColour,attributeClauses,lockedMessage} from './properties.js?v=20261106h';
+import {literalRoute,translateLineCandidate} from './free-lines.js?v=20261106h';
+import {connectorStyleCandidate} from './route-styles.js?v=20261106h';
 
 const bytes=s=>new TextEncoder().encode(s).length;
 const masked=s=>s.replace(/"(?:\\.|[^"\\])*"/g,m=>' '.repeat(m.length));
@@ -146,19 +146,127 @@ function pinPatches(source,scene,movedIds){
   const pins=[];
   for(const other of scene.objects){
     if(movedIds.has(other.id)||isConnector(other)||!other.dependencies?.some(id=>movedIds.has(id)))continue;
-    const edit=candidates(source,other,scene,other.center,{precise:true}).find(c=>!c.references.length);
+    const edit=candidates(source,other,scene,other.center,{precise:true}).find(c=>!c.references.length&&!c.extended);
     if(!edit)throw new Error(`${other.name||other.kind} is positioned against a moved shape with an expression Studio cannot pin. Hold Alt to move it along, or edit its placement.`);
     pins.push({object:other,patch:edit.patch});
   }
   return pins;
 }
-// Wrap a single-shape move candidate with pins for its unselected dependents.
-export function pinMove(source,scene,option,movedIds){
-  const pins=pinPatches(source,scene,new Set(movedIds));
-  if(!pins.length)return option;
-  const names=pins.map(p=>p.object.name||p.object.kind).join(', ');
-  return {...option,...combined(source,[option.patch,...pins.map(p=>p.patch)],`${option.label}; pin ${names} in place`,option.selectName),
-    selectId:option.selectId,selectName:option.selectName,target:option.target};
+// How the studio names an object in labels: its name, else its kind and label.
+export function describe(object,source){
+  if(object?.name)return object.name;
+  const span=object?.spans?.label;let label='';
+  // A macro-expanded object has no label span; its statement holds the label.
+  try{if(span&&source!==undefined)label=source.slice(byteOffsetToIndex(source,span.start),byteOffsetToIndex(source,span.end));
+    else if(object?.span?.start>=0&&source!==undefined)label=source.slice(byteOffsetToIndex(source,object.span.start),byteOffsetToIndex(source,object.span.end)).match(/"(?:\\.|[^"\\])*"/)?.[0]||'';}catch{}
+  label=label.replace(/^"|"$/g,'');
+  return (object?.kind==='[]'?'[ ] group':object?.kind||'object')+(label?` "${label.length>24?label.slice(0,23)+'…':label}"`:'');
+}
+
+const shapeKinds=['box','cylinder','circle','ellipse','oval','diamond','file','text'];
+const same=(p,q,tolerance=1e-4)=>Math.abs(p.x-q.x)<=tolerance&&Math.abs(p.y-q.y)<=tolerance;
+const shifted=(before,after)=>!same(before.center,after.center)
+  ||(before.path||[]).length!==(after.path||[]).length||(before.path||[]).some((p,i)=>!same(p,after.path[i]));
+// Mask strings, comments and macro bodies so brackets are only real blocks.
+const code=text=>maskCode(text)
+  .replace(/\bdefine\s+\w+\s*\{[^}]*\}/g,m=>' '.repeat(m.length));
+// The k-th top-level [ ] block: the offsets of its brackets and of the end of
+// its statement.
+function blockStatement(text,k){
+  const masked=code(text);let depth=0,count=-1,open=-1;
+  for(let i=0;i<masked.length;i++){
+    if(masked[i]==='['&&depth++===0){count++;open=i;}
+    else if(masked[i]===']'&&--depth===0&&count===k)
+      return {open,close:i,end:Math.min(...[masked.indexOf('\n',i),masked.indexOf(';',i),masked.length].filter(n=>n>=0))};
+  }
+  return null;
+}
+// Give a displaced [ ] block an explicit centre where it was.
+function blockPin(text,scene,block,center,anchor){
+  const blocks=scene.objects.filter(o=>o.kind==='[]'&&!/nested|macro/i.test(o.reason||''));
+  const at=blockStatement(text,blocks.indexOf(block));
+  if(!at||/\b(?:at|with)\b/.test(code(text).slice(at.close+1,at.end)))return null;
+  const insert=bytes(text.slice(0,at.close+1));
+  const add=anchor?` at ${anchor.name} + (${coordinate(center.x-anchor.center.x)}, ${coordinate(center.y-anchor.center.y)})`:` at (${coordinate(center.x)}, ${coordinate(center.y)})`;
+  return {base:text,start:insert,end:insert,expected:'',text:add};
+}
+const coordinate=value=>Number(Number(value).toFixed(4)).toString();
+
+// What follows a dragged shape. Shapes placed against it (B at A + ..., 1in
+// below A, with .n at A.s) say so in their source, so they move with it and
+// are not rewritten. Shapes that follow only because they come next in a
+// chain stay where they are: each is pinned, by extending the connector it
+// hangs from, else as an offset from the nearest earlier named shape that
+// stays put, else at a literal position. bringAlong (Alt) inverts this: chain
+// followers move and shapes placed against the dragged one are pinned.
+// Render, pin the first shape that moved and should not have, and repeat. A
+// follower that cannot be pinned (a macro use) moves along and the label says
+// so. render(source) returns a scene ({objects, error}), sync or async.
+export async function settleMove(source,scene,option,object,render,{bringAlong=false}={}){
+  const before=new Map(scene.objects.map(o=>[o.id,o]));
+  const moving=new Set([object.id]),pinned=[],carried=new Set();let text=option.source,result=null;
+  for(let round=0;;round++){
+    if(round>scene.objects.length+1)return null;
+    result=await render(text);
+    if(!result||result.error||!Array.isArray(result.objects))return null;
+    const now=result.objects.find(o=>o.id===object.id);
+    if(!now||!option.target||!same(now.center,option.target,1e-3))return null;
+    const order=o=>o.span?.start>=0?o.span.start:blockStart(text,result,o);
+    // Connectors never block: they follow the shapes they are attached to.
+    // Shapes inside a [ ] block follow the block.
+    const displaced=result.objects.filter(o=>before.has(o.id)&&o.id!==object.id&&!carried.has(o.id)&&!/nested/i.test(o.reason||'')
+      &&(shapeKinds.includes(o.kind)||o.kind==='[]')&&shifted(before.get(o.id),o)).sort((a,b)=>order(a)-order(b));
+    for(let grown=true;grown;){
+      grown=false;
+      for(const o of displaced)if(!moving.has(o.id)&&(o.dependencies||[]).some(id=>moving.has(id))!==bringAlong){moving.add(o.id);grown=true;}
+    }
+    const next=displaced.find(o=>!moving.has(o.id));
+    if(!next)break;
+    const origin=before.get(next.id);
+    const stable=stableReference(text,result,before,moving,next,origin);
+    const patch=next.kind==='[]'?blockPin(text,result,next,origin.center,stable)
+      :editability(next,result).editable?candidates(text,next,result,origin.center,{precise:true,keepForm:true,anchorTo:stable?.name,absorb:'start'})[0]?.patch:null;
+    if(!patch){
+      carried.add(next.id);
+      // Everything inside a carried block moves with it.
+      if(next.kind==='[]')for(const o of result.objects)if(/nested/i.test(o.reason||'')&&o.bbox&&next.bbox
+        &&o.center.x>=next.bbox.x&&o.center.x<=next.bbox.x+next.bbox.width&&o.center.y>=next.bbox.y&&o.center.y<=next.bbox.y+next.bbox.height)carried.add(o.id);
+      continue;
+    }
+    pinned.push(describe(next,text));
+    text=applyPatch(text,{...patch,base:text});
+  }
+  const shown=ids=>[...ids].map(id=>result.objects.find(o=>o.id===id)).filter(o=>o&&o.id!==object.id&&!/nested/i.test(o.reason||'')
+    &&shifted(before.get(o.id),o)).map(o=>describe(o,text));
+  const along=shown(moving),names=shown(carried),subject=describe(object,source);
+  const alongText=along.length?` (and ${along.join(', ')} ${bringAlong?'following':'placed against'} it)`:'';
+  const carriedText=names.length?`; ${names.join(', ')} moved with it (Studio can’t pin ${names.length===1?'it':'them'})`:'';
+  const label=option.label+alongText+(pinned.length?`; pin ${pinned.join(', ')} in place`:'')
+    +(names.length?`; ${names.join(', ')} move${names.length===1?'s':''} with it (Studio can’t pin ${names.length===1?'it':'them'})`:'');
+  return {...option,label,source:text,patch:linePatch(source,text),selectId:object.id,targetKind:object.kind,result,
+    ...(along.length||names.length?{summary:`Moved ${subject}${alongText}${carriedText}`}:{})};
+}
+// Where a top-level [ ] block starts in the source, in bytes (it has no span).
+function blockStart(text,scene,block){
+  const blocks=scene.objects.filter(o=>o.kind==='[]'&&!/nested|macro/i.test(o.reason||''));
+  const at=blocks.includes(block)&&blockStatement(text,blocks.indexOf(block));
+  return at?bytes(text.slice(0,at.open)):Infinity;
+}
+// The nearest earlier named shape that stays put, to pin a follower against.
+function stableReference(text,scene,before,moving,object,origin){
+  const at=object.kind==='[]'?blockStart(text,scene,object):object.span?.start;
+  return scene.objects.filter(o=>o.name&&shapeKinds.includes(o.kind)&&o.span?.start>=0&&o.span.end<=at&&!moving.has(o.id)
+    &&before.has(o.id)&&!shifted(before.get(o.id),o)&&editability(o,scene).editable)
+    .sort((a,b)=>Math.hypot(a.center.x-origin.center.x,a.center.y-origin.center.y)-Math.hypot(b.center.x-origin.center.x,b.center.y-origin.center.y))[0]||null;
+}
+// One patch covering the changed lines, so the diff reads as whole statements.
+function linePatch(source,text){
+  let a=0;while(a<source.length&&a<text.length&&source[a]===text[a])a++;
+  a=source.lastIndexOf('\n',a-1)+1;
+  let b=0;while(b<source.length-a&&b<text.length-a&&source[source.length-1-b]===text[text.length-1-b])b++;
+  const tail=source.indexOf('\n',source.length-b);const keep=tail<0?0:source.length-tail;
+  return {base:source,start:bytes(source.slice(0,a)),end:bytes(source.slice(0,source.length-keep)),
+    expected:source.slice(a,source.length-keep),text:text.slice(a,text.length-keep)};
 }
 
 // pinDependents: a remaining shape positioned against a deleted one is
@@ -171,7 +279,7 @@ export function deleteObjects(source,objects,scene,{includeConnectors=false,pinD
   const references=(object,target)=>target.name&&new RegExp(`\\b${target.name}\\b`).test(masked(source.slice(byteOffsetToIndex(source,object.span.start),byteOffsetToIndex(source,object.span.end))).replace(/^\s*[A-Z][A-Za-z0-9_]*\s*:/,''));
   const pins=new Map();
   const pin=other=>{
-    const edit=candidates(source,other,scene,other.center,{precise:true}).find(c=>!c.references.length);
+    const edit=candidates(source,other,scene,other.center,{precise:true}).find(c=>!c.references.length&&!c.extended);
     if(!edit)throw new Error(`${other.name||other.kind} is positioned relative to this selection with an expression Studio cannot pin. Edit its placement first.`);
     pins.set(other,edit.patch);
   };

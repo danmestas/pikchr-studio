@@ -94,15 +94,18 @@ test('a non-literal colour is locked with its source text, never guessed',()=>{
   assert.deepEqual(styleLocks(thick,ts.objects[0],ts),{fill:null,color:null,thickness:'thickness 1+1'});
 });
 
-test('a shape that cannot move says why, and only moving is blocked',()=>{
-  const why=source=>{const scene=render(source),o=time(scene);assert.equal(candidates(source,o,scene,o.center).length,0,source);return movementBlocked(source,o,scene);};
-  assert.equal(why(oval('fill 0xe8f0d2 at NBT.n + (0, 0.6*2)')),'its position is an expression Studio can’t rewrite (`at NBT.n + (0, 0.6*2)`)');
-  assert.equal(why(oval('fill 0xe8f0d2 at (NBT.x, NBT.y+1) color 0x2d6a4f')),'its position is an expression Studio can’t rewrite (`at (NBT.x, NBT.y+1)`)');
-  assert.equal(why('$zeit = 0xe8f0d2\n'+oval('fill $zeit at (0,1)')),'its attribute `fill $zeit` is an expression Studio can’t rewrite');
-  assert.equal(why(oval('fill 0xe8f0d2 width NBT.wid*0.6 at (0,1)')),'its attribute `width NBT.wid*0.6` is an expression Studio can’t rewrite');
+test('expression placements and attributes move; only a shape Studio cannot move says why',()=>{
+  // These used to be refused; dragging now keeps or rewrites the placement.
+  for(const source of [oval('fill 0xe8f0d2 at NBT.n + (0, 0.6*2)'),oval('fill 0xe8f0d2 at (NBT.x, NBT.y+1) color 0x2d6a4f'),
+    '$zeit = 0xe8f0d2\n'+oval('fill $zeit at (0,1)'),oval('fill 0xe8f0d2 width NBT.wid*0.6 at (0,1)')]){
+    const scene=render(source),o=time(scene);
+    assert.ok(candidates(source,o,scene,o.center).length,source);
+    assert.equal(movementBlocked(source,o,scene),'',source);
+  }
   const file='F: file "doc" at (0,0)\n',fs=render(file);
-  assert.equal(movementBlocked(file,fs.objects[0],fs),'Studio moves boxes, circles, ellipses, ovals, cylinders, diamonds and text, not files');
-  // A movable shape has no reason.
+  assert.equal(movementBlocked(file,fs.objects[0],fs),'');
+  const dot='D: dot at (0,0)\n',ds=render(dot);
+  assert.equal(movementBlocked(dot,ds.objects[0],ds),'Studio moves boxes, circles, ellipses, ovals, cylinders, diamonds, files and text, not dots');
   const ok=oval('fill 0xe8f0d2 at (0,1)'),os=render(ok);
   assert.equal(movementBlocked(ok,time(os),os),'');
   // The banner says the real reason and keeps style and text editable.

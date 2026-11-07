@@ -2,15 +2,15 @@
 // the controls declared in index.html into chips, menus and popovers; every
 // control keeps its own handler. It also adds drag-to-connect, which submits
 // ordinary candidate edits.
-import {attachPoints,nearestAnchor,targetAnchor,hitShape,connectCandidate,connectionLabel,elbowRoute} from './connect-drag.js?v=20261106g';
-import {connectableShapes} from './creation.js?v=20261106g';
-import {connectorCapabilities,connectorTitle} from './arrow-ui.js?v=20261106g';
-import {freeLineCandidate,pointText,snapToGrid,literalRoute,lineEnds,translateLineCandidate,moveEndpointCandidate} from './free-lines.js?v=20261106g';
-import {lockDirection} from './constrain.js?v=20261106g';
-import {inspectProperties} from './properties.js?v=20261106g';
-import {paintSwatch} from './property-ui.js?v=20261106g';
-import {buildTextEdit} from './text-sizing.js?v=20261106g';
-import {textStyle,textStyleCandidate,textSizes,textColours} from './text-style.js?v=20261106g';
+import {attachPoints,nearestAnchor,targetAnchor,hitShape,connectCandidate,connectionLabel,elbowRoute} from './connect-drag.js?v=20261106h';
+import {connectableShapes} from './creation.js?v=20261106h';
+import {connectorCapabilities,connectorTitle} from './arrow-ui.js?v=20261106h';
+import {freeLineCandidate,pointText,snapToGrid,literalRoute,lineEnds,translateLineCandidate,moveEndpointCandidate} from './free-lines.js?v=20261106h';
+import {lockDirection} from './constrain.js?v=20261106h';
+import {inspectProperties} from './properties.js?v=20261106h';
+import {paintSwatch} from './property-ui.js?v=20261106h';
+import {buildTextEdit} from './text-sizing.js?v=20261106h';
+import {textStyle,textStyleCandidate,textSizes,textColours} from './text-style.js?v=20261106h';
 
 
 const $=id=>document.getElementById(id);

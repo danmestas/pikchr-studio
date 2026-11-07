@@ -6,8 +6,8 @@ import vm from 'node:vm';
 import {createRequire} from 'node:module';
 import {createShape} from '../public/creation.js';
 import {inspectProperties,changeText,fitText,colourNames} from '../public/properties.js';
-import {candidates,endpointCandidates} from '../public/edits.js';
-import {changeAppearance,duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove} from '../public/object-actions.js';
+import {candidates,endpointCandidates,applyPatch} from '../public/edits.js';
+import {changeAppearance,duplicateObject,deleteObjects,layoutObjects,moveObjects,settleMove} from '../public/object-actions.js';
 const publicDir=path.resolve(import.meta.dirname,'../public');
 const context=vm.createContext({require:createRequire(import.meta.url),process,console,__dirname:publicDir,__filename:path.join(publicDir,'pikchr.js'),URL,TextDecoder,TextEncoder,setTimeout});
 vm.runInContext(fs.readFileSync(path.join(publicDir,'pikchr.js'),'utf8'),context);
@@ -56,13 +56,15 @@ test('dimension aliases stay editable without matching partial expressions',()=>
   }
 });
 
-test('simple reference centers stay relative while complex placement remains read-only',()=>{
+test('reference centers stay relative, and an expression offset becomes a plain offset from the same reference',()=>{
   const source='A: box at (1,1)\nB: text "title" at A.c';
   const scene=render(source),move=candidates(source,scene.objects[1],scene,{x:2,y:3})[0];
-  assert.match(move.source,/with .c at A.c \+ \(1, 2\)/);
+  assert.match(move.source,/B: text "title" at A.c \+ \(1, 2\)$/);
   assert.deepEqual(render(move.source).objects[1].center,{x:2,y:3});
   const complex='A: box at (0,0)\nB: box at A.c + (1+2,3)';
-  const rs=render(complex);assert.equal(candidates(complex,rs.objects[1],rs,{x:1,y:1}).length,0);
+  const rs=render(complex),edit=candidates(complex,rs.objects[1],rs,{x:1,y:1})[0];
+  assert.match(edit.source,/B: box at A.c \+ \(1, 1\)$/);
+  assert.deepEqual(render(edit.source).objects[1].center,{x:1,y:1});
 });
 
 test('duplicate preserves label style and dimensions with unique name and offset',()=>{
@@ -141,9 +143,69 @@ test('moving shapes pins unselected shapes positioned against them',()=>{
   // Without pinning the dependent follows its anchor, as Pikchr defines.
   const follow=moveObjects(source,[client],scene,1,1);
   assert.equal(render(follow.source).objects[1].center.x,db.center.x+1);
-  // pinMove wraps a single-shape candidate the same way.
-  const single=pinMove(source,scene,{label:'Place here',patch:candidates(source,client,scene,{x:1,y:1},{precise:true})[0].patch},[client.id]);
-  assert.deepEqual(render(single.source).objects[1].center,db.center);
+});
+
+// Drag one shape by (dx, dy) through candidates and settleMove, with the real
+// renderer. The dragged shape and `along` (ids) move by the drag; every other
+// shape stays where it was, and connectors stay attached at both ends.
+const renderAny=source=>{const p=native(source);try{return JSON.parse(module.UTF8ToString(p));}finally{module._free(p);}};
+const touching=(p,o,t=0.1)=>p.x>=o.bbox.x-t&&p.x<=o.bbox.x+o.bbox.width+t&&p.y>=o.bbox.y-t&&p.y<=o.bbox.y+o.bbox.height+t;
+const ends=(scene,c)=>[c.path[0],c.path.at(-1)].map(p=>scene.objects.filter(o=>!['arrow','line','move'].includes(o.kind)&&o.bbox&&touching(p,o)).map(o=>o.id).sort().join());
+async function settled(source,id,dx,dy,{along=[],bringAlong=false}={}){
+  const scene=render(source),object=scene.objects.find(o=>o.id===id);
+  const option=candidates(source,object,scene,{x:object.center.x+dx,y:object.center.y+dy},{precise:true})[0];
+  const edit=await settleMove(source,scene,option,object,renderAny,{bringAlong});
+  assert.ok(edit,'not settled: '+option.source);
+  const after=render(edit.source);
+  for(const o of scene.objects){
+    const now=after.objects.find(n=>n.id===o.id),moved=o.id===id||along.includes(o.id);
+    if(['arrow','line','move'].includes(o.kind)){
+      if(o.kind!=='move')ends(scene,o).forEach((was,i)=>{const is=ends(after,now)[i].split(',');
+        assert.ok(was.split(',').every(id=>!id||is.includes(id)),'connector '+o.id+' detached: '+edit.source);});
+      continue;
+    }
+    assert.ok(Math.abs(now.center.x-o.center.x-(moved?dx:0))<1e-3&&Math.abs(now.center.y-o.center.y-(moved?dy:0))<1e-3,o.id+' '+edit.source);
+  }
+  assert.equal(applyPatch(source,edit.patch),edit.source);
+  return edit;
+}
+test('shapes placed against the dragged shape move with it, unchanged; Alt pins them instead',async()=>{
+  let edit=await settled('A: box "A"\nB: box "B" at A + (2,0)\nC: box "C" with .n at 1in below B.s\n','o1',.5,-.3,{along:['o2','o3']});
+  assert.equal(edit.source,'A: box "A" at (0.5, -0.3)\nB: box "B" at A + (2,0)\nC: box "C" with .n at 1in below B.s\n');
+  assert.equal(edit.summary,'Moved A (and B, C placed against it)');
+  edit=await settled('A: box "A"\nB: box "B" at A + (2,0)\n','o1',.5,-.3,{bringAlong:true});
+  assert.equal(edit.source,'A: box "A" at (0.5, -0.3)\nB: box "B" at A + (1.5, 0.3)\n');
+  assert.match(edit.label,/pin B in place/);
+  // The owner's diagram: NB hangs below Time, so it moves along; the arrow follows.
+  const owner='Time: oval "Zeit"\nNB: box "Not Before Time" fit with .n at 0.75in below Time.s\narrow dashed from Time.s to NB.n "parameter" ljust\n';
+  edit=await settled(owner,'o1',.5,-.3,{along:['o2']});
+  assert.equal(edit.source,owner.replace('oval "Zeit"','oval "Zeit" at (0.5, -0.3)'));
+});
+test('chain followers stay put, pinned against an unmoved named shape or by their connector; Alt lets them follow',async()=>{
+  // An unplaced chain: the arrows stay attached at both ends.
+  let edit=await settled('box "A"\narrow\nbox "B"\narrow\nbox "C"\n','o3',.5,-.3);
+  assert.equal(edit.source,'box "A"\narrow to (1.375, -0.3)\nbox "B"\narrow to (2.125, 0)\nbox "C"\n');
+  edit=await settled('box "A"\narrow\nbox "B"\narrow\nbox "C"\n','o3',.5,-.3,{along:['o5'],bringAlong:true});
+  assert.equal(edit.source,'box "A"\narrow to (1.375, -0.3)\nbox "B"\narrow\nbox "C"\n');
+  assert.equal(edit.summary,'Moved box "B" (and box "C" following it)');
+  // Without a connector, a follower is placed against the nearest unmoved named shape.
+  edit=await settled('A: box "A"\nB: box "B"\nC: box "C"\n','o2',.5,-.3);
+  assert.equal(edit.source,'A: box "A"\nB: box "B" at (1.25, -0.3)\nC: box "C" at A + (1.5, 0)\n');
+  // A then-path keeps both ends: its last leg goes to where B is.
+  edit=await settled('A: box "A"\nline right then down then right\nB: box "B"\n','o1',.5,-.3);
+  assert.equal(edit.source,'A: box "A" at (0.5, -0.3)\nline right 0.25 then down 0.2 then right 0.25\nB: box "B"\n');
+  // A following [ ] block is pinned against A; a bracket in a comment is not a block.
+  edit=await settled('A: box "A"\nB: box "B"\n/* old: [ box ] */\n[ box "in" ]\nC: box "C"\n','o2',.5,-.3);
+  assert.equal(edit.source,'A: box "A"\nB: box "B" at (1.25, -0.3)\n/* old: [ box ] */\n[ box "in" ] at A + (1.5, 0)\nC: box "C"\n');
+  // The patch covers whole changed lines only.
+  assert.equal(edit.patch.expected,'B: box "B"\n/* old: [ box ] */\n[ box "in" ]');
+});
+test('a follower that cannot be pinned moves along, and the label says so',async()=>{
+  const source='define m { box "M" }\nA: box "A"\nm\n',scene=render(source),a=scene.objects.find(o=>o.name==='A');
+  const option=candidates(source,a,scene,{x:.5,y:-.3},{precise:true})[0];
+  const edit=await settleMove(source,scene,option,a,renderAny);
+  assert.match(edit.label,/box "M" moves with it/);
+  assert.match(edit.summary,/^Moved A; box "M" moved with it/);
 });
 
 test('a free drop prefers a plain position over an arbitrary offset from a neighbour',()=>{

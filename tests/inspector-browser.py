@@ -216,8 +216,8 @@ with sync_playwright() as pw:
     close_popovers(page)
     set_source(page, 'define tile { box "Generated" }\ntile\nbox "Unnamed" at (2,0)\n')
     for object_id, message in (
-        ("o1", "This shape comes from a macro, so it can’t be dragged. Choose Detach from macro in the inspector to edit it on its own."),
-        ("o2", "This shape has no name, so it can’t be dragged. Name it in the source (S), for example A: box."),
+        ("o1", "Can’t move: this shape comes from a macro. Choose Detach from macro in the inspector to move it on its own."),
+        ("o2", "Moved box \"Unnamed\"."),
     ):
         box = page.locator('#diagram [data-pikchr-id="' + object_id + '"]').bounding_box()
         page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)

@@ -1,8 +1,8 @@
-import {endpointCandidates,moveVertexCandidates,routeCandidates,byteOffsetToIndex} from './edits.js?v=20261106g';
-import {routeEditor,routeStyleGallery} from './route-ui.js?v=20261106g';
-import {connectorState,routeStyleCandidates} from './route-styles.js?v=20261106g';
-import {inspectProperties,changeTermination} from './properties.js?v=20261106g';
-import {reverseConnector} from './reverse-connector.js?v=20261106g';
+import {endpointCandidates,moveVertexCandidates,routeCandidates,byteOffsetToIndex} from './edits.js?v=20261106h';
+import {routeEditor,routeStyleGallery} from './route-ui.js?v=20261106h';
+import {connectorState,routeStyleCandidates} from './route-styles.js?v=20261106h';
+import {inspectProperties,changeTermination} from './properties.js?v=20261106h';
+import {reverseConnector} from './reverse-connector.js?v=20261106h';
 const ns='http://www.w3.org/2000/svg';
 let preferredMode='endpoints';
 const names={n:'North',ne:'Northeast',e:'East',se:'Southeast',s:'South',sw:'Southwest',w:'West',nw:'Northwest',c:'Center'};
@@ -53,8 +53,7 @@ export function editingBlocked(object,capabilities,{styleable=false}={}){
   if(object.reason==='Nested object')return 'Editing is blocked: this object is inside a [ ] block. Edit it in source.';
   if(capabilities)return capabilities.endpoints||capabilities.route||capabilities.styles?null:'Editing is blocked: Studio cannot safely rewrite this connector’s source expression. Edit it in source.';
   if(object.editable)return null;
-  if(['box','circle','ellipse','oval','cylinder','diamond','text'].includes(object.kind)&&!object.name)return 'Moving is blocked: this shape has no name. Name it in source (for example A: box) to move it here.';
-  const reason=object.moveReason||'Studio moves boxes, circles, ellipses, ovals, cylinders, diamonds and text, not '+object.kind+'s';
+  const reason=object.moveReason||(object.moveRefusal?object.moveRefusal.replace(/\.$/,'').replace(/^./,c=>c.toLowerCase()):'Studio can’t move this '+object.kind+' by dragging');
   return styleable?'Moving is blocked: '+reason+'. Style and label edits still work.':'Editing is blocked: '+reason+'. Edit this '+object.kind+' in Source (S).';
 }
 // Inspector rows for one connector: Start and End as code with Reconnect,

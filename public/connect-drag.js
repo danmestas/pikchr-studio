@@ -1,8 +1,8 @@
 // Pure helpers for drag-to-connect. Geometry is in Pikchr inches (y up).
 // Every result is an ordinary candidate edit: the caller validates it by
 // rendering, exactly like the other canvas tools.
-import {createShape,createConnector,connectableShapes} from './creation.js?v=20261106g';
-import {applyPatch} from './edits.js?v=20261106g';
+import {createShape,createConnector,connectableShapes} from './creation.js?v=20261106h';
+import {applyPatch} from './edits.js?v=20261106h';
 
 export const sides=['n','e','s','w'];
 const opposite={n:'s',s:'n',e:'w',w:'e'};

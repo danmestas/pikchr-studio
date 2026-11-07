@@ -3,7 +3,7 @@
 const encoder = new TextEncoder();
 const number = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)';
 const tuple = `\\(\\s*${number}\\s*,\\s*${number}\\s*\\)`;
-const movableKinds = ['box','cylinder','circle','ellipse','oval','diamond','text'];
+const movableKinds = ['box','cylinder','circle','ellipse','oval','diamond','file','text'];
 
 export function byteOffsetToIndex(source, offset) {
   if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('Invalid source byte offset');
@@ -26,6 +26,12 @@ export function applyPatch(source, patch) {
     throw new Error('Source changed. Generate a new suggestion.');
   }
   return source.slice(0, start) + patch.text + source.slice(end);
+}
+
+// Strings and comments (#, //, /* */) blanked, newlines kept, so placement
+// words inside them never count and offsets still refer to the original text.
+export function maskCode(text) {
+  return text.replace(/"(?:\\.|[^"\\])*"|\/\*[\s\S]*?\*\/|#[^\n]*|\/\/[^\n]*/g, match => match.replace(/[^\n]/g, ' '));
 }
 
 function maskedText(text) {
@@ -94,11 +100,14 @@ function unsafeToken(statement, masked, from) {
   return null;
 }
 export function movementBlocked(source, object, scene) {
+  if (object?.kind === '[]') return 'Studio moves boxes, circles, ellipses, ovals, cylinders, diamonds, files and text, not [ ] groups';
   const why = editability(object, scene);
   if (!why.editable) return why.reason.replace(/\.$/, '').replace(/^./, c => c.toLowerCase());
-  if (!movableKinds.includes(object.kind)) return `Studio moves boxes, circles, ellipses, ovals, cylinders, diamonds and text, not ${object.kind}s`;
-  if (!object.name) return 'this shape has no name';
-  if (candidates(source, object, scene, object.center).length) return '';
+  if (!movableKinds.includes(object.kind)) return `Studio moves boxes, circles, ellipses, ovals, cylinders, diamonds, files and text, not ${object.kind}s`;
+  // Every placement form is movable now; what remains is a statement Studio
+  // cannot locate or read, so the diagnostics below are a last resort.
+  const refusal = moveRefusal(source, object, scene);
+  if (!refusal) return '';
   let statement;
   try { statement = source.slice(byteOffsetToIndex(source, object.span.start), byteOffsetToIndex(source, object.span.end)); }
   catch { return 'Studio can’t find where it is written'; }
@@ -107,8 +116,8 @@ export function movementBlocked(source, object, scene) {
   if (/[\n\r]/.test(trimmed)) return 'its statement continues over several lines';
   if (/;/.test(trimmed)) return 'it shares its line with another statement';
   if (/[\[\]{}]/.test(trimmed)) return 'it contains a [ ] or { } block';
-  const header = masked.match(/^\s*([A-Z][A-Za-z0-9_]*):\s*(box|cylinder|circle|ellipse|oval|diamond|text)\b/);
-  if (!header) return 'its statement does not start with its name and type';
+  const header = masked.match(/^\s*(?:([A-Z][A-Za-z0-9_]*):\s*)?(box|cylinder|circle|ellipse|oval|diamond|file|text)\b/);
+  if (!header) return 'its statement does not start with its type';
   const body = masked.slice(header[0].length);
   const placed = MOVE_WORDS.exec(body);
   if (placed) {
@@ -458,16 +467,258 @@ export function rankCandidates(list, target, referencedNames = []) {
   }).map(x=>x.c);
 }
 
+// Where a shape's statement says where it goes: the native placement span when
+// the scene has one, otherwise the small grammar above. `implicit` means the
+// statement has no placement and Pikchr chains it after the previous object.
+function ownPlacement(source, object, statement) {
+  const masked = maskCode(statement);
+  // A text object may be written as a bare string.
+  const kind = object.kind === 'text' ? '(?:text\\b|(?="))' : `${object.kind}\\b`;
+  const header = statement.match(new RegExp(`^\\s*(?:(${namePattern})\\s*:\\s*)?${kind}`));
+  if (!header || (header[1] || '') !== (object.name || '')) return null;
+  const native = object.spans?.placement;
+  if (native && Number.isSafeInteger(native.start) && native.end > native.start) {
+    let a, b;
+    try {
+      const base = byteOffsetToIndex(source, object.span.start);
+      a = byteOffsetToIndex(source, native.start) - base; b = byteOffsetToIndex(source, native.end) - base;
+    } catch { return null; }
+    if (a < header[0].length || b > statement.length) return null;
+    return {start:a, end:b, text:statement.slice(a, b), masked:masked.slice(a, b)};
+  }
+  if (object.spans && 'placement' in object.spans && !/\b(?:at|with)\b/.test(masked.slice(header[0].length)))
+    return {implicit:true, start:statement.trimEnd().length, end:statement.trimEnd().length};
+  if (/\b(?:at|with)\b/.test(masked.slice(header[0].length))) {
+    // Without the renderer's span, only the grammar above is trusted, and
+    // nothing placement-like may remain outside it.
+    const parsed = parsePlacement(masked);
+    if (!parsed || parsed.start < header[0].length) return null;
+    const rest = masked.slice(header[0].length, parsed.start) + masked.slice(parsed.end);
+    if (/\b(?:at|with|from|to|then|of)\b|[()+*/]/.test(rest)) return null;
+    return {start:parsed.start, end:parsed.end, text:statement.slice(parsed.start, parsed.end), masked:parsed.text};
+  }
+  return {implicit:true, start:statement.trimEnd().length, end:statement.trimEnd().length};
+}
+
+const longAnchor = {north:'n',south:'s',east:'e',west:'w',top:'n',bottom:'s',left:'w',right:'e',center:'c',
+  ne:'ne',nw:'nw',se:'se',sw:'sw',n:'n',s:'s',e:'e',w:'w',c:'c'};
+const unitInches = {'':1, in:1, cm:1/2.54, mm:1/25.4, pt:1/72, px:1/96};
+const gapAxis = {'right of':['x',1], 'left of':['x',-1], above:['y',1], below:['y',-1]};
+const fmt = rawCoordinate;
+const offsetText = (x, y) => `(${fmt(x)}, ${fmt(y)})`;
+const pairPattern = new RegExp(`^\\(?\\s*(${number})\\s*,\\s*(${number})\\s*\\)?$`);
+
+// Split `(e1, e2)` at its one top-level comma.
+function coordinatePair(masked) {
+  const inner = masked.trim().match(/^\(([\s\S]*)\)$/)?.[1];
+  if (inner === undefined) return null;
+  let depth = 0, comma = -1;
+  for (let i = 0; i < inner.length; i++) {
+    if (inner[i] === '(') depth++;
+    else if (inner[i] === ')') depth--;
+    else if (inner[i] === ',' && depth === 0) { if (comma >= 0) return null; comma = i; }
+    if (depth < 0) return null;
+  }
+  return comma < 0 ? null : [inner.slice(0, comma), inner.slice(comma + 1)];
+}
+// `e + d`, folding d into a trailing literal term when there is one. Returns
+// the text and how far rounding moved the result from e + d.
+function shifted(expression, d, round) {
+  const e = expression.trim();
+  if (Math.abs(d) < 1e-9) return {text:e, shift:0};
+  if (new RegExp(`^${number}$`).test(e)) { const exact = Number(e) + d, value = round(exact); return {text:fmt(value), shift:value - exact}; }
+  const tail = e.match(new RegExp(`^([\\s\\S]*?\\S)\\s*([+-])\\s*(${number})$`));
+  if (tail && !/[*/]\s*$/.test(tail[1])) {
+    const exact = (tail[2] === '-' ? -1 : 1) * Number(tail[3]) + d, value = round(exact);
+    return {shift:value - exact, text:Math.abs(value) < 1e-9 ? tail[1] : `${tail[1]} ${value < 0 ? '-' : '+'} ${fmt(Math.abs(value))}`};
+  }
+  const value = round(d);
+  return {shift:value - d, text:Math.abs(value) < 1e-9 ? e : `${e} ${value < 0 ? '-' : '+'} ${fmt(Math.abs(value))}`};
+}
+
+// The current placement, same form, rewritten so the shape's centre moves by
+// `delta`. Every form Pikchr allows has an answer here: literals and offsets
+// get new numbers, a bare reference gains an offset, a gap keeps its unit
+// while the move runs along its axis, a coordinate pair adjusts each term.
+// Anything else becomes an offset from the first earlier shape it names.
+// Null only when no reference can be read (the caller then places literally).
+function keptPlacement(placement, object, earlier, delta, round = value => value) {
+  const ownName = name => name ? longAnchor[name] : 'c';
+  const ownPoint = name => name === 'c' ? object.center : object.anchors?.[name];
+  // Where a named reference is, when the placement names one directly.
+  const referencePoint = place => {
+    const m = place.match(new RegExp(`^(${namePattern})(?:\\.([a-z]+))?$`));
+    const reference = m && earlier.find(other => other.name === m[1]);
+    const anchor = m && longAnchor[m[2] || 'c'];
+    return reference && anchor ? (anchor === 'c' ? reference.center : reference.anchors?.[anchor]) : null;
+  };
+  // An offset (x, y), rounded for a drag; shift is how far rounding moves the shape.
+  const vector = (x, y, sign = 1) => { const v = {x:round(x), y:round(y)};
+    return {v, shift:{x:sign * (v.x - x), y:sign * (v.y - y)}}; };
+  if (!placement || placement.implicit) return null;
+  const raw = placement.text, masked = placement.masked;
+  const head = masked.match(/^with\s+\.([A-Za-z]+)\s+at\s+|^at\s+/);
+  if (!head) return null;
+  // The raw and masked texts align character for character; trim both alike.
+  const rest = masked.slice(head[0].length), lead = rest.length - rest.trimStart().length, trail = rest.length - rest.trimEnd().length;
+  const prefix = raw.slice(0, head[0].length), cut = text => text.slice(head[0].length + lead, text.length - trail);
+  const pos = cut(raw), mpos = cut(masked);
+  const pair = mpos.match(pairPattern);
+  if (pair) { const {v, shift} = vector(Number(pair[1]) + delta.x, Number(pair[2]) + delta.y);
+    return {text:`${prefix}${offsetText(v.x, v.y)}`, shift, kept:true, literal:!head[1] || longAnchor[head[1]] === 'c'}; }
+  const offset = mpos.match(new RegExp(`^([\\s\\S]*?\\S)\\s*([+-])\\s*\\(\\s*(${number})\\s*,\\s*(${number})\\s*\\)$`));
+  if (offset && !/[+\-*/,(]/.test(offset[1])) {
+    const sign = offset[2] === '-' ? -1 : 1, place = pos.slice(0, offset[1].length);
+    let x = Number(offset[3]) + sign * delta.x, y = Number(offset[4]) + sign * delta.y;
+    // A named reference gives the exact offset from the rendered anchors.
+    const from = referencePoint(offset[1]), own = ownPoint(ownName(head[1]));
+    if (point(from) && point(own)) { x = sign * (own.x + delta.x - from.x); y = sign * (own.y + delta.y - from.y); }
+    const {v, shift} = vector(x, y, sign);
+    return {shift, kept:true, text:Math.abs(v.x) < 1e-9 && Math.abs(v.y) < 1e-9 ? `${prefix}${place}` : `${prefix}${place} ${offset[2]} ${offsetText(v.x, v.y)}`};
+  }
+  const gap = mpos.match(new RegExp(`^(${number})(cm|mm|in|px|pt)?\\s+(above|below|left\\s+of|right\\s+of)\\s+(\\S[\\s\\S]*)$`));
+  if (gap && !/[+\-*/,()]/.test(gap[4])) {
+    const factor = unitInches[gap[2] || ''], direction = gap[3].replace(/\s+/g, ' '), [axis, sign] = gapAxis[direction];
+    const across = axis === 'x' ? 'y' : 'x', old = Number(gap[1]) * factor, now = old + delta[axis] * sign;
+    const place = pos.slice(pos.length - gap[4].length);
+    const value = Number(round(now / factor).toFixed(4));
+    if (Math.abs(delta[across]) < 1e-9 && value * factor > 1e-9 && old > 1e-9) {
+      const shift = {x:0, y:0}; shift[axis] = (value * factor - now) * sign;
+      return {text:`${prefix}${value}${gap[2] || ''} ${direction} ${place}`, shift, kept:true};
+    }
+    const base = {x:0, y:0}; base[axis] = old * sign;
+    const {v, shift} = vector(base.x + delta.x, base.y + delta.y);
+    return {text:`${prefix}${place} + ${offsetText(v.x, v.y)}`, shift, kept:true};
+  }
+  if (!/[+\-*/,()]|\b(?:of|above|below|between|way|heading|and)\b/.test(mpos.replace(/\.\s*[a-z]+\b/g, '')) && /^[A-Za-z]/.test(mpos)) {
+    const {v, shift} = vector(delta.x, delta.y);
+    return {text:`${prefix}${pos} + ${offsetText(v.x, v.y)}`, shift, kept:true};
+  }
+  const terms = coordinatePair(mpos);
+  if (terms) {
+    const x = shifted(pos.slice(1, 1 + terms[0].length), delta.x, round), y = shifted(pos.slice(2 + terms[0].length, pos.length - 1), delta.y, round);
+    return {text:`${prefix}(${x.text}, ${y.text})`, shift:{x:x.shift, y:y.shift}, kept:true};
+  }
+  // `F [of the] way between P and Q` keeps both ends, each moved by the drag.
+  const between = mpos.match(/^([\s\S]*?\bbetween)\s+([\s\S]+?)\s+and\s+([\s\S]+)$/);
+  if (between) {
+    const d = {x:round(delta.x), y:round(delta.y)}, moved = [];
+    let at = between[1].length;
+    for (const part of [between[2], between[3]]) {
+      const start = mpos.indexOf(part, at); at = start + part.length;
+      const text = pos.slice(start, start + part.length), m = part;
+      const p = m.match(pairPattern), o = m.match(new RegExp(`^([\\s\\S]*?\\S)\\s*([+-])\\s*\\(\\s*(${number})\\s*,\\s*(${number})\\s*\\)$`));
+      if (p) moved.push(offsetText(Number(p[1]) + d.x, Number(p[2]) + d.y));
+      else if (o && !/[+\-*/,(]/.test(o[1])) { const sign = o[2] === '-' ? -1 : 1;
+        moved.push(`${text.slice(0, o[1].length)} ${o[2]} ${offsetText(Number(o[3]) + sign * d.x, Number(o[4]) + sign * d.y)}`); }
+      else if (!/[+\-*/,()]/.test(m) && /^[A-Za-z]/.test(m)) moved.push(`${text} + ${offsetText(d.x, d.y)}`);
+      else break;
+    }
+    if (moved.length === 2)
+      return {text:`${prefix}${pos.slice(0, between[1].length)} ${moved[0]} and ${moved[1]}`, shift:{x:d.x - delta.x, y:d.y - delta.y}, kept:true};
+  }
+  // Nearest readable form: an offset from the same reference.
+  for (const match of mpos.matchAll(new RegExp(`\\b(${namePattern})(?:\\.(${Object.keys(longAnchor).join('|')})\\b)?`, 'g'))) {
+    const reference = earlier.find(other => other.name === match[1]);
+    if (!reference) continue;
+    const anchor = longAnchor[match[2] || 'c'], from = anchor === 'c' ? reference.center : reference.anchors?.[anchor];
+    const name = ownName(head[1]), own = name ? ownPoint(name) : object.center;
+    if (!point(from) || !point(own)) continue;
+    const keep = name && name !== 'c' ? `with .${name} ` : '';
+    const ref = match[2] ? `${match[1]}.${anchor}` : match[1];
+    const {v, shift} = vector(own.x + delta.x - from.x, own.y + delta.y - from.y);
+    return {text:`${keep}at ${ref} + ${offsetText(v.x, v.y)}`, shift, kept:false, reference:match[1]};
+  }
+  return null;
+}
+
+// An unplaced shape sits where the connector before it ends. Moving the shape
+// can then extend that connector, so both stay attached and the shape keeps
+// its implicit placement. Only a bare connector qualifies.
+function connectorExtension(source, object, scene, delta, absorb = 'end') {
+  const before = (scene?.objects || []).filter(other => other.span?.end <= object.span.start && other.span.start >= 0)
+    .sort((a, b) => b.span.end - a.span.end)[0];
+  if (!before || !['arrow','line','move'].includes(before.kind) || !topLevel(before, scene)
+      || !Array.isArray(before.path) || before.path.length < 2) return null;
+  let a, b, gapStart;
+  try {
+    a = byteOffsetToIndex(source, before.span.start); b = byteOffsetToIndex(source, before.span.end);
+    gapStart = byteOffsetToIndex(source, object.span.start);
+  } catch { return null; }
+  if (!/^(?:\s|;|\b(?:up|down|left|right)\b)*$/.test(maskCode(source.slice(b, gapStart)))) return null;
+  const statement = source.slice(a, b), masked = maskCode(statement);
+  const header = masked.match(new RegExp(`^\\s*(?:(${namePattern})\\s*:\\s*)?(arrow|line|move)\\b`));
+  if (!header || (header[1] || '') !== (before.name || '')
+      || /\b(?:from|to|at|heading|same|close|with|chop)\b|[\[\]{}]/.test(masked)) return null;
+  // The drawn path stops short of an arrowhead; the shape's entry anchor is
+  // where the connector really ends. A then-path's last leg goes to it too.
+  const last = before.path.at(-1);
+  const entry = ['w','e','n','s'].filter(name => point(object.anchors?.[name]))
+    .map(name => ({name, gap:Math.hypot(object.anchors[name].x - last.x, object.anchors[name].y - last.y)}))
+    .sort((x, y) => x.gap - y.gap)[0];
+  if (!entry || entry.gap > 0.1) return null;
+  const end = object.anchors[entry.name];
+  if (before.path.length > 2) {
+    const text = legsMoved(statement, masked, header[0].length, [...before.path.slice(0, -1), end], delta, absorb);
+    return text && {start:before.span.start, end:before.span.end, expected:statement, text, kind:before.kind};
+  }
+  // A bare length (arrow 1) would still apply after `to`; the end replaces it.
+  const length = masked.slice(header[0].length).match(new RegExp(`^\\s+${number}${unit}(?=\\s|$)`));
+  const kept = length ? statement.slice(0, header[0].length) + statement.slice(header[0].length + length[0].length) : statement;
+  const text = kept.trimEnd() + ` to ${offsetText(end.x + delta.x, end.y + delta.y)}` + kept.slice(kept.trimEnd().length);
+  return {start:before.span.start, end:before.span.end, expected:statement, text, kind:before.kind};
+}
+
+// A routed connector (right then down then right) keeps its legs: the end
+// moves by `delta` while each leg stays horizontal or vertical. The change on
+// each axis goes to the leg nearest the moved end (absorb: 'start' or 'end')
+// that can take it without vanishing or flipping, else is shared by all legs
+// on that axis in proportion. Null when the legs cannot absorb it.
+function legsMoved(statement, masked, from, points, delta, absorb) {
+  const parts = [], splitter = /\bthen\b/g;
+  let at = from, m;
+  while ((m = splitter.exec(masked))) { parts.push([at, m.index]); at = m.index + m[0].length; }
+  parts.push([at, masked.length]);
+  if (parts.length !== points.length - 1) return null;
+  const legs = [];
+  for (const [i, [a, b]] of parts.entries()) {
+    const words = [...masked.slice(a, b).matchAll(new RegExp(`\\b(up|down|left|right)\\b(?:\\s+(${number})(in)?(?![\\w.%]))?`, 'g'))];
+    if (words.length !== 1 || new RegExp(`(?:^|\\s)${number}`).test(masked.slice(a, b).replace(words[0][0], ''))) return null;
+    const [dx, dy] = [points[i + 1].x - points[i].x, points[i + 1].y - points[i].y];
+    const axis = /left|right/.test(words[0][1]) ? 'x' : 'y', sign = /right|up/.test(words[0][1]) ? 1 : -1;
+    if (Math.abs(axis === 'x' ? dy : dx) > 1e-6) return null;
+    legs.push({start:a + words[0].index, end:a + words[0].index + words[0][0].length, word:words[0][1], axis, sign, length:sign * (axis === 'x' ? dx : dy)});
+  }
+  for (const axis of ['x', 'y']) {
+    const change = delta[axis];
+    if (Math.abs(change) < 1e-9) continue;
+    const mine = legs.filter(leg => leg.axis === axis);
+    if (!mine.length) return null;
+    const near = (absorb === 'start' ? mine : [...mine].reverse()).find(leg => leg.length + leg.sign * change > 1e-6);
+    if (near) { near.length += near.sign * change; near.changed = true; continue; }
+    const total = mine.reduce((sum, leg) => sum + leg.length, 0), sign = mine[0].sign;
+    if (mine.some(leg => leg.sign !== sign) || total + sign * change <= 1e-6) return null;
+    for (const leg of mine) { leg.length *= (total + sign * change) / total; leg.changed = true; }
+  }
+  let text = statement;
+  for (const leg of [...legs].reverse()) if (leg.changed)
+    text = text.slice(0, leg.start) + `${leg.word} ${fmt(leg.length)}` + text.slice(leg.end);
+  return text;
+}
+
 // `precise` marks exact input (keyboard nudges, layout) where snapping and
 // alignment tolerances would silently discard the requested position.
 // `keepForm` (keyboard nudges) puts first the current placement rewritten
 // for the new position (see keptPlacement), then the candidates that
 // reference exactly what the current placement does, so a nudge never ties
-// the shape to a new neighbour or drops its existing reference.
-export function candidates(source, object, scene, target, {precise=false, keepForm=false}={}) {
-  if (!object || (object.editable === false && object.kind!=='text') || !topLevel(object,scene) || !movableKinds.includes(object.kind)
-      || !/^[A-Z][A-Za-z0-9_]*$/.test(object.name || '')
-      || !point(target)) return [];
+// the shape to a new neighbour or drops its existing reference. A drag keeps
+// a relational form first too; literal and implicit placements rank freely.
+// `anchorTo` names a shape that stays put: an unplaced shape is then pinned as
+// an offset from it rather than at a literal position.
+// `absorb` says which end of a routed connector before the shape moved:
+// 'end' (the shape itself is dragged) or 'start' (pinning a follower).
+export function candidates(source, object, scene, target, {precise=false, keepForm=false, anchorTo=null, absorb='end'}={}) {
+  if (!object || !topLevel(object,scene) || !movableKinds.includes(object.kind) || !point(target)) return [];
   let start, end;
   try {
     start = byteOffsetToIndex(source, object.span.start);
@@ -475,18 +726,20 @@ export function candidates(source, object, scene, target, {precise=false, keepFo
   } catch { return []; }
   if (end < start) return [];
   const statement = source.slice(start, end);
-  const range = placementRange(statement, object);
+  const range = ownPlacement(source, object, statement);
   if (!range) return [];
   const make = (label, placement, position, references=[]) => {
     const text = statement.slice(0, range.start)
-      + (range.start === range.end ? ' ' : '') + placement + statement.slice(range.end);
+      + (range.implicit ? ' ' : '') + placement + statement.slice(range.end);
     const patch = { start: object.span.start, end: object.span.end, text, expected: statement, base: source };
     return { label, source: applyPatch(source, patch), patch, target: position, references, literals: literals(placement), relational: references.length>0 };
   };
   const earlier = (scene?.objects || []).filter(other => other.id !== object.id
     && /^[A-Z][A-Za-z0-9_]*$/.test(other.name || '') && other.span?.start < object.span.start
     && point(other.center) && !['arrow','line'].includes(other.kind));
-  if (range.referenceName && !earlier.some(other => other.name === range.referenceName)) return [];
+  const placedName = range.implicit ? null
+    : (range.masked || '').match(new RegExp(`\\b(${namePattern})\\b`))?.[1] || null;
+  const referenceName = placedName && earlier.some(other => other.name === placedName) ? placedName : null;
   // Snap the drop point to the grid and to nearby neighbour centers and edges.
   const snapped = precise ? { x: target.x, y: target.y } : { x: snap(target.x), y: snap(target.y) };
   const tolerance = precise ? 1e-6 : 0.2, touchTolerance = precise ? 1e-6 : 0.15;
@@ -497,11 +750,11 @@ export function candidates(source, object, scene, target, {precise=false, keepFo
     for (const y of ys) if (Math.abs(target.y - y) <= GRID) snapped.y = y;
   }
   const position = { x: Number(rawCoordinate(snapped.x)), y: Number(rawCoordinate(snapped.y)) };
-  const result = [make('Place here', `at (${coordinate(position.x)}, ${coordinate(position.y)})`, position)];
+  const result = [make('Place here', `at ${offsetText(position.x, position.y)}`, position)];
   const near = [...earlier].sort((a,b) => Math.hypot(a.center.x-target.x,a.center.y-target.y)
     - Math.hypot(b.center.x-target.x,b.center.y-target.y) || a.span.start-b.span.start);
   const neighbours = near.slice(0, 3);
-  const original = range.referenceName && near.find(other => other.name === range.referenceName);
+  const original = referenceName && near.find(other => other.name === referenceName);
   if (original && !neighbours.includes(original)) neighbours.push(original);
   const own = object.anchors || {};
   const ownOffset = name => point(own[name]) && point(object.center) ? { x: object.center.x - own[name].x, y: object.center.y - own[name].y } : null;
@@ -510,7 +763,7 @@ export function candidates(source, object, scene, target, {precise=false, keepFo
     // neighbour for no visible reason; it is marked so ranking prefers a plain
     // position (aligned offsets, attachments and gaps are real relations).
     const relative = (label, p) => { const dx = p.x-other.center.x, dy = p.y-other.center.y;
-      result.push({...make(label, `with .c at ${other.name}.c + (${coordinate(dx)}, ${coordinate(dy)})`, p, [other.name]),
+      result.push({...make(label, `with .c at ${other.name}.c + ${offsetText(dx, dy)}`, p, [other.name]),
         arbitrary: Math.abs(dx) > 1e-9 && Math.abs(dy) > 1e-9}); };
     relative(`Position relative to ${other.name}`, position);
     if (Math.abs(target.x-other.center.x) <= tolerance) relative(`Align centers vertically with ${other.name}`, { x: other.center.x, y: position.y });
@@ -536,41 +789,47 @@ export function candidates(source, object, scene, target, {precise=false, keepFo
     }
   }
   const unique = result.filter((candidate,index,all) => all.findIndex(item => item.source === candidate.source) === index);
-  const ranked = rankCandidates(unique, target, range.referenceName ? [range.referenceName] : []);
-  if (!keepForm) return ranked;
-  const same = c => c.references.join() === (range.referenceName || '');
-  const kept = keptPlacement(range.placement, object, earlier, position);
-  const first = kept ? [make('Nudge', kept, position, range.referenceName ? [range.referenceName] : [])] : [];
+  const ranked = rankCandidates(unique, target, referenceName ? [referenceName] : []);
+  const delta = point(object.center) ? { x: position.x - object.center.x, y: position.y - object.center.y } : null;
+  const first = [];
+  const extension = range.implicit && delta && connectorExtension(source, object, scene, delta, absorb);
+  if (extension) {
+    const patch = {start:extension.start, end:extension.end, text:extension.text, expected:extension.expected, base:source};
+    first.push({label:`Move with its ${extension.kind}`, source:applyPatch(source, patch), patch, target:position,
+      references:[], literals:2, relational:false, extended:true});
+  }
+  const anchor = range.implicit && anchorTo && earlier.find(other => other.name === anchorTo);
+  if (anchor) first.push(make(`Place against ${anchor.name}`,
+    `at ${anchor.name} + ${offsetText(position.x - anchor.center.x, position.y - anchor.center.y)}`, position, [anchor.name]));
+  // A drag rounds the kept numbers to the grid; the target follows them.
+  const kept = delta && keptPlacement(range, object, earlier, delta, precise ? undefined : snap);
+  // A literal position ranks with the other plain candidates; every other
+  // form the author wrote comes first.
+  if (kept && (keepForm || referenceName || !kept.literal))
+    first.push(make(keepForm ? 'Nudge' : kept.kept ? 'Keep placement' : `Offset from ${kept.reference}`, kept.text,
+      {x:Number(rawCoordinate(position.x + kept.shift.x)), y:Number(rawCoordinate(position.y + kept.shift.y))}, referenceName ? [referenceName] : []));
+  if (!keepForm) return [...first, ...ranked].filter((candidate,index,all) => all.findIndex(item => item.source === candidate.source) === index);
+  const same = c => c.references.join() === (referenceName || '');
   return [...first, ...ranked.filter(same), ...ranked.filter(c => !same(c))]
     .filter((candidate,index,all) => all.findIndex(item => item.source === candidate.source) === index);
 }
 
-// The current placement, same spelling, rewritten so the shape's center lands
-// on `position`: `at (x, y)` stays literal, `[with .O] at R.A + (dx, dy)` keeps
-// its anchors and gets a new offset, and `[with .O] at G DIR R.A` keeps its
-// gap (in its own unit) when the move runs along the gap's axis. A move across
-// the axis, or one that would make the gap zero or negative, falls back to the
-// nearest form: an offset from the same two anchors. Null when the shape has
-// no explicit placement or the anchors are unknown.
-function keptPlacement(placement, object, earlier, position) {
-  if (!placement) return null;
-  const fmt = rawCoordinate;
-  const spelled = placement.text.match(/^with\s+\.(\w+)\s+/);
-  const prefix = spelled ? `with .${spelled[1]} ` : '';
-  if (placement.literal) return `${prefix}at (${fmt(position.x)}, ${fmt(position.y)})`;
-  const reference = earlier.find(other => other.name === placement.referenceName);
-  const from = reference?.anchors?.[placement.referenceAnchor], own = object.anchors?.[placement.ownAnchor];
-  const ownOffset = placement.ownAnchor === 'c' ? { x: 0, y: 0 } : point(own) && point(object.center) ? { x: own.x - object.center.x, y: own.y - object.center.y } : null;
-  if (!point(from) || !ownOffset) return null;
-  const now = { x: position.x + ownOffset.x - from.x, y: position.y + ownOffset.y - from.y };
-  const anchor = `${placement.referenceName}.${placement.referenceAnchor}`;
-  if (placement.gap) {
-    const axis = { 'right of': ['x', 1], 'left of': ['x', -1], above: ['y', 1], below: ['y', -1] }[placement.direction];
-    const before = { x: object.center.x + ownOffset.x - from.x, y: object.center.y + ownOffset.y - from.y };
-    const across = axis[0] === 'x' ? 'y' : 'x', gap = now[axis[0]] * axis[1], old = before[axis[0]] * axis[1];
-    const [, value, unit] = placement.gap.match(/^([-+]?(?:\d+\.?\d*|\.\d+))(.*)$/) || [];
-    if (Math.abs(now[across]) < 1e-9 && gap > 1e-9 && old > 1e-9 && value !== undefined)
-      return `${prefix}at ${Number((Number(value) * gap / old).toFixed(4))}${unit} ${placement.direction} ${anchor}`;
+// Why a shape cannot be dragged, or '' when it can. The reason names the
+// real cause and the way out; the drag gesture shows it before the drop.
+export function moveRefusal(source, object, scene) {
+  if (!object) return 'Nothing is selected.';
+  if (object.kind === '[]') return 'A [ ] group can’t be dragged yet. Give it an at clause in the source (S).';
+  const {editable, reason} = editability(object, scene);
+  if (!editable) {
+    if (/macro/i.test(reason)) return 'This shape comes from a macro. Choose Detach from macro in the inspector to move it on its own.';
+    if (/group/i.test(reason)) return 'This shape is inside a group (a [ ] block). Move the group by editing its placement in the source (S).';
+    if (/repeated/i.test(reason)) return `Another object is also named ${object.name}. Rename one in the source (S) so Studio knows which to move.`;
+    return 'Studio can’t find where this object is written. Edit it in the source (S).';
   }
-  return `${prefix}at ${anchor} + (${fmt(now.x)}, ${fmt(now.y)})`;
+  if (object.kind === '[]') return 'A [ ] group can’t be dragged yet. Give it an at clause in the source (S).';
+  if (!movableKinds.includes(object.kind)) return `A ${object.kind} is moved by its ends, not dragged. Edit it in the source (S).`;
+  if (!point(object.center)) return 'Studio has no position for this shape. Edit it in the source (S).';
+  if (!candidates(source, object, scene, object.center, {precise:true}).length)
+    return 'Studio can’t find this shape’s placement in its statement. Edit it in the source (S).';
+  return '';
 }

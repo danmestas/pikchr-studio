@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {compileSvg, compileStudio} from './pikchr-wasm.mjs';
-import { candidates, endpointCandidates, routeCandidates, moveVertexCandidates, bendCandidates, applyPatch, byteOffsetToIndex } from '../public/edits.js';
+import { candidates, moveRefusal, movementBlocked, endpointCandidates, routeCandidates, moveVertexCandidates, bendCandidates, applyPatch, byteOffsetToIndex } from '../public/edits.js';
 const bytes = text => new TextEncoder().encode(text).length;
 function fixture(statement = 'Database: cylinder "DB" fill blue at (1, -1)') {
   const prefix = '# café 😀\r\nAPI: box "API" at (0,0)\r\n';
@@ -39,8 +39,8 @@ test('relative candidates use earlier names and y-up coordinates', () => {
   assert.ok(result.some(item => item.label.startsWith('Align centers vertically')));
   assert.ok(result.every(item => !item.source.includes('Later')));
 });
-test('unsupported placement, variables, nesting, and nonfinite targets are read-only', () => {
-  for (const statement of ['Database: cylinder "DB" at (x, y)', 'Database: cylinder "DB" with .n at API.s + (x, y)', 'Database: cylinder "DB" width size', 'Database: cylinder "DB" width size at (0,0)', '[Database: cylinder "DB"]']) {
+test('without a renderer span, unparsed placement, nesting, and nonfinite targets are read-only', () => {
+  for (const statement of ['Database: cylinder "DB" at (x, y)', 'Database: cylinder "DB" with .n at API.s + (x, y)', '[Database: cylinder "DB"]']) {
     const {source,object,scene}=fixture(statement);
     assert.deepEqual(candidates(source,object,scene,{x:1,y:1}),[]);
   }
@@ -350,4 +350,132 @@ test('keepForm keeps a gap along its axis and falls back to an offset from the s
 test('keepForm keeps absolute centers absolute, including the with .c spelling', () => {
   assert.equal(nudged(A + 'B: box at (3,0)\n', .1, 0), 'B: box at (3.1, 0)');
   assert.equal(nudged(A + 'B: box with .c at (3,1)\n', 0, .1), 'B: box with .c at (3, 1.1)');
+});
+
+// Drag the shape named (or labelled) `key` by (dx, dy) through the real
+// renderer: the top candidate must land exactly, and only the source lines
+// that changed are returned.
+function dragged(source, key, dx, dy, {precise = true, keepForm = false} = {}) {
+  const scene = compileStudio(source).scene;
+  assert.ok(!scene.error, scene.error);
+  const label = o => o.spans?.label ? Buffer.from(source).subarray(o.spans.label.start, o.spans.label.end).toString().replace(/"/g, '') : '';
+  const o = scene.objects.find(n => n.name === key || label(n) === key);
+  assert.ok(o, key);
+  assert.equal(moveRefusal(source, o, scene), '');
+  const top = candidates(source, o, scene, {x: o.center.x + dx, y: o.center.y + dy}, {precise, keepForm})[0];
+  assert.ok(top, `no candidate for ${key}`);
+  assert.equal(applyPatch(source, top.patch), top.source);
+  const after = compileStudio(top.source).scene;
+  assert.ok(!after.error, after.error);
+  const now = after.objects.find(n => n.id === o.id);
+  assert.ok(Math.abs(now.center.x - o.center.x - dx) < 1e-3 && Math.abs(now.center.y - o.center.y - dy) < 1e-3, top.source);
+  const before = source.split('\n');
+  return top.source.split('\n').filter((line, i) => line !== before[i]).join('\n');
+}
+const AB = 'A: box "A"\n';
+test('drag rewrite: an offset from a reference keeps its reference and sign', () => {
+  assert.equal(dragged(AB + 'B: box "B" at A + (2,0)\n', 'B', .5, -.3), 'B: box "B" at A + (2.5, -0.3)');
+  assert.equal(dragged(AB + 'B: box "B" at A - (2,0)\n', 'B', .5, -.3), 'B: box "B" at A - (1.5, 0.3)');
+  assert.equal(dragged(AB + 'B: box "B" with .n at A.s + (0,-0.5)\n', 'B', .5, -.3), 'B: box "B" with .n at A.s + (0.5, -0.8)');
+  assert.equal(dragged('A: box "A" fit\nB: box "B" at A.e + (1,0)\n', 'B', .5, -.3), 'B: box "B" at A.e + (1.5, -0.3)');
+  assert.equal(dragged(AB + 'box "B" at previous + (1,0)\n', 'B', .5, -.3), 'box "B" at previous + (1.5, -0.3)');
+});
+test('drag rewrite: a bare reference gains an offset', () => {
+  assert.equal(dragged(AB + 'B: box "B" at A\n', 'B', .5, -.3), 'B: box "B" at A + (0.5, -0.3)');
+  assert.equal(dragged(AB + 'B: box "B" with .w at A.e\n', 'B', .5, 0), 'B: box "B" with .w at A.e + (0.5, 0)');
+});
+test('drag rewrite: N below|above|left of|right of X keeps the gap along its axis, else an offset from X', () => {
+  assert.equal(dragged(AB + 'B: box "B" at 1in below A\n', 'B', 0, -.3), 'B: box "B" at 1.3in below A');
+  assert.equal(dragged(AB + 'B: box "B" at 1in below A\n', 'B', .5, -.3), 'B: box "B" at A + (0.5, -1.3)');
+  assert.equal(dragged(AB + 'B: box "B" at 1in above A\n', 'B', 0, .5), 'B: box "B" at 1.5in above A');
+  assert.equal(dragged(AB + 'B: box "B" at 2 left of A\n', 'B', -.5, 0), 'B: box "B" at 2.5 left of A');
+  assert.equal(dragged(AB + 'B: circle "B" at 1.5in right of A\n', 'B', .5, 0), 'B: circle "B" at 2in right of A');
+  assert.equal(dragged(AB + 'B: box "B" with .w at 1in right of A.e\n', 'B', .5, -.3), 'B: box "B" with .w at A.e + (1.5, -0.3)');
+});
+test('drag rewrite: coordinate expressions adjust each term; other expressions become an offset from their reference', () => {
+  assert.equal(dragged(AB + 'B: box "B" at (A.x + 2, A.y)\n', 'B', .5, -.3), 'B: box "B" at (A.x + 2.5, A.y - 0.3)');
+  assert.equal(dragged(AB + 'B: box "B" at (A.x - 2, A.y + 0.3)\n', 'B', .5, -.3), 'B: box "B" at (A.x - 1.5, A.y)');
+  // A between form keeps both ends, each shifted by the move.
+  assert.equal(dragged(AB + 'C: box "C" at (3,0)\nB: circle "B" at 1/2 way between A and C\n', 'B', .5, -.3),
+    'B: circle "B" at 1/2 way between A + (0.5, -0.3) and C + (0.5, -0.3)');
+  assert.equal(dragged(AB + 'C: box "C" at (3,0)\nB: circle "B" at 1/3 of the way between A + (1,0) and (3,1)\n', 'B', .5, -.3),
+    'B: circle "B" at 1/3 of the way between A + (1.5, -0.3) and (3.5, 0.7)');
+  // A variable keeps its expression form, and the drag keeps it first.
+  assert.equal(dragged('$x = 1.5\n' + AB + 'B: box "B" at ($x, 0)\n', 'B', .5, -.6, {precise: false}), 'B: box "B" at ($x + 0.5, -0.6)');
+  // Only a form that cannot be kept becomes an offset, and is not called Keep placement.
+  const source = AB + 'B: box "B" at A.c + (1+2, 3)\n', scene = compileStudio(source).scene, b = scene.objects[1];
+  const top = candidates(source, b, scene, {x: b.center.x + .5, y: b.center.y}, {precise: true})[0];
+  assert.equal(top.patch.text, 'B: box "B" at A.c + (3.5, 3)');
+  assert.equal(top.label, 'Offset from A');
+});
+test('drag rewrite: literals stay literal, with their anchor', () => {
+  assert.equal(dragged(AB + 'B: box "B" at (3,0)\n', 'B', .5, -.3), 'B: box "B" at (3.5, -0.3)');
+  assert.equal(dragged(AB + 'B: box "B" with .w at (3,0)\n', 'B', .5, -.3), 'B: box "B" with .w at (3.5, -0.3)');
+});
+test('drag rewrite: implicit placement, unnamed shapes, size expressions, same and every shape kind can move', () => {
+  assert.equal(dragged('A: box "A" wid 2*boxwid\nB: box "B" at (3,0)\n', 'A', .5, -.3), 'A: box "A" wid 2*boxwid at (0.5, -0.3)');
+  assert.equal(dragged(AB + 'B: box "B" same at A + (2,0)\n', 'B', .5, -.3), 'B: box "B" same at A + (2.5, -0.3)');
+  for (const kind of ['box','circle','ellipse','oval','diamond','cylinder','file','text'])
+    assert.equal(dragged(`${kind} "K"\n`, 'K', .5, -.3), `${kind} "K" at (0.5, -0.3)`);
+  assert.equal(dragged('"T"\n', 'T', .5, 0), '"T" at (0.5, 0)');
+});
+test('drag rewrite: a shape chained after a bare connector extends the connector, so both stay attached', () => {
+  assert.equal(dragged('box "A"\narrow\nbox "B"\n', 'B', .5, -.3), 'arrow to (1.375, -0.3)');
+  assert.equal(dragged('down\nbox "A"\narrow\nbox "B"\n', 'B', .5, -.3), 'arrow to (0.5, -1.05)');
+  assert.equal(dragged('left\nbox "A"\nline\ncircle "B"\n', 'B', -.5, .3), 'line to (-1.375, 0.3)');
+  assert.equal(dragged('box "A"\nmove\nbox "B"\n', 'B', .5, -.3), 'move to (1.375, -0.3)');
+  // A routed connector keeps its route; its last leg goes to the moved shape.
+  assert.equal(dragged('box "A"\narrow right 1 then down\nbox "B"\n', 'B', .5, -.3), 'arrow right 1.5 then down 0.8');
+  // A connector with its own endpoints is left alone; the shape is placed instead.
+  assert.match(dragged('box "A"\narrow from 1st box.e right 1\nbox "B"\n', 'B', .5, -.3), /^box "B" at/);
+});
+test('drag rewrite: strings and comments that mention at, and Unicode labels, are left byte for byte', () => {
+  assert.equal(dragged('A: box "at (1,1)" # placed at A\nB: box "with .n at" at A + (2,0) # at here\n', 'B', .5, -.3),
+    'B: box "with .n at" at A + (2.5, -0.3) # at here');
+  assert.equal(dragged('A: box "café 日本"\nB: oval "Zeit ü" at A + (2,0)\n', 'B', .5, -.3), 'B: oval "Zeit ü" at A + (2.5, -0.3)');
+  assert.equal(dragged('A: box "café 日本"\nB: oval "Zeit ü" at A + (2,0)\n', 'café 日本', .5, -.3), 'A: box "café 日本" at (0.5, -0.3)');
+});
+test('moveRefusal names the real reason for macros, groups and connectors', () => {
+  const source = 'define m { box "M" }\nm\n[ C: box "C" ]\narrow\n';
+  const scene = compileStudio(source).scene;
+  const reason = id => moveRefusal(source, scene.objects.find(o => o.id === id), scene);
+  assert.match(reason(scene.objects.find(o => o.kind === 'box' && /macro/i.test(o.reason)).id), /macro/);
+  assert.match(reason(scene.objects.find(o => o.name === 'C').id), /group/);
+  assert.match(reason(scene.objects.find(o => o.kind === 'arrow').id), /arrow/);
+  for (const id of scene.objects.map(o => o.id)) assert.doesNotMatch(reason(id), /Only boxes|no name/);
+});
+test('a drag rounds a kept offset to the grid and reports where the shape will land', () => {
+  const source = 'A: box "A" fit\nB: box "B" at A.e + (1,0)\nC: box "C" with .n at 0.37in below B.s\n';
+  const scene = compileStudio(source).scene;
+  for (const name of ['B', 'C']) {
+    const o = scene.objects.find(n => n.name === name);
+    const top = candidates(source, o, scene, {x: o.center.x + .7123, y: o.center.y - .4071})[0];
+    assert.equal(top.label, 'Keep placement');
+    const numbers = top.patch.text.match(/-?\d+(?:\.\d+)?/g).map(Number);
+    assert.ok(numbers.every(n => Math.abs(n * 20 - Math.round(n * 20)) < 1e-9), top.patch.text);
+    const now = compileStudio(top.source).scene.objects.find(n => n.name === name).center;
+    assert.ok(Math.abs(now.x - top.target.x) < 1e-3 && Math.abs(now.y - top.target.y) < 1e-3, top.source);
+  }
+});
+
+test('comments never count as placement or blocks', () => {
+  assert.equal(dragged('A: box "A"\nbox "2" /* at A */ fill red\n', '2', .5, -.3), 'box "2" /* at A */ fill red at (1.25, -0.3)');
+  assert.equal(dragged('A: box "A"\nB: box "B" at A + (2,0) // at here\n', 'B', .5, 0), 'B: box "B" at A + (2.5, 0) // at here');
+});
+test('a then-path or a bare length before an unplaced shape is extended to the moved shape', () => {
+  // Legs keep their direction; the change goes to the leg nearest the shape,
+  // or is shared when that leg would vanish.
+  assert.equal(dragged('A: box "A"\nline right then down then right\nB: box "B"\n', 'B', -.7, .2),
+    'line right 0.15 then down 0.3 then right 0.15');
+  assert.equal(dragged('A: box "A"\nline right then left then down\nB: box "B"\n', 'B', .7, 0), 'line right 1.2 then left then down');
+  // With no leg along the move's axis the route cannot absorb it: the shape is placed instead.
+  assert.match(dragged('A: box "A"\nline down then down\nB: box "B"\n', 'B', .7, 0), /^B: box "B" at/);
+  assert.equal(dragged('A: box "A"\narrow 1\nB: box "B"\n', 'B', .5, -.3), 'arrow to (1.875, -0.3)');
+  assert.equal(dragged('A: box "A"\nline right then down then right\nB: box "B"\n', 'B', .5, -.3), 'line right then down 0.8 then right 1');
+});
+test('movementBlocked words [ ] groups properly', () => {
+  const source = 'A: [ box ]\n', scene = compileStudio(source).scene;
+  const reason = movementBlocked(source, scene.objects.find(o => o.kind === '[]'), scene);
+  assert.match(reason, /\[ \] group/);
+  assert.doesNotMatch(reason, /\[\]s/);
 });
