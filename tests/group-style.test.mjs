@@ -52,7 +52,7 @@ test('an expression-valued member refuses the whole edit',()=>{
   const source='A: box "alpha" at (0,0) thickness 1+1\nB: box "beta" at (2,0)\n';
   const scene=render(source),objects=named(scene,'A','B');
   assert.throws(()=>changeSelectionAppearance(source,objects,scene,{thickness:2,color:'#123456'}),
-    /No style applied[^\n]*A: The thickness expression must be edited in source/);
+    /No style applied[^\n]*A: Written as "thickness 1\+1" in source, which Studio can’t rewrite/);
 });
 
 test('shifted source spans are refused before a group edit',()=>{

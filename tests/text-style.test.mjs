@@ -18,7 +18,7 @@ test('text objects are editable natively and report default style', () => {
   const source = 'T1: text "Hello" at (0,0)\n';
   const scene = render(source);
   assert.equal(scene.objects[0].editable, true);
-  assert.deepEqual(textStyle(source, scene.objects[0], scene), { size: 'normal', bold: false, italic: false, align: 'center', colour: 'default' });
+  assert.deepEqual(textStyle(source, scene.objects[0], scene), { size: 'normal', bold: false, italic: false, mono: false, align: 'center', colour: 'default', colourLocked: null });
 });
 
 test('size, bold, italic, alignment and colour toggles write Pikchr text attributes', () => {
@@ -33,10 +33,10 @@ test('size, bold, italic, alignment and colour toggles write Pikchr text attribu
   source = apply(source, pick, { italic: true });
   source = apply(source, pick, { align: 'left' });
   assert.equal(source, 'T1: text "Hello" big big bold italic ljust at (0,0)\n');
-  source = apply(source, pick, { colour: 'red' });
-  assert.equal(source, 'T1: text "Hello" big big bold italic ljust at (0,0) color red\n');
+  source = apply(source, pick, { colour: 'firebrick' });
+  assert.equal(source, 'T1: text "Hello" big big bold italic ljust at (0,0) color firebrick\n');
   const scene = render(source);
-  assert.deepEqual(textStyle(source, scene.objects[0], scene), { size: 'bigger', bold: true, italic: true, align: 'left', colour: 'red' });
+  assert.deepEqual(textStyle(source, scene.objects[0], scene), { size: 'bigger', bold: true, italic: true, mono: false, align: 'left', colour: 'firebrick', colourLocked: null });
   source = apply(source, pick, { size: 'normal' });
   source = apply(source, pick, { bold: false });
   source = apply(source, pick, { italic: false });

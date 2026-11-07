@@ -1,27 +1,27 @@
-import {candidates,snap,applyPatch,byteOffsetToIndex,routeCandidates} from './edits.js?v=20261106f';
-import {routeStyleCandidates} from './route-styles.js?v=20261106f';
-import {correspondingObject} from './candidate-target.js?v=20261106f';
-import {alignmentGuides,gapMarks} from './guides.js?v=20261106f';
-import {constrainDrag,smartSnap} from './constrain.js?v=20261106f';
+import {candidates,snap,applyPatch,byteOffsetToIndex,routeCandidates,movementBlocked} from './edits.js?v=20261106g';
+import {routeStyleCandidates} from './route-styles.js?v=20261106g';
+import {correspondingObject} from './candidate-target.js?v=20261106g';
+import {alignmentGuides,gapMarks} from './guides.js?v=20261106g';
+import {constrainDrag,smartSnap} from './constrain.js?v=20261106g';
 const params=new URL(location.href).searchParams;
-import {arrowEditor,connectorCapabilities,connectorLabel,connectorRows,editingBlocked} from './arrow-ui.js?v=20261106f';
-import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20261106f';
-import {propertyEditor,styleControls,setSwatchTheme} from './property-ui.js?v=20261106f';
-import {fitText,canFitText,inspectProperties,readProperties,documentThickness} from './properties.js?v=20261106f';
-import {duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20261106f';
-import {decodeLinkSource,encodeLinkSource,linkFragment,linkPayload} from './link-import.js?v=20261106f';
-import {createDocumentStore} from './documents.js?v=20261106f';
-import {canvasNavigation,clampZoom} from './canvas-navigation.js?v=20261106f';
-import {examplePicker} from './example-picker.js?v=20261106f';
-import {canvasTools} from './canvas-tools.js?v=20261106f';
-import {copySelection,pasteSelection} from './subgraph.js?v=20261106f';
-import {createComponentLibrary} from './component-library.js?v=20261106f';
-import {exportWorkspace,parseWorkspace} from './workspace-backup.js?v=20261106f';
-import {tidyRouteCandidate} from './route-suggestions.js?v=20261106f';
-import {createCandidateReview} from './candidate-review.js?v=20261106f';
-import {cleanSVG,downloadPNG} from './diagram-export.js?v=20261106f';
-import {readSizingPreference,writeSizingPreference} from './sizing-preferences.js?v=20261106f';
-import {detachCandidates,macroBlocked,macroUses} from './macro-detach.js?v=20261106f';
+import {arrowEditor,connectorCapabilities,connectorLabel,connectorRows,editingBlocked} from './arrow-ui.js?v=20261106g';
+import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20261106g';
+import {propertyEditor,styleControls,setSwatchTheme} from './property-ui.js?v=20261106g';
+import {fitText,canFitText,inspectProperties,readProperties,documentThickness} from './properties.js?v=20261106g';
+import {duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20261106g';
+import {decodeLinkSource,encodeLinkSource,linkFragment,linkPayload} from './link-import.js?v=20261106g';
+import {createDocumentStore} from './documents.js?v=20261106g';
+import {canvasNavigation,clampZoom} from './canvas-navigation.js?v=20261106g';
+import {examplePicker} from './example-picker.js?v=20261106g';
+import {canvasTools} from './canvas-tools.js?v=20261106g';
+import {copySelection,pasteSelection} from './subgraph.js?v=20261106g';
+import {createComponentLibrary} from './component-library.js?v=20261106g';
+import {exportWorkspace,parseWorkspace} from './workspace-backup.js?v=20261106g';
+import {tidyRouteCandidate} from './route-suggestions.js?v=20261106g';
+import {createCandidateReview} from './candidate-review.js?v=20261106g';
+import {cleanSVG,downloadPNG} from './diagram-export.js?v=20261106g';
+import {readSizingPreference,writeSizingPreference} from './sizing-preferences.js?v=20261106g';
+import {detachCandidates,macroBlocked,macroUses} from './macro-detach.js?v=20261106g';
 const $=id=>document.getElementById(id);
 const examples={
   pipeline:'Client: box "Client" at (0,0)\nAPI: box "API" at (2,0)\nDatabase: cylinder "Database" at (4,0)\narrow from Client.e to API.w\narrow from API.e to Database.w\n',
@@ -213,7 +213,9 @@ async function renderSource(preRendered=null){
     status($('diagram').querySelector('svg')?'Invalid source. Last valid diagram retained. '+FIX_SOURCE:'Invalid source. Nothing to show yet. '+FIX_SOURCE);return;}
   scene=result;
   if(manualEditBase!==null){if(manualEditBase!==text){undo.push(manualEditBase);redo.length=0;}manualEditBase=null;historyButtons();}
-  for(const o of scene.objects){if(o.kind==='text'&&candidates(text,o,scene,o.center).length)o.editable=true;if(o.editable&&!candidates(text,o,scene,o.center).length){o.editable=false;o.reason='Placement or attributes are outside the supported literal subset.';}}
+  for(const o of scene.objects){if(o.kind==='text'&&candidates(text,o,scene,o.center).length)o.editable=true;if(o.editable&&!candidates(text,o,scene,o.center).length){o.editable=false;o.reason='Placement or attributes are outside the supported literal subset.';}
+    // The inspector and a refused drag name the real reason a shape stays put.
+    if(!o.editable&&!['arrow','line','spline','arc','move'].includes(o.kind)&&!/macro|nested/i.test(o.reason||''))o.moveReason=movementBlocked(text,o,scene);}
   renderedSource=text;$('diagram').innerHTML=result.svg;diagramOwner=activeDocumentId;lastValid.set(activeDocumentId,{svg:result.svg,scene:result,source:text});$('diagram').classList.remove('stale','previewing');announceError('');
   modeHint();
   const matches=scene.objects.filter(o=>o.name&&o.name===(desiredName||name));
@@ -349,7 +351,9 @@ function select(id,highlight=false,additive=false,preserve=false){
   // The panel speaks about editing only when it is blocked, and says why.
   // Rows follow in a fixed order; reference material stays under Advanced.
   const ins=$('inspector'),ready=()=>source.value===renderedSource&&!$('diagram').classList.contains('stale');
-  const capabilities=connectorCapabilities({object:o,scene,source:renderedSource}),blocked=editingBlocked(o,capabilities);
+  const propose=options=>validateSuggestions(o,options);
+  const parts=propertyEditor({object:o,scene,source:renderedSource,propose,status,valid:ready});
+  const capabilities=connectorCapabilities({object:o,scene,source:renderedSource}),blocked=editingBlocked(o,capabilities,{styleable:!!parts});
   const advanced=document.createElement('details');advanced.className='inspector-advanced';advanced.open=advancedOpen;
   advanced.ontoggle=()=>{if(advanced.isConnected)advancedOpen=advanced.open;};
   const advancedSummary=document.createElement('summary');advancedSummary.textContent='Advanced & source';
@@ -375,9 +379,8 @@ function select(id,highlight=false,additive=false,preserve=false){
     ins.append(origin,sourceButton,detachRow);
   }else advanced.append(sourceButton);
   if(sourceButton.disabled){const reason=document.createElement('p');reason.textContent='No independent source span is available. Open the source drawer to inspect the generating program.';advanced.append(reason);}
-  const propose=options=>validateSuggestions(o,options);
-  const parts=propertyEditor({object:o,scene,source:renderedSource,propose,status,valid:ready});
   if(parts?.label)ins.append(parts.label);
+  if(parts?.text)ins.append(parts.text);
   if(directTools?.sizing)ins.append(directTools.sizing);
   const rows=connectorRows({object:o,scene,source:renderedSource,capabilities,propose,status,valid:ready,reconnect:reconnectSelected});if(rows)ins.append(rows);
   const shape=shapeTypeEditor({object:o,scene,source:renderedSource,propose,status,valid:ready});if(shape)ins.append(shape);
@@ -634,6 +637,7 @@ function dragBlocked(o){
   if(/repeated names/i.test(reason))return 'Another object has the same name, so this one can’t be dragged. Rename it in the source (S).';
   if(/origin/i.test(reason))return 'Studio can’t find where this object is written, so it can’t be dragged. Edit it in the source (S).';
   if(o&&!o.name&&['box','circle','ellipse','oval','cylinder','diamond','text'].includes(o.kind))return 'This shape has no name, so it can’t be dragged. Name it in the source (S), for example A: box.';
+  if(o?.moveReason)return 'This shape can’t be dragged: '+o.moveReason+'. Edit its position in the source (S).';
   return 'Only boxes, circles, ellipses, ovals, cylinders, diamonds and text can be dragged. Edit this '+(o?.kind||'object')+' in the source (S).';
 }
 function bindDiagram(svg){
