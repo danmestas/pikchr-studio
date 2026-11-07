@@ -1,7 +1,7 @@
-import {applyPatch,byteOffsetToIndex,candidates,editability,maskCode} from './edits.js?v=20261106h';
-import {readProperties,propertyCandidate,isColour,attributeClauses,lockedMessage} from './properties.js?v=20261106h';
-import {literalRoute,translateLineCandidate} from './free-lines.js?v=20261106h';
-import {connectorStyleCandidate} from './route-styles.js?v=20261106h';
+import {applyPatch,byteOffsetToIndex,candidates,editability,maskCode} from './edits.js?v=20261106i';
+import {readProperties,propertyCandidate,isColour,attributeClauses,lockedMessage} from './properties.js?v=20261106i';
+import {literalRoute,translateLineCandidate} from './free-lines.js?v=20261106i';
+import {connectorStyleCandidate} from './route-styles.js?v=20261106i';
 
 const bytes=s=>new TextEncoder().encode(s).length;
 const masked=s=>s.replace(/"(?:\\.|[^"\\])*"/g,m=>' '.repeat(m.length));
@@ -13,7 +13,7 @@ function setAttribute(statement,key,value) {
   if(written)throw new Error(lockedMessage(written));
   const matches=[...clauses];
   // A new thickness replaces Pikchr's thick/thin multipliers as well.
-  if(key==='thickness')matches.push(...[...masked(statement).matchAll(/\b(?:thick|thin)\b/g)].map(m=>({index:m.index,end:m.index+m[0].length})));
+  if(key==='thickness')matches.push(...[...maskCode(statement).matchAll(/\b(?:thick|thin)\b/g)].map(m=>({index:m.index,end:m.index+m[0].length})));
   for(const match of matches.sort((a,b)=>b.index-a.index))statement=statement.slice(0,match.index).replace(/[ \t]+$/,'')+statement.slice(match.end);
   // null removes the property, so Pikchr's default applies again; thin and
   // thick are Pikchr's own words for the preset weights.

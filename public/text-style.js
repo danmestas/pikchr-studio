@@ -3,8 +3,8 @@
 // the same managed attributes. Colour is Pikchr's statement-wide color, which
 // also draws the outline, so it goes through the same rewrite as Style's
 // Line & text row rather than a second, different one.
-import {readProperties,propertyCandidate,attributeClauses,colourValue,lockedMessage} from './properties.js?v=20261106h';
-import {changeAppearance} from './object-actions.js?v=20261106h';
+import {readProperties,propertyCandidate,attributeClauses,colourValue,lockedMessage} from './properties.js?v=20261106i';
+import {changeAppearance} from './object-actions.js?v=20261106i';
 
 export const textSizes=['small','normal','big','bigger'];
 export const textAligns=['left','center','right'];
@@ -15,6 +15,11 @@ const ALIGN_WORDS={left:['ljust'],center:[],right:['rjust']};
 // Pikchr has one font choice, monospace, spelled mono or monospace.
 const MANAGED=new Set(['small','big','bold','italic','mono','monospace','ljust','rjust','center']);
 const KEPT=new Set(['above','below','aligned']);
+// On a connector the label's place is above, below or on the line, and
+// aligned turns it along the line; ljust and rjust are kept but not offered.
+const LINE_KINDS=['arrow','line','spline','arc'];
+export const textPlacements=['above','center','below'];
+const LINE_KEPT=new Set(['ljust','rjust','center']);
 
 // The attribute words right after one label string.
 function wordsAfter(statement,from){
@@ -30,7 +35,7 @@ function wordsAfter(statement,from){
 // colour is the drawn color (a name or #rrggbb) or 'default'; colourLocked
 // is the clause as written when it is not a literal Studio can replace.
 export function textStyle(source,object,scene){
-  const {statement,labels}=readProperties(source,object,scene);
+  const {statement,labels}=readProperties(source,object,scene,{lines:true});
   if(!labels.length)return null;
   const first=labels[0],{words}=wordsAfter(statement,first.index+first[0].length);
   const bigs=words.filter(w=>w==='big').length;
@@ -39,16 +44,19 @@ export function textStyle(source,object,scene){
     size:words.includes('small')?'small':bigs>1?'bigger':bigs?'big':'normal',
     bold:words.includes('bold'),italic:words.includes('italic'),mono:words.includes('mono')||words.includes('monospace'),
     align:words.includes('ljust')?'left':words.includes('rjust')?'right':'center',
+    placement:words.includes('above')?'above':words.includes('below')?'below':'center',aligned:words.includes('aligned'),
     colour:last?colourValue(last.value):'default',colourLocked:written,
   };
 }
 
 const same=(a,b)=>String(a).toLowerCase().replace(/^grey$/,'gray')===String(b).toLowerCase().replace(/^grey$/,'gray');
 
-// change: {size}|{bold}|{italic}|{mono}|{align}|{colour}. Returns a candidate edit.
+// change: {size}|{bold}|{italic}|{mono}|{align}|{placement}|{aligned}|{colour}
+// (placement and aligned on connectors, align on shapes). Returns a candidate edit.
 export function textStyleCandidate(source,object,scene,change){
-  const {statement,labels}=readProperties(source,object,scene);
+  const {statement,labels}=readProperties(source,object,scene,{lines:true});
   if(!labels.length)throw new Error('Add text before styling it.');
+  const line=LINE_KINDS.includes(object.kind),keep=line?LINE_KEPT:KEPT;
   const current=textStyle(source,object,scene),key=Object.keys(change)[0],value=change[key];
   const select=option=>object.name?option:{...option,selectId:object.id,targetKind:object.kind};
   if(key==='colour'){
@@ -58,17 +66,21 @@ export function textStyleCandidate(source,object,scene,change){
     const option=changeAppearance(source,object,scene,{color:value==='default'?null:value});
     return select({...option,label:`Text colour ${value}`});
   }
+  if(!line&&(key==='placement'||key==='aligned'))throw new Error('Placement applies to connector labels.');
+  if(line&&key==='align')throw new Error('Choose above, below or along the line for a connector label.');
   const next={...current,...change};
-  if(!textSizes.includes(next.size)||!textAligns.includes(next.align))throw new Error('Choose a supported text style.');
-  const managed=[...SIZE_WORDS[next.size],...(next.bold?['bold']:[]),...(next.italic?['italic']:[]),...(next.mono?['mono']:[]),...ALIGN_WORDS[next.align]];
+  if(!textSizes.includes(next.size)||!textAligns.includes(next.align)||!textPlacements.includes(next.placement))throw new Error('Choose a supported text style.');
+  const managed=[...SIZE_WORDS[next.size],...(next.bold?['bold']:[]),...(next.italic?['italic']:[]),...(next.mono?['mono']:[]),
+    ...(line?[...(next.placement==='center'?[]:[next.placement]),...(next.aligned?['aligned']:[])]:ALIGN_WORDS[next.align])];
   let out='',last=0;
   for(const label of labels){
     const end=label.index+label[0].length,{words,end:stop}=wordsAfter(statement,end);
-    const kept=words.filter(w=>KEPT.has(w));
+    const kept=words.filter(w=>keep.has(w));
     out+=statement.slice(last,end)+[...kept,...managed].map(w=>' '+w).join('');last=stop;
   }
   out+=statement.slice(last);
   if(out===statement)throw new Error('That style is already applied.');
-  const label=key==='size'?`Text size ${value}`:key==='align'?`Align text ${value}`:key==='mono'?`${value?'Use':'Remove'} monospace`:`${value?'Add':'Remove'} ${key}`;
+  const label=key==='size'?`Text size ${value}`:key==='align'?`Align text ${value}`:key==='placement'?`Label ${value==='center'?'on the line':value}`
+    :key==='aligned'?`${value?'Align label along':'Level label on'} the line`:key==='mono'?`${value?'Use':'Remove'} monospace`:`${value?'Add':'Remove'} ${key}`;
   return select(propertyCandidate(source,object,statement,out,label));
 }

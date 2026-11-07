@@ -5,17 +5,38 @@ const number = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)';
 const tuple = `\\(\\s*${number}\\s*,\\s*${number}\\s*\\)`;
 const movableKinds = ['box','cylinder','circle','ellipse','oval','diamond','file','text'];
 
+// Spans are UTF-8 byte offsets; strings index UTF-16 units. Every render and
+// edit converts many offsets of one source, so each source gets its table
+// once (index for each byte offset, -1 inside a character), not a scan per call.
+const offsetTables = [];
+function offsetTable(source) {
+  const hit = offsetTables.find(entry => entry.source === source);
+  if (hit) return hit.table;
+  let table = null;
+  if (/[^\x00-\x7f]/.test(source)) {
+    table = new Int32Array(encoder.encode(source).length + 1).fill(-1);
+    let bytes = 0, index = 0;
+    for (const character of source) {
+      table[bytes] = index;
+      const code = character.codePointAt(0);
+      bytes += code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4;
+      index += character.length;
+    }
+    table[bytes] = index;
+  }
+  offsetTables.unshift({source, table});
+  offsetTables.length = Math.min(offsetTables.length, 8);
+  return table;
+}
 export function byteOffsetToIndex(source, offset) {
   if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('Invalid source byte offset');
-  let bytes = 0, index = 0;
-  for (const character of source) {
-    if (bytes === offset) return index;
-    bytes += encoder.encode(character).length;
-    index += character.length;
-    if (bytes > offset) throw new Error('Source offset splits a UTF-8 character');
-  }
-  if (bytes === offset) return index;
-  throw new Error('Source offset is outside the document');
+  const table = offsetTable(source);
+  // An all-ASCII source (table null) indexes bytes directly.
+  const size = table ? table.length - 1 : source.length;
+  if (offset > size) throw new Error('Source offset is outside the document');
+  const index = table ? table[offset] : offset;
+  if (index < 0) throw new Error('Source offset splits a UTF-8 character');
+  return index;
 }
 
 export function applyPatch(source, patch) {
@@ -717,17 +738,25 @@ function legsMoved(statement, masked, from, points, delta, absorb) {
 // an offset from it rather than at a literal position.
 // `absorb` says which end of a routed connector before the shape moved:
 // 'end' (the shape itself is dragged) or 'start' (pinning a follower).
-export function candidates(source, object, scene, target, {precise=false, keepForm=false, anchorTo=null, absorb='end'}={}) {
-  if (!object || !topLevel(object,scene) || !movableKinds.includes(object.kind) || !point(target)) return [];
+// The statement and its placement range when Studio can rewrite where the
+// object sits, else null. Every candidate list starts from this, and a
+// non-null result always yields at least "Place here".
+function placement(source, object, scene) {
+  if (!object || !topLevel(object,scene) || !movableKinds.includes(object.kind)) return null;
   let start, end;
   try {
     start = byteOffsetToIndex(source, object.span.start);
     end = byteOffsetToIndex(source, object.span.end);
-  } catch { return []; }
-  if (end < start) return [];
+  } catch { return null; }
+  if (end < start) return null;
   const statement = source.slice(start, end);
   const range = ownPlacement(source, object, statement);
-  if (!range) return [];
+  return range ? {statement, range} : null;
+}
+export function candidates(source, object, scene, target, {precise=false, keepForm=false, anchorTo=null, absorb='end'}={}) {
+  const placed = point(target) && placement(source, object, scene);
+  if (!placed) return [];
+  const {statement, range} = placed;
   const make = (label, placement, position, references=[]) => {
     const text = statement.slice(0, range.start)
       + (range.implicit ? ' ' : '') + placement + statement.slice(range.end);
@@ -829,7 +858,7 @@ export function moveRefusal(source, object, scene) {
   if (object.kind === '[]') return 'A [ ] group can’t be dragged yet. Give it an at clause in the source (S).';
   if (!movableKinds.includes(object.kind)) return `A ${object.kind} is moved by its ends, not dragged. Edit it in the source (S).`;
   if (!point(object.center)) return 'Studio has no position for this shape. Edit it in the source (S).';
-  if (!candidates(source, object, scene, object.center, {precise:true}).length)
+  if (!placement(source, object, scene))
     return 'Studio can’t find this shape’s placement in its statement. Edit it in the source (S).';
   return '';
 }

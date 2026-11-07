@@ -6,7 +6,7 @@ import vm from 'node:vm';
 import { createRequire } from 'node:module';
 import {
   parseConnector, connectorState, routeStyleCandidates, strokeCandidates,
-  chopCandidates, labelCandidates, checkStyleResult, thumbnailBox,
+  chopCandidates, labelCandidates, connectorStyleCandidate, checkStyleResult, thumbnailBox,
 } from '../public/route-styles.js';
 import { applyPatch } from '../public/edits.js';
 
@@ -45,8 +45,13 @@ test('parser classifies style tokens and keeps path, labels and unknown attribut
   assert.deepEqual(state.label, { text:'go', placement:'above' });
 });
 
-test('parser refuses macros, blocks, multi-line statements and interior comments', () => {
-  for (const connector of ['arrow from A.e to B.w /* note */ dashed', 'arrow from A.e to B.w \\\n dashed']) {
+test('parser refuses macros, blocks and multi-line statements; an interior comment survives style edits but not reroutes', () => {
+  {
+    const source = SHAPES + 'arrow from A.e to B.w /* note */ dashed\n', scene = render(source), object = scene.objects.at(-1);
+    const options = routeStyleCandidates(source, object, scene).options;
+    assert.ok(options.length && options.every(o => o.source.includes('/* note */')), options.map(o => o.source).join('\n'));
+  }
+  for (const connector of ['arrow from A.e to B.w \\\n dashed']) {
     const source = SHAPES + connector + '\n';
     const scene = render(source);
     if (scene.error) continue;
@@ -266,5 +271,7 @@ test('any Pikchr colour name keeps a connector parseable and restylable', () => 
     assertValid(strokeCandidates(source, object, scene, 'dashed')[0], scene, object);
   }
   const { source, scene, object } = setup('arrow from A.e to B.w color salsa', { shapes:SHAPES + 'salsa = 0xff0000\n' });
-  assert.equal(parseConnector(source, object, scene), null, 'an unknown word may be a variable');
+  // An unknown word may be a variable: its clause is locked, the rest stays editable.
+  assert.equal(connectorStyleCandidate(source, object, scene, { color:'red' }), null, 'an unknown word may be a variable');
+  assert.match(strokeCandidates(source, object, scene, 'dashed')[0].source, /color salsa dashed/);
 });

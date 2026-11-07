@@ -1,9 +1,9 @@
 /* Canvas-first layout. Every rule is scoped to body.layout-canvas so the
    classic layout is untouched. Colours come from the tokens in style.css. */
 body.layout-canvas{height:100dvh;overflow:hidden;margin:0;
-  --cl-canvas:#fff;--cl-chip:#fff;--cl-ink:#1f2328;--cl-muted:#656d76;--cl-line:#d0d7de;--cl-grid:#d0d7de;--cl-accent:#0969da;--cl-accent-bg:#ddf4ff;--cl-ok:#1a7f37;--cl-bad:#cf222e;--cl-warn:#9a6700;
+  --cl-canvas:#fff;--cl-chip:#fff;--cl-ink:#1f2328;--cl-muted:#656d76;--cl-line:#d0d7de;--cl-field-line:#848d97;--cl-grid:#d0d7de;--cl-accent:#0969da;--cl-accent-bg:#ddf4ff;--cl-accent-ink:#0969da;--cl-on-accent:#fff;--cl-ok:#1a7f37;--cl-bad:#cf222e;--cl-warn:#9a6700;
   --cl-shadow:0 2px 10px rgba(31,35,40,.12),0 0 0 1px rgba(31,35,40,.06)}
-body.layout-canvas.cl-dark{--cl-canvas:#161b22;--cl-chip:#1c2128;--cl-ink:#e6edf3;--cl-muted:#9198a1;--cl-line:#30363d;--cl-grid:#30363d;--cl-accent:#4493f8;--cl-accent-bg:#1f3a5f;--cl-ok:#3fb950;--cl-bad:#f85149;--cl-warn:#d29922;
+body.layout-canvas.cl-dark{--cl-canvas:#161b22;--cl-chip:#1c2128;--cl-ink:#e6edf3;--cl-muted:#9198a1;--cl-line:#30363d;--cl-field-line:#6e7681;--cl-grid:#30363d;--cl-accent:#4493f8;--cl-accent-bg:#1f3a5f;--cl-accent-ink:#79c0ff;--cl-on-accent:#0d1117;--cl-ok:#3fb950;--cl-bad:#f85149;--cl-warn:#d29922;
   --cl-shadow:0 2px 12px rgba(0,0,0,.5),0 0 0 1px rgba(240,246,252,.08)}
 body.layout-canvas>header,body.layout-canvas>footer,body.layout-canvas>main,body.layout-canvas>.document-menu{display:none!important}
 
@@ -43,7 +43,7 @@ body.layout-canvas.cl-palette-bottom .cl-palette{top:auto;bottom:12px}
 body.layout-canvas.cl-palette-wrap .cl-palette{flex-wrap:wrap;justify-content:center}
 body.layout-canvas.cl-palette-wrap .cl-palette .cl-sep{display:none}
 body.layout-canvas .cl-palette button{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-width:40px;height:44px;padding:2px 6px}
-body.layout-canvas .cl-palette button[aria-pressed=true]{background:var(--cl-accent-bg);color:var(--cl-accent)}
+body.layout-canvas .cl-palette button[aria-pressed=true]{background:var(--cl-accent-bg);color:var(--cl-accent-ink)}
 body.layout-canvas .cl-palette button svg{width:18px;height:18px}
 body.layout-canvas .cl-palette button[data-key]::after{content:attr(data-key);font-size:10px;line-height:1;color:var(--cl-muted);min-height:10px}
 body.layout-canvas .cl-palette button[aria-pressed=true]::after{color:var(--cl-accent)}
@@ -83,7 +83,7 @@ body.layout-canvas .cl-more-button{display:inline-flex;align-items:center;justif
 body.layout-canvas .cl-candidate{z-index:45;flex-wrap:nowrap;max-width:calc(100vw - 16px);gap:6px;padding:6px 8px;margin:0;font-size:13px;border:0}
 body.layout-canvas .cl-candidate :is(.hint,#preview-label){display:none}
 body.layout-canvas .cl-candidate .cl-check{color:var(--cl-ok);padding:0 2px}
-body.layout-canvas .cl-candidate .cl-code{font:12px ui-monospace,monospace;background:var(--cl-accent-bg);color:var(--cl-accent);padding:3px 7px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:52vw}
+body.layout-canvas .cl-candidate .cl-code{font:12px ui-monospace,monospace;background:var(--cl-accent-bg);color:var(--cl-accent-ink);padding:3px 7px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:52vw}
 body.layout-canvas .cl-candidate .cl-count{color:var(--cl-muted);white-space:nowrap}
 body.layout-canvas .cl-candidate button{min-width:30px;height:30px;padding:0 8px}
 body.layout-canvas #preview-actions.cl-candidate{border:0!important;background:var(--cl-chip)!important;outline:none}
@@ -97,7 +97,7 @@ body.layout-canvas .cl-menu>*+*{margin-top:10px}
 body.layout-canvas .cl-menu-row{display:flex;gap:10px;align-items:center}
 body.layout-canvas .cl-menu details>summary{cursor:pointer;font-weight:600}
 body.layout-canvas .cl-more{top:60px;right:12px;width:min(360px,calc(100vw - 24px));max-height:calc(100dvh - 130px)}
-body.layout-canvas .cl-more aside{display:block!important;position:static!important;padding:0;border:0;width:auto;height:auto;transform:none!important;box-shadow:none}
+body.layout-canvas .cl-more aside{display:block!important;overflow:visible;position:static!important;padding:0;border:0;width:auto;height:auto;transform:none!important;box-shadow:none}
 
 body.layout-canvas .cl-more .canvas-context-dock{display:block;margin:0 0 12px;position:static}
 body.layout-canvas .cl-export{top:60px;left:12px;flex-direction:column;align-items:stretch;gap:6px;width:min(260px,calc(100vw - 24px))}
@@ -204,8 +204,8 @@ body.layout-canvas :is(.cl-popover,.cl-drawer,dialog) :is(button,.cl-link){displ
   border:1px solid var(--cl-line);background:transparent;color:var(--cl-ink);font:inherit;font-size:13px;cursor:pointer;text-decoration:none;white-space:nowrap;box-shadow:none}
 body.layout-canvas :is(.cl-popover,.cl-drawer,dialog) :is(button,.cl-link):hover:not(:disabled){background:var(--cl-accent-bg);border-color:var(--cl-accent)}
 body.layout-canvas :is(.cl-popover,.cl-drawer,dialog) button:disabled{color:var(--cl-muted);border-color:var(--cl-line);opacity:1;cursor:default}
-body.layout-canvas :is(.cl-popover,.cl-drawer,dialog) :is(#accept,[data-use],.primary,button[type=submit]):not(:disabled){background:var(--cl-accent);border-color:var(--cl-accent);color:#fff}
-body.layout-canvas :is(.cl-popover,.cl-drawer,dialog) :is(input:not([type=checkbox]):not([type=radio]),select,textarea){min-height:32px;box-sizing:border-box;padding:4px 8px;border-radius:7px;border:1px solid var(--cl-line);
+body.layout-canvas :is(.cl-popover,.cl-drawer,dialog) :is(#accept,[data-use],.primary,button[type=submit]):not(:disabled){background:var(--cl-accent);border-color:var(--cl-accent);color:var(--cl-on-accent)}
+body.layout-canvas :is(.cl-popover,.cl-drawer,dialog) :is(input:not([type=checkbox]):not([type=radio]),select,textarea){min-height:32px;box-sizing:border-box;padding:4px 8px;border-radius:7px;border:1px solid var(--cl-field-line);
   background:var(--cl-canvas);color:var(--cl-ink);font:inherit;font-size:13px;max-width:100%}
 body.layout-canvas :is(.cl-popover,.cl-drawer,dialog) :is(input,select,textarea):focus-visible{outline:2px solid var(--cl-accent);outline-offset:1px}
 body.layout-canvas :is(.cl-popover,dialog) input[type=checkbox]{accent-color:var(--cl-accent);width:16px;height:16px;margin:0}
@@ -266,7 +266,7 @@ body.layout-canvas #objects .object-row{display:flex;align-items:center;justify-
   background:transparent;color:var(--cl-ink);font:inherit;font-size:13px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%}
 body.layout-canvas #objects .object-row[hidden]{display:none!important}
 body.layout-canvas #objects .object-row:hover:not(:disabled){background:var(--cl-accent-bg)}
-body.layout-canvas #objects .object-row[aria-pressed=true]{background:var(--cl-accent-bg);color:var(--cl-accent);font-weight:600}
+body.layout-canvas #objects .object-row[aria-pressed=true]{background:var(--cl-accent-bg);color:var(--cl-accent-ink);font-weight:600}
 body.layout-canvas #objects .object-row::before{content:'';flex:none;width:8px;height:8px;border:1.5px solid var(--cl-line);border-radius:2px}
 body.layout-canvas #objects .object-row[aria-pressed=true]::before{border-color:var(--cl-accent);background:var(--cl-accent)}
 /* Route choices: shape previews before route detail text. */
@@ -275,7 +275,7 @@ body.layout-canvas .cl-route-choices h4{font-size:11px;font-weight:600;letter-sp
 body.layout-canvas .cl-route-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}
 body.layout-canvas .cl-route-option{flex-direction:column!important;gap:1px!important;min-width:0;min-height:52px!important;height:auto;padding:4px 2px!important;white-space:normal!important;font-size:11px!important;line-height:1.2}
 body.layout-canvas .cl-route-option svg{width:100%;max-width:44px;height:20px}
-body.layout-canvas .cl-route-option[aria-pressed=true]{background:var(--cl-accent-bg);border-color:var(--cl-accent)!important;color:var(--cl-accent)}
+body.layout-canvas .cl-route-option[aria-pressed=true]{background:var(--cl-accent-bg);border-color:var(--cl-accent)!important;color:var(--cl-accent-ink)}
 body.layout-canvas .cl-route-elbow{display:flex;flex-wrap:wrap;gap:6px}
 body.layout-canvas .cl-route-elbow[hidden]{display:none}
 body.layout-canvas .cl-route-note{margin:0;font-size:12px;color:var(--cl-muted);line-height:1.4}
@@ -323,14 +323,15 @@ body.layout-canvas .cl-more .cl-seg{display:inline-flex;max-width:100%}
 body.layout-canvas .cl-more .cl-seg>button{min-height:30px;padding:0 9px;border-radius:0;margin-left:-1px;font-size:12px}
 body.layout-canvas .cl-more .cl-seg>button:first-child{margin-left:0;border-radius:7px 0 0 7px}
 body.layout-canvas .cl-more .cl-seg>button:last-child{border-radius:0 7px 7px 0}
-body.layout-canvas .cl-more .cl-seg>button[aria-pressed=true]{position:relative;z-index:1;background:var(--cl-accent-bg);border-color:var(--cl-accent);color:var(--cl-accent);font-weight:600}
+body.layout-canvas .cl-more .cl-seg>button[aria-pressed=true]{position:relative;z-index:1;background:var(--cl-accent-bg);border-color:var(--cl-accent);color:var(--cl-accent-ink);font-weight:600}
+body.layout-canvas .cl-more .chip-row button[aria-pressed=true]{background:var(--cl-accent-bg);border-color:var(--cl-accent);color:var(--cl-accent-ink);font-weight:600}
 body.layout-canvas .cl-more .canvas-sizing{display:flex;flex-direction:column;align-items:stretch;flex-wrap:nowrap;overflow:visible;gap:8px;margin:0;padding:0}
 body.layout-canvas .cl-more .canvas-sizing[hidden]{display:none}
 body.layout-canvas .cl-more .size-fields{display:flex;align-items:center;gap:6px}
 body.layout-canvas .cl-popover .size-fields input[type=number]{width:68px}
 body.layout-canvas .cl-more .size-fields input[aria-invalid]{border-color:var(--cl-bad)}
 body.layout-canvas .cl-more .size-lock{min-width:32px;padding:0}
-body.layout-canvas .cl-more .size-lock[aria-pressed=true]{background:var(--cl-accent-bg);border-color:var(--cl-accent);color:var(--cl-accent)}
+body.layout-canvas .cl-more .size-lock[aria-pressed=true]{background:var(--cl-accent-bg);border-color:var(--cl-accent);color:var(--cl-accent-ink)}
 body.layout-canvas .cl-more .size-error{margin:0 0 0 76px;color:var(--cl-bad)}
 body.layout-canvas .cl-more .size-error[hidden],body.layout-canvas .cl-more .size-warning[hidden]{display:none}
 body.layout-canvas .cl-more .size-warning{margin-left:76px;font-size:12px;color:var(--cl-warn)}
@@ -354,7 +355,7 @@ body.layout-canvas .cl-more .style-row{grid-template-columns:minmax(0,1fr);gap:2
 body.layout-canvas .cl-more .style-row>:is(.style-swatches,.style-thickness){grid-column:1;min-width:0}
 body.layout-canvas .cl-more .style-swatches{display:flex;flex-wrap:nowrap;align-items:center;gap:6px;padding:4px}
 body.layout-canvas .cl-more .style-swatch{flex:none;position:relative;width:26px;height:26px;min-width:26px;min-height:26px;padding:0;border-radius:50%;
-  border:1px solid var(--cl-line);background:var(--swatch,transparent);box-shadow:none;cursor:pointer}
+  border:1px solid var(--cl-field-line);background:var(--swatch,transparent);box-shadow:none;cursor:pointer}
 body.layout-canvas .cl-more .style-swatch[data-colour=none]{background:linear-gradient(135deg,transparent calc(50% - 1px),var(--cl-bad) calc(50% - 1px),var(--cl-bad) calc(50% + 1px),transparent calc(50% + 1px)),var(--cl-canvas)}
 body.layout-canvas .cl-more .style-swatch:hover{border-color:var(--cl-muted)}
 /* The shared button hover tint must not repaint a colour swatch. */
@@ -369,7 +370,7 @@ body.layout-canvas .cl-more .style-custom svg{width:15px;height:15px}
 body.layout-canvas .cl-more .style-custom[aria-pressed=true]{color:var(--cl-accent)}
 body.layout-canvas .cl-more .style-custom-fields{display:flex;align-items:center;gap:6px;margin-left:4px;min-width:0}
 body.layout-canvas .cl-more .style-custom-fields[hidden]{display:none}
-body.layout-canvas .cl-more .appearance-editor .style-custom-fields input[type=color]{flex:none;width:34px;height:30px;padding:2px;border:1px solid var(--cl-line);border-radius:6px;background:var(--cl-canvas);cursor:pointer}
+body.layout-canvas .cl-more .appearance-editor .style-custom-fields input[type=color]{flex:none;width:34px;height:30px;padding:2px;border:1px solid var(--cl-field-line);border-radius:6px;background:var(--cl-canvas);cursor:pointer}
 body.layout-canvas .cl-more .appearance-editor .style-custom-fields input[type=text]{flex:1 1 auto;width:auto;min-width:0;max-width:180px;padding:5px 8px}
 body.layout-canvas .cl-more .appearance-editor input[aria-invalid=true]{border-color:var(--cl-bad);outline-color:var(--cl-bad)}
 body.layout-canvas .cl-more .style-thickness{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:0 4px}
@@ -392,7 +393,7 @@ body.layout-canvas .cl-more .text-style-group{display:flex;flex-direction:column
 body.layout-canvas .cl-more .text-style-line{grid-column:2/-1;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 body.layout-canvas .cl-more .text-style-faces{display:inline-flex;gap:4px}
 body.layout-canvas .cl-more .text-style-toggle{min-width:30px;min-height:30px;padding:0 8px;font-size:13px;border-radius:7px}
-body.layout-canvas .cl-more .text-style-toggle[aria-pressed=true]{background:var(--cl-accent-bg);border-color:var(--cl-accent);color:var(--cl-accent)}
+body.layout-canvas .cl-more .text-style-toggle[aria-pressed=true]{background:var(--cl-accent-bg);border-color:var(--cl-accent);color:var(--cl-accent-ink)}
 body.layout-canvas .cl-more .cl-seg>button svg{width:16px;height:16px;vertical-align:middle;pointer-events:none}
 body.layout-canvas .cl-more .text-style-group .style-hint{margin-left:76px}
 /* Touch: every swatch and toggle is a 44 px target. Swatches draw a 30 px
@@ -401,13 +402,16 @@ body.layout-canvas .cl-more .text-style-group .style-hint{margin-left:76px}
   body.layout-canvas .cl-more .style-swatches{display:grid;grid-template-columns:repeat(5,44px);gap:4px}
   body.layout-canvas .cl-more .style-swatch,body.layout-canvas .cl-more button.style-swatch:hover:not(:disabled),
   body.layout-canvas .cl-more button.style-swatch[data-colour=none]:hover:not(:disabled){width:44px;height:44px;min-width:44px;min-height:44px;border:0;background:none;box-shadow:none}
-  body.layout-canvas .cl-more .style-swatch::before{content:'';position:absolute;inset:7px;border-radius:50%;border:1px solid var(--cl-line);background:var(--swatch,transparent)}
+  body.layout-canvas .cl-more .style-swatch::before{content:'';position:absolute;inset:7px;border-radius:50%;border:1px solid var(--cl-field-line);background:var(--swatch,transparent)}
   body.layout-canvas .cl-more .style-swatch[data-colour=none]::before{background:linear-gradient(135deg,transparent calc(50% - 1px),var(--cl-bad) calc(50% - 1px),var(--cl-bad) calc(50% + 1px),transparent calc(50% + 1px)),var(--cl-canvas)}
   body.layout-canvas .cl-more .style-custom::before{background:var(--cl-canvas)}
   body.layout-canvas .cl-more .style-custom svg{position:relative;width:18px;height:18px}
   body.layout-canvas .cl-more .style-swatch[aria-pressed=true]{box-shadow:none}
   body.layout-canvas .cl-more .style-swatch[aria-pressed=true]::before{border-color:var(--cl-accent);box-shadow:0 0 0 2px var(--cl-chip),0 0 0 4px var(--cl-accent)}
   body.layout-canvas .cl-more :is(.cl-seg>button,.text-style-toggle,.style-reveal){min-height:44px;min-width:44px}
+  /* Every other inspector control is a 44 px target too. */
+  body.layout-canvas .cl-more #inspector :is(button,select,input:not([type=checkbox]):not([type=radio])){min-height:44px;min-width:44px}
+  body.layout-canvas .cl-more .appearance-editor .style-custom-fields input[type=color]{width:44px;height:44px}
 }
 @media (max-width:700px){
   body.layout-canvas .cl-more .text-style-group .style-hint{margin-left:0}
@@ -496,7 +500,7 @@ body.layout-canvas .cl-textbar[hidden]{display:none}
 body.layout-canvas .cl-textbar .cl-tb{min-width:30px;height:30px;padding:0 6px;border:0;border-radius:6px;background:transparent;color:var(--cl-ink);font:13px/1 system-ui,sans-serif;cursor:pointer}
 body.layout-canvas .cl-textbar .cl-tb:hover{background:var(--cl-accent-bg)}
 body.layout-canvas .cl-textbar .cl-tb svg{width:18px;height:18px;vertical-align:middle;pointer-events:none}
-body.layout-canvas .cl-textbar .cl-tb[aria-pressed=true]{background:var(--cl-accent-bg);color:var(--cl-accent)}
+body.layout-canvas .cl-textbar .cl-tb[aria-pressed=true]{background:var(--cl-accent-bg);color:var(--cl-accent-ink)}
 body.layout-canvas .cl-textbar .cl-tb.cl-swatch{flex:0 0 22px;min-width:22px;min-height:22px;max-height:22px;width:22px;height:22px;margin:0 2px;padding:0;border-radius:50%;border:2px solid var(--cl-line)}
 body.layout-canvas .cl-textbar .cl-tb.cl-swatch[aria-pressed=true]{border-color:var(--cl-accent);box-shadow:0 0 0 2px var(--cl-accent-bg)}
 body.layout-canvas .cl-textbar .cl-tb.cl-swatch:not([data-colour=default]){background:var(--swatch,var(--cl-ink))}
@@ -510,7 +514,7 @@ body.layout-canvas .cl-about{margin:4px 0;font-size:12px;color:var(--cl-muted);l
 /* ---- Menu v2: Document, Preferences, Advanced, footer; Changes and Adding popovers ---- */
 body.layout-canvas .cl-menu .cl-recent{display:flex;flex-direction:column;gap:2px;max-height:200px;overflow:auto}
 body.layout-canvas .cl-menu .cl-recent button{width:100%;justify-content:space-between;gap:12px;border-color:transparent;min-height:30px;font-size:13px}
-body.layout-canvas .cl-menu .cl-recent button[aria-current=true]{background:var(--cl-accent-bg);color:var(--cl-accent);border-color:transparent}
+body.layout-canvas .cl-menu .cl-recent button[aria-current=true]{background:var(--cl-accent-bg);color:var(--cl-accent-ink);border-color:transparent}
 body.layout-canvas .cl-recent-name{overflow:hidden;text-overflow:ellipsis;min-width:0}
 body.layout-canvas .cl-recent .cl-muted{flex:none}
 body.layout-canvas .cl-save-state:not([data-state=error]){display:none}
@@ -594,5 +598,5 @@ body.layout-canvas .cl-menu .cl-theme>button{display:inline-flex;align-items:cen
 body.layout-canvas .cl-menu .cl-theme>button svg{width:15px;height:15px;flex:none}
 body.layout-canvas .cl-menu .cl-theme>button:first-child{margin-left:0;border-radius:7px 0 0 7px}
 body.layout-canvas .cl-menu .cl-theme>button:last-child{border-radius:0 7px 7px 0}
-body.layout-canvas .cl-menu .cl-theme>button[aria-pressed=true]{position:relative;z-index:1;background:var(--cl-accent-bg);border-color:var(--cl-accent);color:var(--cl-accent);font-weight:600}
+body.layout-canvas .cl-menu .cl-theme>button[aria-pressed=true]{position:relative;z-index:1;background:var(--cl-accent-bg);border-color:var(--cl-accent);color:var(--cl-accent-ink);font-weight:600}
 @media (pointer:coarse){body.layout-canvas .cl-menu .cl-theme>button{min-height:44px}}

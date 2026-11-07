@@ -1,27 +1,27 @@
-import {candidates,snap,applyPatch,byteOffsetToIndex,routeCandidates,movementBlocked,moveRefusal} from './edits.js?v=20261106h';
-import {routeStyleCandidates} from './route-styles.js?v=20261106h';
-import {correspondingObject} from './candidate-target.js?v=20261106h';
-import {alignmentGuides,gapMarks} from './guides.js?v=20261106h';
-import {constrainDrag,smartSnap} from './constrain.js?v=20261106h';
+import {candidates,snap,applyPatch,byteOffsetToIndex,routeCandidates,movementBlocked,moveRefusal} from './edits.js?v=20261106i';
+import {routeStyleCandidates} from './route-styles.js?v=20261106i';
+import {correspondingObject} from './candidate-target.js?v=20261106i';
+import {alignmentGuides,gapMarks} from './guides.js?v=20261106i';
+import {constrainDrag,smartSnap} from './constrain.js?v=20261106i';
 const params=new URL(location.href).searchParams;
-import {arrowEditor,connectorCapabilities,connectorLabel,connectorRows,editingBlocked} from './arrow-ui.js?v=20261106h';
-import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20261106h';
-import {propertyEditor,styleControls,setSwatchTheme} from './property-ui.js?v=20261106h';
-import {fitText,canFitText,inspectProperties,readProperties,documentThickness} from './properties.js?v=20261106h';
-import {duplicateObject,deleteObjects,layoutObjects,moveObjects,settleMove,describe,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20261106h';
-import {decodeLinkSource,encodeLinkSource,linkFragment,linkPayload} from './link-import.js?v=20261106h';
-import {createDocumentStore} from './documents.js?v=20261106h';
-import {canvasNavigation,clampZoom} from './canvas-navigation.js?v=20261106h';
-import {examplePicker} from './example-picker.js?v=20261106h';
-import {canvasTools} from './canvas-tools.js?v=20261106h';
-import {copySelection,pasteSelection} from './subgraph.js?v=20261106h';
-import {createComponentLibrary} from './component-library.js?v=20261106h';
-import {exportWorkspace,parseWorkspace} from './workspace-backup.js?v=20261106h';
-import {tidyRouteCandidate} from './route-suggestions.js?v=20261106h';
-import {createCandidateReview} from './candidate-review.js?v=20261106h';
-import {cleanSVG,downloadPNG} from './diagram-export.js?v=20261106h';
-import {readSizingPreference,writeSizingPreference} from './sizing-preferences.js?v=20261106h';
-import {detachCandidates,macroBlocked,macroUses} from './macro-detach.js?v=20261106h';
+import {arrowEditor,connectorCapabilities,connectorLabel,connectorRows,editingBlocked} from './arrow-ui.js?v=20261106i';
+import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20261106i';
+import {propertyEditor,styleControls,setSwatchTheme} from './property-ui.js?v=20261106i';
+import {fitText,canFitText,inspectProperties,readProperties,documentThickness,macroProperties} from './properties.js?v=20261106i';
+import {duplicateObject,deleteObjects,layoutObjects,moveObjects,settleMove,describe,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20261106i';
+import {decodeLinkSource,encodeLinkSource,linkFragment,linkPayload} from './link-import.js?v=20261106i';
+import {createDocumentStore} from './documents.js?v=20261106i';
+import {canvasNavigation,clampZoom} from './canvas-navigation.js?v=20261106i';
+import {examplePicker} from './example-picker.js?v=20261106i';
+import {canvasTools} from './canvas-tools.js?v=20261106i';
+import {copySelection,pasteSelection} from './subgraph.js?v=20261106i';
+import {createComponentLibrary} from './component-library.js?v=20261106i';
+import {exportWorkspace,parseWorkspace} from './workspace-backup.js?v=20261106i';
+import {tidyRouteCandidate} from './route-suggestions.js?v=20261106i';
+import {createCandidateReview} from './candidate-review.js?v=20261106i';
+import {cleanSVG,downloadPNG} from './diagram-export.js?v=20261106i';
+import {readSizingPreference,writeSizingPreference} from './sizing-preferences.js?v=20261106i';
+import {detachCandidates,macroBlocked,macroUses} from './macro-detach.js?v=20261106i';
 const $=id=>document.getElementById(id);
 const examples={
   pipeline:'Client: box "Client" at (0,0)\nAPI: box "API" at (2,0)\nDatabase: cylinder "Database" at (4,0)\narrow from Client.e to API.w\narrow from API.e to Database.w\n',
@@ -144,7 +144,9 @@ function clearProposal(){
   $('preview-actions').hidden=true;$('diagram').classList.remove('previewing');
   $('suggestions').textContent='Drag a shape or reconnect an endpoint to see ranked source edits.';
   updateDraft();
-  if(had&&!rendering&&scene)renderSource(scene);
+  // The kept scene belongs to the rendered source; a source typed over the
+  // preview renders afresh.
+  if(had&&!rendering&&scene)renderSource(source.value===renderedSource?scene:null);
 }
 function updateDraft(){
   const pending=draft.length>0;
@@ -356,7 +358,7 @@ function select(id,highlight=false,additive=false,preserve=false){
   const ins=$('inspector'),ready=()=>source.value===renderedSource&&!$('diagram').classList.contains('stale');
   const propose=options=>validateSuggestions(o,options);
   const parts=propertyEditor({object:o,scene,source:renderedSource,propose,status,valid:ready});
-  const capabilities=connectorCapabilities({object:o,scene,source:renderedSource}),blocked=editingBlocked(o,capabilities,{styleable:!!parts});
+  const capabilities=connectorCapabilities({object:o,scene,source:renderedSource}),blocked=editingBlocked(o,capabilities,{styleable:!!parts,statement:o.span?.start>=0?(()=>{try{return renderedSource.slice(byteOffsetToIndex(renderedSource,o.span.start),byteOffsetToIndex(renderedSource,o.span.end)).trim();}catch{return '';}})():''});
   const advanced=document.createElement('details');advanced.className='inspector-advanced';advanced.open=advancedOpen;
   advanced.ontoggle=()=>{if(advanced.isConnected)advancedOpen=advanced.open;};
   const advancedSummary=document.createElement('summary');advancedSummary.textContent='Advanced & source';
@@ -371,7 +373,8 @@ function select(id,highlight=false,additive=false,preserve=false){
   if(o.reason==='Macro-expanded object'){
     const origin=document.createElement('p');origin.className='inspector-status inspector-origin';origin.setAttribute('role','note');
     const uses=macroUses(renderedSource,o);
-    origin.textContent='This shape comes from the macro '+(uses?.name||'that generated it')+', which other shapes may share. Detach it to edit it on its own.';
+    origin.textContent=uses?'This shape comes from define '+uses.name+', shared by '+uses.uses+(uses.uses===1?' use':' uses')+'. Its style and text are set there; detach it to edit it on its own.'
+      :'This shape comes from a macro Studio cannot identify. Edit it in Source (S).';
     sourceButton.textContent='Inspect generating source';
     const detachButton=(id,label)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.disabled=!uses?.uses;
       b.title=uses?.uses?(id==='detach-all'?'Preview the source with every use of this macro inlined; the define stays':'Preview the source with this macro use inlined; the define stays'):uses?'This macro is only used inside other macro definitions':'Studio cannot tell which macro generated this shape';b.onclick=()=>detachMacro(o,id);return b;};
@@ -379,7 +382,21 @@ function select(id,highlight=false,additive=false,preserve=false){
     detachRow.append(detachButton('detach','Detach from macro'));
     if(uses?.uses>1)detachRow.append(detachButton('detach-all','Detach all '+uses.uses+' uses'));
     for(const b of detachRow.children)b.style.flex='1 1 0';
-    ins.append(origin,sourceButton,detachRow);
+    // What the define draws, read-only: editing a use would mean appending
+    // attributes to a macro call, which Pikchr's text expansion makes fragile.
+    const values=document.createElement('dl');values.className='macro-values';values.setAttribute('aria-label','Set by the macro');
+    let read=null;try{read=macroProperties(renderedSource,o);}catch{}
+    if(read){
+      const shown=(v,fallback)=>v===null?fallback:v;
+      const rows=[['Label',read.text.replace(/\s+/g,' ')||'None'],
+        ...(['arrow','line','spline','arc','move','text'].includes(o.kind)?[]:[['Fill',shown(read.fill,'none')]]),
+        [o.kind==='text'?'Text':'Line & text',shown(read.color,'black')],
+        ...(o.kind==='text'?[]:[['Thickness',read.thickness===null?'expression':Number(read.thickness.toFixed(4))+' in']]),
+        ...(read.words.length?[['Text style',read.words.join(' ')]]:[])];
+      for(const [k,v]of rows){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=k;dd.textContent=v;values.append(dt,dd);}
+    }
+    ins.append(origin,...(read?[values]:[]),sourceButton,detachRow);
+    if(!uses?.uses){const why=document.createElement('p');why.className='inspector-detach-reason';why.textContent=detachRow.firstChild.title+'.';ins.append(why);}
   }else advanced.append(sourceButton);
   if(sourceButton.disabled){const reason=document.createElement('p');reason.textContent='No independent source span is available. Open the source drawer to inspect the generating program.';advanced.append(reason);}
   if(parts?.label)ins.append(parts.label);
@@ -426,9 +443,11 @@ function routeChooser(o){
     b.append(svg,span);b.onclick=onclick;grid.append(b);return b;
   };
   const straightPressed=!bends&&['arrow','line'].includes(o.kind);
-  button('straight',o.kind==='spline'?'Segments':'Straight',o.kind==='spline'?marks.waypoints:marks.straight,straightPressed,
+  // A choice this source cannot take is disabled, its title saying why.
+  const offer=(b,available)=>{b.disabled=!available;return b;};
+  offer(button('straight',o.kind==='spline'?'Segments':'Straight',o.kind==='spline'?marks.waypoints:marks.straight,straightPressed,
     straight?(o.kind==='spline'?'Replace the curve with straight segments':'Replace the route with a direct line'):'This route expression cannot be rewritten as a straight line',
-    ()=>apply(straight?[straight]:[]));
+    ()=>apply(straight?[straight]:[])),!!straight||straightPressed);
   const elbowButton=button('elbow','Elbow',marks.elbow,false,'Choose horizontal first or vertical first',()=>{
     const open=elbowRow.hidden;elbowRow.hidden=!open;elbowButton.setAttribute('aria-expanded',String(open));
     note.textContent=open?'Elbow: choose which axis the route turns on first.':defaultNote();
@@ -441,13 +460,14 @@ function routeChooser(o){
     b.onclick=()=>apply(option?[option]:[]);elbowRow.append(b);
   }
   const curveOption=style('curve');
-  button('curve','Curve',marks.curve,o.kind==='spline',
+  offer(button('curve','Curve',marks.curve,o.kind==='spline',
     o.kind==='spline'?'This route is already a curve':curveOption?null:'Curve needs at least one bend in an arrow or line route; add a waypoint first',
-    ()=>{if(o.kind==='spline'){note.textContent=defaultNote();return;}apply(curveOption?[curveOption]:[]);});
+    ()=>{if(o.kind==='spline'){note.textContent=defaultNote();return;}apply(curveOption?[curveOption]:[]);}),o.kind==='spline'||!!curveOption);
   const arcOption=o.kind==='arc'?style('flip-arc'):(style('arc-cw')||style('arc-ccw'));
-  button('arc',o.kind==='arc'?'Flip arc':'Arc',marks.arc,o.kind==='arc',
-    arcOption?null:'An arc needs a simple two-point connector; this route cannot become one safely',
-    ()=>apply(arcOption?[arcOption]:[]));
+  // Flip is an action on the current arc, so it is never shown as pressed.
+  offer(button('arc',o.kind==='arc'?'Flip arc':'Arc',marks.arc,false,
+    arcOption?(o.kind==='arc'?'Reverse the arc’s direction':null):o.kind==='arc'?'This arc cannot be flipped safely; edit it in source':'An arc needs a simple two-point connector; this route cannot become one safely',
+    ()=>apply(arcOption?[arcOption]:[])),!!arcOption);
   const waypoints=button('waypoints','Waypoints',marks.waypoints,bends,
     'Edit the existing bends and segments in the route editor',
     ()=>{
@@ -831,12 +851,13 @@ async function suggest(o,target,withPreview=false,{precise=!withPreview,bringAlo
       // Each candidate is rendered and settled (see settleMove): shapes
       // placed against the moved one move with it, chain followers stay put;
       // Alt inverts both. A drop that rounds to no movement changes nothing.
-      const base=source.value,rev=revision,flat=text=>text.replace(/\s+/g,'');
+      // Escape (a new gesture) while the candidates render cancels the move.
+      const base=source.value,rev=revision,g=gesture,flat=text=>text.replace(/\s+/g,'');
       const raw=candidates(base,o,scene,target,{precise,keepForm}).slice(0,6)
         .filter(option=>!same(option.target,o.center)&&flat(option.source)!==flat(base));
       if(!raw.length&&candidates(base,o,scene,target,{precise,keepForm}).length){status('Not moved: the drop is within the snapping grid of where '+describe(o,base)+' already is.');drawOverlay();return;}
       options=(await Promise.all(raw.map(option=>settleMove(base,scene,option,o,render,{bringAlong})))).filter(Boolean);
-      if(rev!==revision||base!==source.value)return;
+      if(rev!==revision||base!==source.value||g!==gesture)return;
       if(raw.length&&!options.length){status('Can’t move '+describe(o,base)+' there: Studio could not keep the other shapes in place. Hold Alt to move them along, or edit the source (S).');drawOverlay();return;}
     }
   }catch(e){status(e.message);return;}

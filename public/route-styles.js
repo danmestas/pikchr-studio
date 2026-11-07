@@ -1,12 +1,12 @@
 // Route styles: every connector restyle is a whole-statement source edit that
 // the caller renders and checks before showing it. Only style tokens this
 // module recognises are rewritten; every other token keeps its bytes.
-import { byteOffsetToIndex, applyPatch, editability, colourNames } from './edits.js?v=20261106h';
-import { obstacleRects } from './route-suggestions.js?v=20261106h';
+import { byteOffsetToIndex, applyPatch, editability, colourNames } from './edits.js?v=20261106i';
+import { obstacleRects } from './route-suggestions.js?v=20261106i';
 
 const CONNECTORS = ['arrow','line','spline','arc'];
 const NON_OBSTACLES = [...CONNECTORS, 'move'];
-const TOKEN = /"(?:\\.|[^"\\])*"|<->|->|<-|0x[0-9a-fA-F]+|(?:\d+(?:\.\d*)?|\.\d+)(?:cm|mm|in|px|pt|%)?|[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*|\S/g;
+const TOKEN = /"(?:\\.|[^"\\])*"|\/\*[\s\S]*?\*\/|<->|->|<-|0x[0-9a-fA-F]+|(?:\d+(?:\.\d*)?|\.\d+)(?:cm|mm|in|px|pt|%)?|[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*|\S/g;
 const NAME = /^[A-Z][A-Za-z0-9_]*$/;
 const REF = /^[A-Z][A-Za-z0-9_]*(?:\.(?:ne|nw|se|sw|c|n|s|e|w))?$/;
 const NUMBER = /^(?:\d+(?:\.\d*)?|\.\d+)(?:cm|mm|in|px|pt|%)?$/;
@@ -31,8 +31,13 @@ export function parseConnector(source, object, scene) {
   catch { return null; }
   const statement = source.slice(start, end);
   const masked = statement.replace(/"(?:\\.|[^"\\])*"/g, m => ' '.repeat(m.length));
-  if (/[\n\r;\[\]{}#\\]|\/\/|\/\*/.test(masked)) return null;
-  const tokens = [...statement.matchAll(TOKEN)].map(m => ({ text:m[0], start:m.index, end:m.index + m[0].length, cat:'path', group:-1 }));
+  // An inline /* */ comment is one token that is always written back as is.
+  const code = masked.replace(/\/\*[\s\S]*?\*\//g, m => ' '.repeat(m.length));
+  if (/[\n\r;\[\]{}#\\]|\/\/|\/\*/.test(code)) return null;
+  // Comments stay out of the token list; compose writes them back from the
+  // gaps between tokens.
+  const tokens = [...statement.matchAll(TOKEN)].filter(m => !m[0].startsWith('/*'))
+    .map(m => ({ text:m[0], start:m.index, end:m.index + m[0].length, cat:'path', group:-1 }));
   let i = 0, name = null;
   if (tokens[1]?.text === ':' && NAME.test(tokens[0]?.text || '')) {
     name = tokens[0].text; tokens[0].cat = tokens[1].cat = 'header'; i = 2;
@@ -52,8 +57,9 @@ export function parseConnector(source, object, scene) {
     else if (t === 'dashed' || t === 'dotted') i = take(i, 'dash', NUMBER.test(next || '') ? 1 : 0);
     else if (t === 'solid') i = take(i, 'dash');
     else if (t === 'thin' || t === 'thick') i = take(i, 'weight');
-    else if (t === 'thickness') { if (!NUMBER.test(next || '')) return null; i = take(i, 'weight', 1); }
-    else if (t === 'color') { if (!(colourNames.has((next || '').toLowerCase()) || HEX.test(next || '') || NUMBER.test(next || ''))) return null; i = take(i, 'color', 1); }
+    // A value Studio cannot read ($c, A.color) locks its own clause only.
+    else if (t === 'thickness') { if (!next) return null; const at = i; i = take(i, 'weight', 1); if (!NUMBER.test(next)) styles[tokens[at].group].locked = true; }
+    else if (t === 'color') { if (!next) return null; const at = i; i = take(i, 'color', 1); if (!(colourNames.has(next.toLowerCase()) || HEX.test(next) || NUMBER.test(next))) styles[tokens[at].group].locked = true; }
     else if (t === 'rad' || t === 'radius') { if (!NUMBER.test(next || '')) return null; i = take(i, 'rad', 1); }
     else if (t === 'chop') i = take(i, 'chop');
     else if (t === 'cw' || t === 'ccw') i = take(i, 'turn');
@@ -63,6 +69,8 @@ export function parseConnector(source, object, scene) {
       i = take(i, 'label', extra);
     }
   }
+  // A value that continues as an expression (thickness 0.01*2) is locked too.
+  for (const group of styles) if (/^[+\-*/^(]$/.test(tokens[group.to + 1]?.text || '') && ['color','weight','rad','dash'].includes(group.cat)) group.locked = true;
   return { source, object, statement, tokens, styles, kind:object.kind, name, kindIndex,
     path:tokens.filter(t => t.cat === 'path') };
 }
@@ -88,6 +96,9 @@ const kindFor = (kind, heads) => kind === 'arrow' && heads === 'none' ? 'line' :
 // every path token, which then sits right after the kind keyword.
 function compose(model, { kind = model.kind, set = {}, path = null }) {
   const { statement, tokens } = model;
+  // A locked clause is never rewritten, and nothing that rewrites the whole
+  // route or the kind runs around one.
+  if (model.styles.some(g => g.locked) && (path !== null || kind !== model.kind || Object.keys(set).some(cat => styleOf(model, cat).some(g => g.locked)))) return null;
   const replaced = new Map(), removed = new Set();
   for (const [cat, text] of Object.entries(set)) {
     const groups = styleOf(model, cat);
@@ -96,11 +107,18 @@ function compose(model, { kind = model.kind, set = {}, path = null }) {
       if (n === 0 && text) replaced.set(g.from, text);
     });
   }
+  const comments = text => text.match(/\/\*[\s\S]*?\*\//g) || [];
+  // A rerouted path is written fresh, so a comment among its tokens has no place.
+  if (path !== null && comments(statement.replace(/"(?:\\.|[^"\\])*"/g, '')).length) return null;
   let out = statement.slice(0, tokens[0]?.start ?? 0), lastEmitted = -1, pathPlaced = false;
   const emit = (text, index) => {
     let gap = index > 0 ? statement.slice(tokens[index - 1].end, tokens[index].start) : '';
-    // After a removed token, keep one space unless punctuation closes up.
-    if (lastEmitted !== index - 1) gap = /^[),]/.test(text) || out.endsWith('(') ? '' : gap || ' ';
+    // After a removed token, keep one space unless punctuation closes up, and
+    // keep every comment the removed tokens sat between.
+    if (lastEmitted !== index - 1) {
+      const kept = comments(statement.slice(lastEmitted >= 0 ? tokens[lastEmitted].end : tokens[0].start, tokens[index].start));
+      gap = kept.length ? ' ' + kept.join(' ') + ' ' : /^[),]/.test(text) || out.endsWith('(') ? '' : gap || ' ';
+    }
     out += (out.length ? gap : '') + text;
     lastEmitted = index;
   };
@@ -111,6 +129,8 @@ function compose(model, { kind = model.kind, set = {}, path = null }) {
     if (removed.has(index)) return;
     emit(t.text, index);
   });
+  const tail = comments(statement.slice(tokens[lastEmitted]?.end ?? 0));
+  if (tail.length) out += ' ' + tail.join(' ');
   for (const [cat, text] of Object.entries(set)) if (text && !styleOf(model, cat).length) out += ' ' + text;
   if (path !== null && !pathPlaced) return null;
   return out.replace(/[ \t]+$/, '');
@@ -173,10 +193,7 @@ export function connectorStyleCandidate(source, object, scene, { color, thicknes
   if (scene.objects.some(other => other !== object && other.span?.start === object.span.start && other.span?.end === object.span.end)) return null;
   const model = parseConnector(source, object, scene);
   if (!model) return null;
-  for (const group of model.styles) {
-    const next = model.tokens[group.to + 1];
-    if (next && /^[+\-*/^]$/.test(next.text)) return null;
-  }
+
   const set = {};
   if (color !== undefined && color !== '') set.color = 'color ' + color;
   // null resets the weight to the document default.
@@ -202,18 +219,22 @@ export function chopCandidates(source, object, scene, on) {
   return option ? [option] : [];
 }
 // Zero or one label. Several labels stay source-only rather than guessed.
-export function labelCandidates(source, object, scene, { text = '', placement = 'above' } = {}) {
+// Without a placement, an existing label keeps every word written after it
+// (placement, size, weight) and a new one goes above the line.
+export function labelCandidates(source, object, scene, { text = '', placement } = {}) {
   const model = parseConnector(source, object, scene);
-  if (!model || styleOf(model, 'label').length > 1 || !PLACEMENTS.includes(placement)) return [];
+  if (!model || styleOf(model, 'label').length > 1 || placement !== undefined && !PLACEMENTS.includes(placement)) return [];
   if (/[\u0000-\u001f\u007f]/.test(text)) return [];
   if (!text) {
     const option = makeOption(model, { set:{ label:null } }, { id:'label-remove', group:'Label', label:'Remove label' });
     return option ? [option] : [];
   }
   const current = styleOf(model, 'label')[0];
-  const kept = current ? model.tokens.slice(current.from + 1, current.to + 1).map(t => t.text).filter(p => !PLACEMENTS.includes(p)) : [];
+  const words = current ? model.tokens.slice(current.from + 1, current.to + 1).map(t => t.text) : [];
+  const kept = placement === undefined ? words : words.filter(p => !PLACEMENTS.includes(p));
+  const place = placement === undefined ? (current ? 'center' : 'above') : placement;
   const literal = '"' + text.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
-  const value = [literal, ...(placement === 'center' ? [] : [placement]), ...kept].join(' ');
+  const value = [literal, ...(place === 'center' ? [] : [place]), ...kept].join(' ');
   const option = makeOption(model, { set:{ label:value } }, { id:'label', group:'Label', label:current ? 'Edit label' : 'Add label' });
   return option ? [option] : [];
 }

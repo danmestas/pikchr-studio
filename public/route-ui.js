@@ -1,6 +1,6 @@
-import {routeCandidates,moveVertexCandidates,bendCandidates} from './edits.js?v=20261106h';
-import {suggestedRoutes,connectorState,strokeCandidates,chopCandidates,labelCandidates,checkStyleResult,thumbnailBox} from './route-styles.js?v=20261106h';
-import {lockDirection} from './constrain.js?v=20261106h';
+import {routeCandidates,moveVertexCandidates,bendCandidates} from './edits.js?v=20261106i';
+import {suggestedRoutes,connectorState,strokeCandidates,chopCandidates,labelCandidates,checkStyleResult,thumbnailBox} from './route-styles.js?v=20261106i';
+import {lockDirection} from './constrain.js?v=20261106i';
 const ns='http://www.w3.org/2000/svg';
 const el=(tag,attrs)=>{const e=document.createElementNS(ns,tag);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,v);return e;};
 export function routeEditor({object,scene,source,svg,layer,propose,status,valid,clear,autoApply=()=>document.querySelector('#auto-apply')?.checked!==false}){
@@ -236,33 +236,32 @@ export function routeStyleGallery({object,scene,source,render,preview,accept,dis
   };
   // Stroke, weight and ends: chips that show what is on now.
   const chips=document.createElement('div');chips.className='route-style-chips';
-  const chipRow=(title,items)=>{
+  // A choice row (Stroke) does nothing for the current value; a toggle row
+  // (Ends) turns its one option off.
+  const chipRow=(title,items,toggle=false)=>{
     const row=document.createElement('div');row.className='chip-row';row.setAttribute('role','group');row.setAttribute('aria-label',title);
     const name=document.createElement('span');name.textContent=title;row.append(name);
     for(const [label,on,make]of items){
       const b=document.createElement('button');b.type='button';b.textContent=label;b.setAttribute('aria-pressed',String(on));
-      b.onclick=()=>run(make());row.append(b);
+      b.onclick=()=>{if(on&&!toggle)return;run(make());};row.append(b);
     }
     chips.append(row);
   };
   chipRow('Stroke',['solid','dashed','dotted'].map(d=>[d[0].toUpperCase()+d.slice(1),state.dash===d,()=>strokeCandidates(source,object,scene,d)]));
-  chipRow('Ends',[['Chop at edges',state.chop,()=>chopCandidates(source,object,scene,!state.chop)]]);
+  chipRow('Ends',[['Chop at edges',state.chop,()=>chopCandidates(source,object,scene,!state.chop)]],true);
   // Colour and thickness live in the Style section's own rows above.
-  // Label: one string on the connector, placed above, below or along it.
+  // Label: one string on the connector. Its placement, size and weight are
+  // the inspector's Text rows; changing the words keeps them.
   const form=document.createElement('form');form.className='route-label-form';
   const textLabel=document.createElement('label');textLabel.append('Label ');
   const text=document.createElement('input');text.type='text';text.value=state.label?.text||'';text.setAttribute('aria-label','Connector label');text.maxLength=200;
   textLabel.append(text);
-  const placeLabel=document.createElement('label');placeLabel.append('Placement ');
-  const place=document.createElement('select');place.setAttribute('aria-label','Label placement');
-  for(const p of ['above','below','aligned','center']){const o=document.createElement('option');o.value=p;o.textContent=p==='aligned'?'Along the line':p[0].toUpperCase()+p.slice(1);place.append(o);}
-  place.value=state.label?.placement||'above';placeLabel.append(place);
   const apply=document.createElement('button');apply.type='submit';apply.textContent=state.label?'Update label':'Add label';
   const remove=document.createElement('button');remove.type='button';remove.textContent='Remove label';remove.disabled=!state.label;
-  form.append(textLabel,placeLabel,apply,remove);
-  form.onsubmit=e=>{e.preventDefault();if(!text.value.trim()){status('Type a label first, or use Remove label.');return;}run(labelCandidates(source,object,scene,{text:text.value,placement:place.value}));};
+  form.append(textLabel,apply,remove);
+  form.onsubmit=e=>{e.preventDefault();if(!text.value.trim()){status('Type a label first, or use Remove label.');return;}run(labelCandidates(source,object,scene,{text:text.value}));};
   remove.onclick=()=>run(labelCandidates(source,object,scene,{text:''}));
-  if(!state.labelEditable){for(const el of [text,place,apply,remove])el.disabled=true;const why=document.createElement('p');why.className='route-style-hint';why.textContent='This connector has several labels; edit them in source.';form.append(why);}
+  if(!state.labelEditable){for(const el of [text,apply,remove])el.disabled=true;const why=document.createElement('p');why.className='route-style-hint';why.textContent='This connector has several labels; edit them in source.';form.append(why);}
   style.append(chips,form);
   return parts;
 }

@@ -104,7 +104,6 @@ with sync_playwright() as pw:
     select(page, "Pipe")
     inspector_section(page, "Style")
     page.get_by_label("Connector label").fill("retry ✓")
-    page.get_by_label("Label placement").select_option("above")
     page.locator(".route-label-form").get_by_role("button", name="Add label").click()
     page.wait_for_function("!document.querySelector('#preview-actions').hidden")
     accept(page, 3)

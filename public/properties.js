@@ -1,16 +1,20 @@
-import { applyPatch, byteOffsetToIndex, editability, safeAttributes, colourNames, isColour } from './edits.js?v=20261106h';
+import { applyPatch, byteOffsetToIndex, editability, safeAttributes, colourNames, isColour, maskCode } from './edits.js?v=20261106i';
 export { colourNames, isColour };
-import { macroBlocked } from './macro-detach.js?v=20261106h';
+import { macroBlocked } from './macro-detach.js?v=20261106i';
 
 const bytes = text => new TextEncoder().encode(text).length;
 const kinds = ['box','cylinder','circle','ellipse','oval','diamond','file','line','arrow','text'];
+// Splines and arcs are read for the inspector (style and label text) but not
+// offered to the structural actions (delete, duplicate, layout) that share
+// this reader.
+const lineKinds = ['spline','arc'];
 const fail = () => { throw new Error('This object’s text and terminations are read-only. Use the source editor.'); };
 
-export function readProperties(source, object, scene) {
+export function readProperties(source, object, scene, {lines=false}={}) {
   if (object?.reason === 'Macro-expanded object' && typeof source === 'string') throw new Error(macroBlocked(source, object));
   if (typeof source !== 'string' || !object?.span || !scene?.objects?.includes(object)
       || (scene.source !== undefined && scene.source !== source)
-      || !kinds.includes(object.kind) || !editability(object, scene).editable) fail();
+      || !(kinds.includes(object.kind) || lines && lineKinds.includes(object.kind)) || !editability(object, scene).editable) fail();
   if (scene.objects.some(other => other !== object && other.span?.start === object.span.start && other.span?.end === object.span.end)) fail();
   const start = byteOffsetToIndex(source,object.span.start);
   const end = byteOffsetToIndex(source,object.span.end);
@@ -22,7 +26,7 @@ export function readProperties(source, object, scene) {
   if (labels.some((match,index)=>index && !TEXT_ATTRS_ONLY.test(statement.slice(labels[index-1].index+labels[index-1][0].length,match.index)))) fail();
   const masked = statement.replace(/"(?:\\.|[^"\\])*"/g,match=>' '.repeat(match.length));
   if (/["\[\]{};#\r\n]/.test(masked.trim())) fail();
-  const header = masked.match(/^\s*(?:([A-Z][A-Za-z0-9_]*)\s*:\s*)?(box|cylinder|circle|ellipse|oval|diamond|file|line|arrow|text)\b/);
+  const header = masked.match(/^\s*(?:([A-Z][A-Za-z0-9_]*)\s*:\s*)?(box|cylinder|circle|ellipse|oval|diamond|file|line|arrow|text|spline|arc)\b/);
   if (!header || header[2] !== object.kind || (header[1] || '') !== (object.name || '')) fail();
   const flags = [...masked.matchAll(/<->|<-|->/g)];
   if (flags.length > 1) fail();
@@ -79,7 +83,8 @@ export function colourValue(token){
   return '#'+(Math.round(number)%0x1000000).toString(16).padStart(6,'0');
 }
 export function attributeClauses(statement,key){
-  const masked=maskLabels(statement),colour=key==='fill'||key==='color',clauses=[];
+  // Strings and comments are masked: a keyword inside either is not a clause.
+  const masked=maskCode(statement),colour=key==='fill'||key==='color',clauses=[];
   // A keyword after a dot or an opening parenthesis reads another value
   // (B.fill, (thickness)); it belongs to some other clause's expression.
   for(const m of masked.matchAll(new RegExp(`(?<![.(\\w$@])${KEYWORDS[key]}\\b`,'g'))){
@@ -98,8 +103,8 @@ function writtenClause(statement,masked,index){
 export const lockedMessage=written=>`Written as "${written}" in source, which Studio can’t rewrite. Edit it in Source (S).`;
 
 export function inspectProperties(source,object,scene) {
-  const {labels,flags,statement} = read(source,object,scene);
-  const style=maskLabels(statement);
+  const {labels,flags,statement} = read(source,object,scene,{lines:true});
+  const style=maskCode(statement);
   const weight=effectiveThickness(style,documentThickness(source));
   const clauses=Object.fromEntries(['fill','color','thickness'].map(key=>[key,attributeClauses(statement,key)]));
   // Pikchr applies attributes in order, so the last clause is the one drawn.
@@ -123,7 +128,9 @@ export function propertyCandidate(source,object,statement,replacement,label) {
   const prefix=before.slice(0,left).join('');
   const expected=before.slice(left,before.length-right).join('');
   const patch={base:source,start:object.span.start+bytes(prefix),end:object.span.start+bytes(prefix+expected),expected,text:after.slice(left,after.length-right).join('')};
-  return {label,patch,source:applyPatch(source,patch),...(object.name ? {selectName:object.name} : {})};
+  // An unnamed object is followed by its render id: a property rewrite never
+  // adds or removes objects, so the id survives.
+  return {label,patch,source:applyPatch(source,patch),...(object.name ? {selectName:object.name} : {selectId:object.id,targetKind:object.kind})};
 }
 const candidate=propertyCandidate;
 
@@ -204,9 +211,28 @@ export function changeTermination(source,object,scene,mode) {
   const {statement,header,flags}=read(source,object,scene);
   const flag=flags[0];
   const token={none:'',start:'<-',end:'->',both:'<->'}[mode];
-  let replacement=flag ? statement.slice(0,flag.index)+token+statement.slice(flag.index+flag[0].length)
+  // Removing the flag takes one side's spacing with it.
+  const joined=(left,right)=>token?left+token+right:left.replace(/[ \t]+$/,'')+(/\S$/.test(left.trimEnd())&&/^\S/.test(right)?' ':'')+right;
+  let replacement=flag ? joined(statement.slice(0,flag.index),statement.slice(flag.index+flag[0].length))
     : statement.slice(0,header[0].length)+(token ? ` ${token}` : '')+statement.slice(header[0].length);
   // Pikchr has no boolean property that clears an arrow's default arrowhead.
   if (mode==='none' && object.kind==='arrow') replacement=replacement.slice(0,header[0].length-5)+'line'+replacement.slice(header[0].length);
   return {...candidate(source,object,statement,replacement,'Change line termination'),selectId:object.id,targetKind:mode==='none' ? 'line' : object.kind};
+}
+
+// What a macro use draws, read from its statement inside the define body, for
+// the inspector's read-only rows. A colour clause Studio cannot read as a
+// literal comes back as its source text; null means Pikchr's default.
+export function macroProperties(source, object) {
+  if (typeof source !== 'string' || !(object?.span?.start >= 0)) return null;
+  const statement = source.slice(byteOffsetToIndex(source,object.span.start), byteOffsetToIndex(source,object.span.end));
+  const labels = [...statement.matchAll(/"(?:\\.|[^"\\])*"/g)];
+  const colour = key => { const {clauses,written} = attributeClauses(statement,key); return written ?? (clauses.length ? colourValue(clauses.at(-1).value) : null); };
+  const first = labels[0], after = first ? TEXT_ATTRS_AFTER.exec(statement.slice(first.index+first[0].length))[0] : '';
+  return {
+    text: labels.map(label=>label[0].slice(1,-1)).join('\n'),
+    fill: colour('fill'), color: colour('color'),
+    thickness: effectiveThickness(maskCode(statement),documentThickness(source)).value ?? null,
+    words: after.trim().split(/\s+/).filter(Boolean),
+  };
 }
