@@ -1,32 +1,37 @@
 import {applyPatch,byteOffsetToIndex,candidates,editability} from './edits.js?v=20261106f';
-import {readProperties,propertyCandidate,isColour} from './properties.js?v=20261106f';
+import {readProperties,propertyCandidate,isColour,attributeClauses,lockedMessage} from './properties.js?v=20261106f';
 import {literalRoute,translateLineCandidate} from './free-lines.js?v=20261106f';
 import {connectorStyleCandidate} from './route-styles.js?v=20261106f';
 
 const bytes=s=>new TextEncoder().encode(s).length;
 const masked=s=>s.replace(/"(?:\\.|[^"\\])*"/g,m=>' '.repeat(m.length));
-const number='[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)';
-const aliases={width:'(?:width|wid)',height:'(?:height|ht)',fill:'fill',color:'color',thickness:'thickness'};
-
+// Replace (or with null remove) one style attribute. Every literal clause of
+// the key goes, so the new value is the only one; a clause Studio cannot read
+// as a literal refuses the edit with its source text (see attributeClauses).
 function setAttribute(statement,key,value) {
-  const mask=masked(statement), keyword=new RegExp(`\\b${aliases[key]}\\b`,'g');
-  const colour=key==='fill'||key==='color';
-  const literal=colour?'(0x[0-9a-fA-F]{6}|[A-Za-z]+)':`${number}(?:cm|mm|in|px|pt|%)?`;
-  const matches=[...mask.matchAll(new RegExp(`\\b${aliases[key]}\\s+${literal}(?=\\s|$)(?!\\s*[+*/-])`,'g'))].filter(match=>!colour||isColour(match[1]));
-  if(matches.length!==[...mask.matchAll(keyword)].length) throw new Error(`The ${key} expression must be edited in source.`);
+  const {clauses,written}=attributeClauses(statement,key);
+  if(written)throw new Error(lockedMessage(written));
+  const matches=[...clauses];
   // A new thickness replaces Pikchr's thick/thin multipliers as well.
-  if(key==='thickness')matches.push(...mask.matchAll(/\b(?:thick|thin)\b/g));
-  for(const match of matches.sort((a,b)=>b.index-a.index))statement=statement.slice(0,match.index).replace(/[ \t]+$/,'')+statement.slice(match.index+match[0].length);
-  // null removes the property, so Pikchr's default applies again.
+  if(key==='thickness')matches.push(...[...masked(statement).matchAll(/\b(?:thick|thin)\b/g)].map(m=>({index:m.index,end:m.index+m[0].length})));
+  for(const match of matches.sort((a,b)=>b.index-a.index))statement=statement.slice(0,match.index).replace(/[ \t]+$/,'')+statement.slice(match.end);
   // null removes the property, so Pikchr's default applies again; thin and
   // thick are Pikchr's own words for the preset weights.
   return value===null?statement.trimEnd():statement.trimEnd()+(key==='thickness'&&weightWords.includes(value)?` ${value}`:` ${key} ${value}`);
 }
 
+// What each style control would refuse, as the source text it would name:
+// the inspector disables just that control instead of erroring on use.
+export function styleLocks(source,object,scene) {
+  if(connectorKinds.includes(object.kind))return {fill:null,color:null,thickness:null};
+  const {statement}=readProperties(source,object,scene);
+  return Object.fromEntries(['fill','color','thickness'].map(key=>[key,attributeClauses(statement,key).written]));
+}
+
 const weightWords=['thin','thick'];
 const colourError='Use a colour name Pikchr knows, such as red or lightblue, or a six-digit hex value such as #1a7f37.';
 export function changeAppearance(source,object,scene,values) {
-  const input={...values,color:values.color??values.stroke};
+  const input={...values,color:'color' in values?values.color:values.stroke};
   for(const key of ['width','height'])if(input[key]!==undefined&&input[key]!==''&&connectorKinds.includes(object.kind))
     throw new Error('Resize shapes, not connector paths.');
   // Splines and arcs have no single-object style editor, but a group selection
@@ -57,7 +62,7 @@ export function changeAppearance(source,object,scene,values) {
   let replacement=statement;
   for(const key of ['width','height','fill','color','thickness']) {
     let value=input[key];if(value===undefined||value==='')continue;
-    if(key==='thickness'&&(value===null||weightWords.includes(value))){replacement=setAttribute(replacement,key,value);continue;}
+    if(value===null&&key!=='width'&&key!=='height'||key==='thickness'&&weightWords.includes(value)){replacement=setAttribute(replacement,key,value);continue;}
     if(key==='fill'||key==='color') {
       if(!isColour(value))throw new Error(colourError);
       value=value.replace('#','0x');

@@ -238,7 +238,8 @@ body.layout-canvas .cl-adding #mobile-add[aria-pressed=true],body.layout-canvas.
 
 /* ⋯ inspector popover */
 body.layout-canvas .cl-more{width:min(340px,calc(100vw - 24px));padding-top:8px}
-body.layout-canvas .cl-popover-head{position:sticky;top:-8px;z-index:1;display:flex;align-items:center;gap:8px;margin:-8px -14px 8px;padding:10px 8px 8px 14px;background:var(--cl-chip);border-bottom:1px solid var(--cl-line)}
+/* Above pressed segmented buttons (z-index 1) that scroll under it. */
+body.layout-canvas .cl-popover-head{position:sticky;top:-8px;z-index:3;display:flex;align-items:center;gap:8px;margin:-8px -14px 8px;padding:10px 8px 8px 14px;background:var(--cl-chip);border-bottom:1px solid var(--cl-line)}
 body.layout-canvas .cl-popover-head .cl-muted{flex:1}
 body.layout-canvas .cl-more .cl-grab{display:none}
 body.layout-canvas .cl-more-title{flex:1;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -341,12 +342,14 @@ body.layout-canvas .cl-more #inspector :is(.appearance-editor,.inspector-routes,
 body.layout-canvas .cl-more #inspector>.property-error:empty{display:none}
 /* Style: swatch rows for colour, presets plus a number for thickness. Every
    choice applies at once through the validated preview path. */
-body.layout-canvas .cl-more .appearance-form{display:flex;flex-direction:column;gap:6px}
-body.layout-canvas .cl-more .style-row{align-items:start}
-body.layout-canvas .cl-more .style-row>.row-name{padding-top:6px}
-body.layout-canvas .cl-more .style-row>:is(.style-swatches,.style-thickness){grid-column:2/-1;min-width:0}
-body.layout-canvas .cl-more .style-swatches{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
-body.layout-canvas .cl-more .style-swatch{flex:none;width:26px;height:26px;min-width:26px;min-height:26px;padding:0;border-radius:50%;
+body.layout-canvas .cl-more .appearance-form{display:flex;flex-direction:column;gap:8px}
+/* Each control's name sits above a full-width row, so eight swatches and the
+   Custom swatch share one line at the inspector's width. The row is padded by
+   the ring's width so a pressed or focused ring is never clipped. */
+body.layout-canvas .cl-more .style-row{grid-template-columns:minmax(0,1fr);gap:2px;align-items:start}
+body.layout-canvas .cl-more .style-row>:is(.style-swatches,.style-thickness){grid-column:1;min-width:0}
+body.layout-canvas .cl-more .style-swatches{display:flex;flex-wrap:nowrap;align-items:center;gap:6px;padding:4px}
+body.layout-canvas .cl-more .style-swatch{flex:none;position:relative;width:26px;height:26px;min-width:26px;min-height:26px;padding:0;border-radius:50%;
   border:1px solid var(--cl-line);background:var(--swatch,transparent);box-shadow:none;cursor:pointer}
 body.layout-canvas .cl-more .style-swatch[data-colour=none]{background:linear-gradient(135deg,transparent calc(50% - 1px),var(--cl-bad) calc(50% - 1px),var(--cl-bad) calc(50% + 1px),transparent calc(50% + 1px)),var(--cl-canvas)}
 body.layout-canvas .cl-more .style-swatch:hover{border-color:var(--cl-muted)}
@@ -354,34 +357,58 @@ body.layout-canvas .cl-more .style-swatch:hover{border-color:var(--cl-muted)}
 body.layout-canvas .cl-more button.style-swatch:hover:not(:disabled){background:var(--swatch,transparent)}
 body.layout-canvas .cl-more button.style-swatch[data-colour=none]:hover:not(:disabled){background:linear-gradient(135deg,transparent calc(50% - 1px),var(--cl-bad) calc(50% - 1px),var(--cl-bad) calc(50% + 1px),transparent calc(50% + 1px)),var(--cl-canvas)}
 body.layout-canvas .cl-more .style-swatch[aria-pressed=true]{border-color:var(--cl-accent);box-shadow:0 0 0 2px var(--cl-chip),0 0 0 4px var(--cl-accent)}
-body.layout-canvas .cl-more .style-custom{min-height:26px;padding:0 8px;font-size:12px;border-radius:13px}
-body.layout-canvas .cl-more .style-custom[aria-pressed=true]{background:var(--cl-accent-bg);border-color:var(--cl-accent);color:var(--cl-accent);font-weight:600}
-body.layout-canvas .cl-more .style-custom-fields{display:flex;align-items:center;gap:6px;margin-left:76px;min-width:0}
+body.layout-canvas .cl-more .style-swatch:focus-visible{outline:2px solid var(--cl-accent);outline-offset:2px}
+body.layout-canvas .cl-more .style-swatch:disabled{opacity:.45;cursor:not-allowed}
+/* Custom is a swatch too: a pipette that opens the picker and field below. */
+body.layout-canvas .cl-more .style-custom,body.layout-canvas .cl-more button.style-custom:hover:not(:disabled){display:inline-grid;place-items:center;background:var(--cl-canvas);color:var(--cl-ink)}
+body.layout-canvas .cl-more .style-custom svg{width:15px;height:15px}
+body.layout-canvas .cl-more .style-custom[aria-pressed=true]{color:var(--cl-accent)}
+body.layout-canvas .cl-more .style-custom-fields{display:flex;align-items:center;gap:6px;margin-left:4px;min-width:0}
 body.layout-canvas .cl-more .style-custom-fields[hidden]{display:none}
 body.layout-canvas .cl-more .appearance-editor .style-custom-fields input[type=color]{flex:none;width:34px;height:30px;padding:2px;border:1px solid var(--cl-line);border-radius:6px;background:var(--cl-canvas);cursor:pointer}
 body.layout-canvas .cl-more .appearance-editor .style-custom-fields input[type=text]{flex:1 1 auto;width:auto;min-width:0;max-width:180px;padding:5px 8px}
 body.layout-canvas .cl-more .appearance-editor input[aria-invalid=true]{border-color:var(--cl-bad);outline-color:var(--cl-bad)}
-body.layout-canvas .cl-more .style-thickness{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+body.layout-canvas .cl-more .style-thickness{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:0 4px}
 body.layout-canvas .cl-more .style-number{display:inline-flex;align-items:center;gap:4px}
 body.layout-canvas .cl-more .appearance-editor .style-number input{width:72px;padding:5px 6px}
 body.layout-canvas .cl-more .style-unit,body.layout-canvas .cl-more .style-hint{font-size:12px;color:var(--cl-muted)}
-body.layout-canvas .cl-more .style-hint{margin:0 0 0 76px}
-body.layout-canvas .cl-more .style-error{margin:2px 0 0 76px;font-size:12px;color:var(--cl-bad)}
+body.layout-canvas .cl-more .style-hint{margin:0 0 0 4px}
+body.layout-canvas .cl-more .style-error{margin:2px 0 0 4px;font-size:12px;color:var(--cl-bad)}
+body.layout-canvas .cl-more .style-locked{margin:2px 0 0 4px;font-size:12px;line-height:1.45;color:var(--cl-muted)}
+body.layout-canvas .cl-more .style-reveal{min-height:26px;padding:0 8px;font-size:12px;border-radius:6px}
 body.layout-canvas .cl-more .style-error[hidden]{display:none}
-body.layout-canvas .cl-more .style-warning{margin:2px 0 0 76px;font-size:12px;color:var(--cl-warn)}
+body.layout-canvas .cl-more .style-warning{margin:2px 0 0 4px;font-size:12px;color:var(--cl-warn)}
 body.layout-canvas .cl-more .style-warning[hidden]{display:none}
 body.layout-canvas .cl-more .style-preview{display:inline-flex;align-items:center;gap:4px;margin-left:auto;font-weight:400;font-size:12px;color:var(--cl-muted)}
 body.layout-canvas .cl-more .style-dot{width:14px;height:14px;border-radius:50%;border:1px solid var(--cl-line);background:var(--swatch,transparent)}
 body.layout-canvas .cl-more .style-dot[data-colour=none]{background:linear-gradient(135deg,transparent 45%,var(--cl-bad) 45%,var(--cl-bad) 55%,transparent 55%),var(--cl-canvas)}
 body.layout-canvas .cl-more .style-weight{margin-left:2px;font-variant-numeric:tabular-nums}
-@media (max-width:700px){
-  body.layout-canvas .cl-more .style-row{grid-template-columns:1fr}
-  body.layout-canvas .cl-more .style-row>.row-name{padding-top:0}
-  body.layout-canvas .cl-more .style-row>:is(.style-swatches,.style-thickness){grid-column:1}
-  body.layout-canvas .cl-more :is(.style-custom-fields,.style-hint,.style-error,.style-warning){margin-left:0}
-  body.layout-canvas .cl-more .style-swatch{width:32px;height:32px}
-  body.layout-canvas .cl-more .style-custom{min-height:32px}
+/* Text under Label: size, B / I / Mono and alignment, as in the text bar. */
+body.layout-canvas .cl-more .text-style-group{display:flex;flex-direction:column;gap:6px}
+body.layout-canvas .cl-more .text-style-line{grid-column:2/-1;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+body.layout-canvas .cl-more .text-style-faces{display:inline-flex;gap:4px}
+body.layout-canvas .cl-more .text-style-toggle{min-width:30px;min-height:30px;padding:0 8px;font-size:13px;border-radius:7px}
+body.layout-canvas .cl-more .text-style-toggle[aria-pressed=true]{background:var(--cl-accent-bg);border-color:var(--cl-accent);color:var(--cl-accent)}
+body.layout-canvas .cl-more .cl-seg>button svg{width:16px;height:16px;vertical-align:middle;pointer-events:none}
+body.layout-canvas .cl-more .text-style-group .style-hint{margin-left:76px}
+/* Touch: every swatch and toggle is a 44 px target. Swatches draw a 30 px
+   dot inside it and wrap into an even grid. */
+@media (pointer:coarse){
+  body.layout-canvas .cl-more .style-swatches{display:grid;grid-template-columns:repeat(5,44px);gap:4px}
+  body.layout-canvas .cl-more .style-swatch,body.layout-canvas .cl-more button.style-swatch:hover:not(:disabled),
+  body.layout-canvas .cl-more button.style-swatch[data-colour=none]:hover:not(:disabled){width:44px;height:44px;min-width:44px;min-height:44px;border:0;background:none;box-shadow:none}
+  body.layout-canvas .cl-more .style-swatch::before{content:'';position:absolute;inset:7px;border-radius:50%;border:1px solid var(--cl-line);background:var(--swatch,transparent)}
+  body.layout-canvas .cl-more .style-swatch[data-colour=none]::before{background:linear-gradient(135deg,transparent calc(50% - 1px),var(--cl-bad) calc(50% - 1px),var(--cl-bad) calc(50% + 1px),transparent calc(50% + 1px)),var(--cl-canvas)}
+  body.layout-canvas .cl-more .style-custom::before{background:var(--cl-canvas)}
+  body.layout-canvas .cl-more .style-custom svg{position:relative;width:18px;height:18px}
+  body.layout-canvas .cl-more .style-swatch[aria-pressed=true]{box-shadow:none}
+  body.layout-canvas .cl-more .style-swatch[aria-pressed=true]::before{border-color:var(--cl-accent);box-shadow:0 0 0 2px var(--cl-chip),0 0 0 4px var(--cl-accent)}
+  body.layout-canvas .cl-more :is(.cl-seg>button,.text-style-toggle,.style-reveal){min-height:44px;min-width:44px}
 }
+@media (max-width:700px){
+  body.layout-canvas .cl-more .text-style-group .style-hint{margin-left:0}
+}
+
 body.layout-canvas .cl-context .cl-endpoint-label{font-size:12px;padding:0 2px 0 6px}
 body.layout-canvas .cl-context .cl-endpoint-label[hidden]{display:none}
 

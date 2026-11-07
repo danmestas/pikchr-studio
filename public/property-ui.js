@@ -1,5 +1,6 @@
-import {inspectProperties,isColour,documentThickness} from './properties.js?v=20261106f';
+import {inspectProperties,isColour,documentThickness,lockedMessage} from './properties.js?v=20261106f';
 import {changeAppearance} from './object-actions.js?v=20261106f';
+import {textStyle,textStyleCandidate,textSizes} from './text-style.js?v=20261106f';
 let appearanceOpen=false;
 // Pikchr colour names for the swatches. Every ink keeps at least 4.5:1 (WCAG AA)
 // against both canvases (#ffffff, #161b22) and every fill, in light mode and in
@@ -30,6 +31,18 @@ function typedColour(text){
   return isColour(full)?full:null;
 }
 const el=(tag,attrs={},...children)=>{const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs))e.setAttribute(k,v);e.append(...children);return e;};
+// Lucide paths (lucide.dev, ISC): 24-unit line art at the chrome's stroke.
+const ICONS={
+  pipette:['m2 22 1-1h3l9-9','M3 21v-3l9-9','m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z'],
+  alignStart:['M21 5H3','M15 12H3','M17 19H3'],alignCenter:['M21 5H3','M17 12H7','M19 19H5'],alignEnd:['M21 5H3','M21 12H9','M21 19H7'],
+};
+const NS='http://www.w3.org/2000/svg';
+function icon(name){
+  const svg=document.createElementNS(NS,'svg');
+  for(const[k,v]of Object.entries({viewBox:'0 0 24 24',width:'16',height:'16',fill:'none',stroke:'currentColor','stroke-width':'1.7','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true',focusable:'false'}))svg.setAttribute(k,v);
+  for(const d of ICONS[name]){const path=document.createElementNS(NS,'path');path.setAttribute('d',d);svg.append(path);}
+  return svg;
+}
 
 // Pikchr recolours in dark mode, so a swatch painted with its raw name would
 // lie. The dark colour comes from Pikchr itself: one probe render per batch of
@@ -92,13 +105,15 @@ export function propertyEditor({object,scene,source,propose,status,valid}){
       document.getElementById('edit-selected')?.click();
     };
     label.append(heading,preview,button);parts.label=label;
+    parts.text=textControls({object,scene,source,propose,status,valid});
   }
   const appearance=document.createElement('details'),summary=document.createElement('summary');appearance.className='appearance-editor';appearance.open=appearanceOpen;appearance.ontoggle=()=>{if(appearance.isConnected)appearanceOpen=appearance.open;};summary.append('Style');appearance.append(summary);
   // Connectors have no fill, whatever their kind; text has neither fill nor a
   // stroke of its own, so only its colour is offered.
   const {body,preview}=styleControls({
     fill:!['arrow','line','spline','arc','move','text'].includes(object.kind),stroke:object.kind!=='text',
-    current:props,base:documentThickness(source),
+    current:props,base:documentThickness(source),locked:props.locked,
+    reveal:()=>document.getElementById('show-source-selected')?.click(),
     apply:values=>{if(!valid())throw new Error('Render the current source before editing the style.');propose([changeAppearance(source,object,scene,values)]);},
   });
   summary.append(preview);
@@ -107,35 +122,84 @@ export function propertyEditor({object,scene,source,propose,status,valid}){
   parts.error=error;return parts;
 }
 
+// The Text group under Label: size, weight, slant, Pikchr's one font choice
+// (monospace) and alignment, the same rewrites as the canvas text bar. Text
+// colour is Pikchr's color, which also draws the outline, so it stays in
+// Style's Line & text row instead of appearing twice.
+const TEXT_KINDS=['box','cylinder','circle','ellipse','oval','diamond','file','text'];
+const SIZE_NAMES={small:['S','Small'],normal:['M','Medium'],big:['L','Large'],bigger:['XL','Extra large']};
+function textControls({object,scene,source,propose,status,valid}){
+  if(!TEXT_KINDS.includes(object.kind))return null;
+  let style;try{style=textStyle(source,object,scene);}catch{return null;}
+  if(!style)return null;
+  const apply=change=>{
+    if(!valid()){status('Render the current source before styling the text.');return;}
+    try{propose([textStyleCandidate(source,object,scene,change)]);}catch(error){status(error.message);}
+  };
+  const toggle=(label,text,pressed,change,css)=>{
+    const b=el('button',{type:'button',class:'text-style-toggle','aria-pressed':String(pressed),'aria-label':label,title:label},text);
+    if(css)b.style.cssText=css;b.onclick=()=>apply(change(!pressed));return b;
+  };
+  const sizes=el('div',{class:'cl-seg',role:'group','aria-label':'Text size'});
+  for(const size of textSizes){
+    const [text,title]=SIZE_NAMES[size];
+    const b=el('button',{type:'button','aria-pressed':String(style.size===size),title},text);
+    b.onclick=()=>{if(style.size!==size)apply({size});};sizes.append(b);
+  }
+  const faces=el('div',{class:'text-style-faces',role:'group','aria-label':'Font'},
+    toggle('Bold','B',style.bold,bold=>({bold}),'font-weight:700'),
+    toggle('Italic','I',style.italic,italic=>({italic}),'font-style:italic'),
+    toggle('Monospace','Mono',style.mono,mono=>({mono}),'font-family:ui-monospace,SFMono-Regular,Menlo,monospace'));
+  const aligns=el('div',{class:'cl-seg',role:'group','aria-label':'Text alignment'});
+  for(const [align,name,label] of [['left','alignStart','Align left'],['center','alignCenter','Align center'],['right','alignEnd','Align right']]){
+    const b=el('button',{type:'button','aria-pressed':String(style.align===align),'aria-label':label,title:label},icon(name));
+    b.onclick=()=>{if(style.align!==align)apply({align});};aligns.append(b);
+  }
+  const hint=el('p',{class:'style-hint'},object.kind==='text'?'Colour: Text under Style.':'Colour: Line & text under Style sets the label and outline together.');
+  return el('div',{class:'text-style-group',role:'group','aria-label':'Text style'},
+    el('div',{class:'inspector-row'},el('span',{class:'row-name'},'Text'),sizes),
+    el('div',{class:'inspector-row'},el('span',{class:'row-name'}),el('div',{class:'text-style-line'},faces,aligns)),hint);
+}
+
 // Colour swatches, a custom colour and thickness presets, shared by the
 // single-object and group Style sections. `current` holds fill, color,
 // thickness (effective inches) and thicknessSet; null means the selection
 // disagrees. Each choice calls apply(values) at once, which proposes through
 // the validated path or throws; a value equal to the current one does nothing.
-export function styleControls({fill,stroke,current,base,apply}){
+export function styleControls({fill,stroke,current,base,apply,locked={},reveal=null}){
   const body=el('div',{class:'appearance-form'}),preview=el('span',{class:'style-preview','aria-hidden':'true'});
+  // A value written as an expression disables only its own control, with a
+  // calm note naming the source text and a way to it. Never an error.
+  const lockNote=written=>{
+    const note=el('p',{class:'style-locked',role:'note'},lockedMessage(written));
+    if(reveal){const b=el('button',{type:'button',class:'style-reveal'},'Show in source');b.onclick=reveal;note.append(' ',b);}
+    return note;
+  };
   const request=(note,values)=>{
     note.textContent='';note.hidden=true;
     try{apply(values);return true;}catch(e){note.textContent=e.message;note.hidden=false;return false;}
   };
   const colourRow=(key,title,value,palette,hint,partner)=>{
-    const role=key==='fill'?'fill':'color';
-    const lower=title.toLowerCase(),mixed=value===null;
+    const role=key==='fill'?'fill':'color',lock=locked?.[key]||null;
+    const lower=title.toLowerCase(),mixed=value===null||!!lock;
     const note=el('p',{class:'style-error',role:'alert',hidden:''}),warning=el('p',{class:'style-warning',role:'status',hidden:''});
     const group=el('div',{class:'style-swatches',role:'group','aria-label':title});
     const custom=!mixed&&!palette.some(c=>same(c,value));
     for(const colour of palette){
       const b=el('button',{type:'button',class:'style-swatch','data-colour':colour,'aria-label':`${title} ${colour}`,title:colour,'aria-pressed':String(!mixed&&!custom&&same(colour,value))});
+      b.disabled=!!lock;
       b.onclick=()=>{if(mixed||!same(colour,value))request(note,{[key]:colour});};
       group.append(b);
     }
-    const more=el('button',{type:'button',class:'style-custom','aria-label':`Custom ${lower} colour`,'aria-expanded':String(custom),'aria-pressed':String(custom)},'Custom…');
+    const more=el('button',{type:'button',class:'style-swatch style-custom','aria-label':`Custom ${lower} colour`,title:'Custom colour','aria-expanded':String(custom),'aria-pressed':String(custom)},icon('pipette'));
+    more.disabled=!!lock;
     group.append(more);
     const picker=el('input',{type:'color','aria-label':`${title} colour picker`});picker.value=hex(mixed?'':value);
     const text=el('input',{type:'text','aria-label':`${title} colour value`,placeholder:mixed?'mixed: #rrggbb or name':'#rrggbb or name',spellcheck:'false',autocomplete:'off',autocapitalize:'off'});
     text.value=custom?value:'';
     const fields=el('div',{class:'style-custom-fields'},picker,text);fields.hidden=!custom;
-    more.onclick=()=>{fields.hidden=!fields.hidden;more.setAttribute('aria-expanded',String(!fields.hidden));if(!fields.hidden)text.focus();};
+    // Opening Custom shows the picker and field; focus stays on the button.
+    more.onclick=()=>{fields.hidden=!fields.hidden;more.setAttribute('aria-expanded',String(!fields.hidden));};
     const commit=raw=>{
       const typed=typedColour(raw);
       if(!raw.trim()){text.removeAttribute('aria-invalid');note.hidden=true;return;}
@@ -149,6 +213,7 @@ export function styleControls({fill,stroke,current,base,apply}){
     picker.onchange=()=>commit(picker.value);
     const row=el('div',{class:'inspector-row style-row'},el('span',{class:'row-name'},title),group);
     const box=el('div',{class:'style-control'},row,fields);
+    if(lock)box.append(lockNote(lock));
     if(hint)box.append(el('p',{class:'style-hint'},hint));
     box.append(warning,note);
     const dot=el('span',{class:'style-dot','data-colour':mixed?'mixed':value});
@@ -184,7 +249,7 @@ export function styleControls({fill,stroke,current,base,apply}){
     stroke?'Pikchr’s color sets the outline and label together.':null,()=>fill?(current.fill===null?'none':current.fill??'none'):'none'));
   if(stroke){
     // effective is undefined when the source uses an expression Studio cannot read.
-    const effective=current.thickness,known=typeof effective==='number';
+    const effective=current.thickness,known=typeof effective==='number',lock=locked?.thickness||null;
     const note=el('p',{class:'style-error',role:'alert',hidden:''});
     const presets=el('div',{class:'cl-seg',role:'group','aria-label':'Thickness presets'});
     for(const[name,word,factor]of PRESETS){
@@ -192,11 +257,12 @@ export function styleControls({fill,stroke,current,base,apply}){
       const b=el('button',{type:'button','aria-pressed':String(on),title:word?`${word}: ${value} in`:`Default: ${value} in`},name);
       // Normal removes thickness, thick and thin so the default applies.
       b.onclick=()=>{if(!on)request(note,{thickness:word});};
-      presets.append(b);
+      b.disabled=!!lock;presets.append(b);
     }
     const input=el('input',{type:'number',step:'0.005',min:'0.001',inputmode:'decimal','aria-label':'Thickness in inches',
       placeholder:effective===null?'mixed':String(round(base))});
     if(known&&current.thicknessSet)input.value=String(round(effective));
+    input.disabled=!!lock;
     const commit=()=>{
       const raw=input.value.trim();
       if(raw===''||known&&Math.abs(Number(raw)-effective)<1e-9)return;
@@ -207,7 +273,7 @@ export function styleControls({fill,stroke,current,base,apply}){
     const unit=el('span',{class:'style-unit'},known&&!current.thicknessSet?'in · default':'in');
     const field=el('span',{class:'style-number'},input,unit);
     body.append(el('div',{class:'style-control'},
-      el('div',{class:'inspector-row style-row'},el('span',{class:'row-name'},'Thickness'),el('div',{class:'style-thickness'},presets,field)),note));
+      el('div',{class:'inspector-row style-row'},el('span',{class:'row-name'},'Thickness'),el('div',{class:'style-thickness'},presets,field)),...(lock?[lockNote(lock)]:[]),note));
     if(known)preview.append(el('span',{class:'style-weight'},`${round(effective)} in`));
   }
   return {body,preview};

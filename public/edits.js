@@ -75,6 +75,64 @@ function placementRange(statement, object) {
   return { start: statement.trimEnd().length, end: statement.trimEnd().length };
 }
 
+// Why candidates() has no move for an object, as a clause for the inspector
+// ("Moving is blocked: …"); '' when it can move. It follows placementRange's
+// rules step by step and quotes the source that stopped it.
+const MOVE_WORDS = /\b(?:define|same|at|with|from|to|then|above|below|left|right|of)\b/;
+const quoteSource = text => { const t = text.replace(/\s+/g, ' ').trim(); return t.length > 60 ? t.slice(0, 59) + '…' : t; };
+function unsafeToken(statement, masked, from) {
+  const tokens = [...masked.slice(from).matchAll(/\S+/g)];
+  const words = tokens.map(t => t[0]);
+  for (let i = 0; i < tokens.length; i++) {
+    const token = words[i];
+    const bad = /[()+*/$]/.test(token) || !safeAttributes(token) && !(colourNames.has(token.toLowerCase()) && ['fill','color'].includes(words[i-1]))
+      || (token === 'above' || token === 'below') && /^[A-Z]/.test(words[i+1] || '');
+    if (!bad) continue;
+    const start = from + (['fill','color','thickness','width','wid','height','ht','radius','rad','diameter'].includes(words[i-1]) ? tokens[i-1].index : tokens[i].index);
+    return statement.slice(start, from + tokens[i].index + token.length);
+  }
+  return null;
+}
+export function movementBlocked(source, object, scene) {
+  const why = editability(object, scene);
+  if (!why.editable) return why.reason.replace(/\.$/, '').replace(/^./, c => c.toLowerCase());
+  if (!movableKinds.includes(object.kind)) return `Studio moves boxes, circles, ellipses, ovals, cylinders, diamonds and text, not ${object.kind}s`;
+  if (!object.name) return 'this shape has no name';
+  if (candidates(source, object, scene, object.center).length) return '';
+  let statement;
+  try { statement = source.slice(byteOffsetToIndex(source, object.span.start), byteOffsetToIndex(source, object.span.end)); }
+  catch { return 'Studio can’t find where it is written'; }
+  const masked = maskedText(statement), trimmed = masked.trim();
+  if (/#/.test(trimmed)) return 'it has a comment on the same line';
+  if (/[\n\r]/.test(trimmed)) return 'its statement continues over several lines';
+  if (/;/.test(trimmed)) return 'it shares its line with another statement';
+  if (/[\[\]{}]/.test(trimmed)) return 'it contains a [ ] or { } block';
+  const header = masked.match(/^\s*([A-Z][A-Za-z0-9_]*):\s*(box|cylinder|circle|ellipse|oval|diamond|text)\b/);
+  if (!header) return 'its statement does not start with its name and type';
+  const body = masked.slice(header[0].length);
+  const placed = MOVE_WORDS.exec(body);
+  if (placed) {
+    const placement = parsePlacement(masked);
+    const rest = placement ? masked.slice(0, placement.start) + ' '.repeat(placement.end - placement.start) + masked.slice(placement.end) : null;
+    // A position Studio reads only in part (at A.n + (0, 2*h)) is still one
+    // expression to the author: quote all of it, from at or with onwards.
+    const operatorAfter = placement && /^\s*[-+*/(]/.test(masked.slice(placement.end));
+    if (!placement || operatorAfter || /\b(?:at|with|from|to|then|left|right|of|same|define)\b/.test(rest.slice(header[0].length))) {
+      const start = header[0].length + (/\b(?:with|at)\b/.exec(body) || placed).index;
+      let end = masked.length;
+      const stop = /\s(?=\b(?:fill|color|thickness|width|wid|height|ht|radius|rad|diameter|fit|dashed|dotted|invis|invisible|thin|thick|solid|behind|bold|italic|small|big|ljust|rjust|chop|aligned|mono|monospace)\b)/.exec(masked.slice(start));
+      if (stop) end = start + stop.index;
+      return `its position is an expression Studio can’t rewrite (\`${quoteSource(statement.slice(start, end))}\`)`;
+    }
+    const token = unsafeToken(statement, rest, header[0].length);
+    if (token) return `its attribute \`${quoteSource(token)}\` is an expression Studio can’t rewrite`;
+  } else {
+    const token = unsafeToken(statement, masked, header[0].length);
+    if (token) return `its attribute \`${quoteSource(token)}\` is an expression Studio can’t rewrite`;
+  }
+  return 'its placement is outside the forms Studio can rewrite';
+}
+
 // The one attribute vocabulary every rewrite module shares. Text-position words
 // (above/below) are attributes only when they do not start a placement.
 export const permittedAttributes = new Set(['fit','width','wid','height','ht','radius','rad','diameter','fill','color','thickness','dashed','dotted','invis','invisible','bold','italic','small','big','thin','thick','solid','behind','black','white','red','blue','green','yellow','gray','grey','none','ljust','rjust','above','below','chop','aligned','center']);

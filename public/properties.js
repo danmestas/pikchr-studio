@@ -60,14 +60,54 @@ function effectiveThickness(style,base){
   return {value,set};
 }
 
+// A style clause Studio can rewrite is the keyword and one literal. Pikchr
+// takes any expression after fill, color and thickness; a colour literal is
+// a colour name in any case, a hex number of any length (0xdfd is the number
+// 0x000dfd, not CSS shorthand) or a decimal number. Anything else (a variable,
+// arithmetic, another object's property) is reported with its source text,
+// so the one control it belongs to can say so instead of guessing.
+const KEYWORDS={width:'(?:width|wid)',height:'(?:height|ht)',fill:'fill',color:'color',thickness:'thickness'};
+const COLOUR_TOKEN='[+-]?(?:0[xX][0-9a-fA-F]+|\\d+(?:\\.\\d*)?|\\.\\d+)|[A-Za-z][A-Za-z0-9_]*';
+const LENGTH_TOKEN='[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:cm|mm|in|px|pt|%)?';
+export function colourValue(token){
+  if(typeof token!=='string')return null;
+  const hex=/^([+-]?)0x([0-9a-f]+)$/i.exec(token);
+  const number=hex?(hex[1]==='-'?-1:1)*parseInt(hex[2],16):/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(token)?Number(token):null;
+  if(number===null)return colourNames.has(token.toLowerCase())?token.toLowerCase():null;
+  if(!Number.isFinite(number))return null;
+  if(number<0)return 'none';
+  return '#'+(Math.round(number)%0x1000000).toString(16).padStart(6,'0');
+}
+export function attributeClauses(statement,key){
+  const masked=maskLabels(statement),colour=key==='fill'||key==='color',clauses=[];
+  // A keyword after a dot or an opening parenthesis reads another value
+  // (B.fill, (thickness)); it belongs to some other clause's expression.
+  for(const m of masked.matchAll(new RegExp(`(?<![.(\\w$@])${KEYWORDS[key]}\\b`,'g'))){
+    const clause=new RegExp(`^${KEYWORDS[key]}\\s+(${colour?COLOUR_TOKEN:LENGTH_TOKEN})(?=\\s|$)(?!\\s*(?:[+*/(]|-(?!>)))`).exec(masked.slice(m.index));
+    if(!clause||colour&&colourValue(clause[1])===null)return {clauses:[],written:writtenClause(statement,masked,m.index)};
+    clauses.push({index:m.index,end:m.index+clause[0].length,value:clause[1]});
+  }
+  return {clauses,written:null};
+}
+// The keyword and its whole expression as written, for the explanation.
+function writtenClause(statement,masked,index){
+  const operand='(?:\\([^()]*\\)|[^\\s()]+)';
+  const m=new RegExp(`^\\S+(?:\\s+${operand}(?:\\s*[-+*/]\\s*${operand})*)?`).exec(masked.slice(index));
+  return statement.slice(index,index+m[0].length).trim();
+}
+export const lockedMessage=written=>`Written as "${written}" in source, which Studio can’t rewrite. Edit it in Source (S).`;
+
 export function inspectProperties(source,object,scene) {
   const {labels,flags,statement} = read(source,object,scene);
   const style=maskLabels(statement);
   const weight=effectiveThickness(style,documentThickness(source));
-  const color=key=>{const value=style.match(new RegExp(`\\b${key}\\s+(0x[0-9a-fA-F]{6}|[A-Za-z]+)(?![\\w.$])`))?.[1];return value&&isColour(value)?value.toLowerCase().replace('0x','#'):undefined;};
+  const clauses=Object.fromEntries(['fill','color','thickness'].map(key=>[key,attributeClauses(statement,key)]));
+  // Pikchr applies attributes in order, so the last clause is the one drawn.
+  const color=key=>{const last=clauses[key].clauses.at(-1);return last?colourValue(last.value):undefined;};
   return {
     text: labels.map(label=>label[0].slice(1,-1)).join('\n'),
     width:object.bbox?.width,height:object.bbox?.height,fill:color('fill'),color:color('color'),stroke:color('color'),thickness:weight.value,thicknessSet:weight.set,
+    locked:{fill:clauses.fill.written,color:clauses.color.written,thickness:clauses.thickness.written},
     termination: ['line','arrow'].includes(object.kind)
       ? ({'<-':'start','->':'end','<->':'both'}[flags[0]?.[0]] || (object.kind === 'arrow' ? 'end' : 'none')) : null,
   };
