@@ -50,8 +50,8 @@ export function editingBlocked(object,capabilities){
   if(object.reason==='Nested object')return 'Editing is blocked: this object is inside a [ ] block. Edit it in source.';
   if(capabilities)return capabilities.endpoints||capabilities.route||capabilities.styles?null:'Editing is blocked: Studio cannot safely rewrite this connector’s source expression. Edit it in source.';
   if(object.editable)return null;
-  if(['box','circle','ellipse','oval','cylinder','diamond','text'].includes(object.kind)&&!object.name)return 'Moving is blocked: this shape has no name. Name it in source (for example A: box) to move it here.';
-  return 'Editing is blocked: Studio moves boxes, circles, ellipses, ovals, cylinders, diamonds and text. Edit this '+object.kind+' in source.';
+  if(object.moveRefusal)return 'Moving is blocked: '+object.moveRefusal[0].toLowerCase()+object.moveRefusal.slice(1);
+  return 'Editing is blocked: Studio can’t move this '+object.kind+' by dragging. Edit it in source.';
 }
 // Inspector rows for one connector: Start and End as code with Reconnect,
 // Reverse direction, and Heads. Every change is one validated candidate.

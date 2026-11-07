@@ -135,6 +135,10 @@ body.layout-canvas .cl-toast:not(:has(button)){position:fixed;width:1px;height:1
 body.layout-canvas .cl-note{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:12;max-width:min(560px,calc(100vw - 200px));
   background:var(--cl-chip);color:var(--cl-ink);border-radius:10px;padding:8px 12px;box-shadow:var(--cl-shadow);font-size:12px;opacity:1;transition:opacity .4s}
 body.layout-canvas .cl-note.cl-fade{opacity:0}
+/* Why a shape cannot be dragged: follows the pointer, then stays where it was released. */
+.drag-refusal{position:fixed;z-index:14;max-width:320px;background:var(--bg);color:var(--text);border:1px solid var(--error);border-left-width:4px;
+  border-radius:8px;padding:6px 10px;box-shadow:0 2px 10px var(--shadow);font-size:12px;line-height:1.4;pointer-events:none}
+.drag-refusal[hidden]{display:none}
 body.layout-canvas.cl-palette-bottom .cl-note{bottom:var(--cl-above-chips,124px)}
 /* Select multiple stays on until Done; the pill says so above undo and zoom. */
 body.layout-canvas .cl-multi-pill{left:50%;transform:translateX(-50%);bottom:var(--cl-above-chips,64px);gap:8px;padding:4px 4px 4px 12px;font-size:13px;white-space:nowrap}

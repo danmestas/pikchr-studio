@@ -1,4 +1,4 @@
-import {candidates,snap,applyPatch,byteOffsetToIndex,routeCandidates} from './edits.js?v=20261106f';
+import {candidates,snap,applyPatch,byteOffsetToIndex,routeCandidates,moveRefusal} from './edits.js?v=20261106f';
 import {routeStyleCandidates} from './route-styles.js?v=20261106f';
 import {correspondingObject} from './candidate-target.js?v=20261106f';
 import {alignmentGuides,gapMarks} from './guides.js?v=20261106f';
@@ -8,7 +8,7 @@ import {arrowEditor,connectorCapabilities,connectorLabel,connectorRows,editingBl
 import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20261106f';
 import {propertyEditor,styleControls,setSwatchTheme} from './property-ui.js?v=20261106f';
 import {fitText,canFitText,inspectProperties,readProperties,documentThickness} from './properties.js?v=20261106f';
-import {duplicateObject,deleteObjects,layoutObjects,moveObjects,pinMove,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20261106f';
+import {duplicateObject,deleteObjects,layoutObjects,moveObjects,settleMove,describe,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20261106f';
 import {decodeLinkSource,encodeLinkSource,linkFragment,linkPayload} from './link-import.js?v=20261106f';
 import {createDocumentStore} from './documents.js?v=20261106f';
 import {canvasNavigation,clampZoom} from './canvas-navigation.js?v=20261106f';
@@ -213,7 +213,9 @@ async function renderSource(preRendered=null){
     status($('diagram').querySelector('svg')?'Invalid source. Last valid diagram retained. '+FIX_SOURCE:'Invalid source. Nothing to show yet. '+FIX_SOURCE);return;}
   scene=result;
   if(manualEditBase!==null){if(manualEditBase!==text){undo.push(manualEditBase);redo.length=0;}manualEditBase=null;historyButtons();}
-  for(const o of scene.objects){if(o.kind==='text'&&candidates(text,o,scene,o.center).length)o.editable=true;if(o.editable&&!candidates(text,o,scene,o.center).length){o.editable=false;o.reason='Placement or attributes are outside the supported literal subset.';}}
+  // Movable means Studio can rewrite the shape's placement; any shape that
+  // cannot carries the specific reason, shown before a drag is dropped.
+  for(const o of scene.objects){const connector=['arrow','line','spline','arc','move'].includes(o.kind);o.moveRefusal=connector?'':moveRefusal(text,o,scene);o.editable=!connector&&!o.moveRefusal;}
   renderedSource=text;$('diagram').innerHTML=result.svg;diagramOwner=activeDocumentId;lastValid.set(activeDocumentId,{svg:result.svg,scene:result,source:text});$('diagram').classList.remove('stale','previewing');announceError('');
   modeHint();
   const matches=scene.objects.filter(o=>o.name&&o.name===(desiredName||name));
@@ -625,17 +627,22 @@ $('focus-selection').onclick=()=>{
   const [x,y,bw,bh]=svg.dataset.baseViewBox.split(/[ ,]+/).map(Number);
   zoom=clampZoom(Math.min(3,bw/Math.max(w*2,30),bh/Math.max(h*2,30)));pan={x:left+w/2-x-bw/2,y:top+h/2-y-bh/2};applyViewport();refreshHandles();
 };
-// Why a press on an object cannot drag it, in plain words with the way out.
-// Reasons come from the scene (native) or editability() (edit engine).
+// Why a press on an object cannot move it, in plain words with the way out.
+// The reason comes from the edit engine (moveRefusal), computed per render.
 function dragBlocked(o){
-  const reason=o?.reason||'';
-  if(/macro/i.test(reason))return 'This shape comes from a macro, so it can’t be dragged. Choose Detach from macro in the inspector to edit it on its own.';
-  if(/nested|group/i.test(reason))return 'This shape is inside a group, so it can’t be dragged on its own. Edit it in the source (S).';
-  if(/repeated names/i.test(reason))return 'Another object has the same name, so this one can’t be dragged. Rename it in the source (S).';
-  if(/origin/i.test(reason))return 'Studio can’t find where this object is written, so it can’t be dragged. Edit it in the source (S).';
-  if(o&&!o.name&&['box','circle','ellipse','oval','cylinder','diamond','text'].includes(o.kind))return 'This shape has no name, so it can’t be dragged. Name it in the source (S), for example A: box.';
-  return 'Only boxes, circles, ellipses, ovals, cylinders, diamonds and text can be dragged. Edit this '+(o?.kind||'object')+' in the source (S).';
+  const reason=o?.moveRefusal||(o&&scene?moveRefusal(renderedSource,o,scene):'')||'Studio can’t move this '+(o?.kind||'object')+'. Edit it in the source (S).';
+  return 'Can’t move: '+reason[0].toLowerCase()+reason.slice(1);
 }
+// A refused drag is shown before the drop: a not-allowed cursor and a badge
+// that follows the pointer. After release the badge stays by the shape until
+// the next press, so the reason does not vanish with a toast.
+const refusalBadge=document.createElement('div');refusalBadge.className='drag-refusal';refusalBadge.setAttribute('role','status');refusalBadge.hidden=true;document.body.append(refusalBadge);
+function showRefusal(text,x,y){
+  refusalBadge.textContent=text;refusalBadge.hidden=false;
+  const w=refusalBadge.offsetWidth,h=refusalBadge.offsetHeight;
+  refusalBadge.style.left=Math.max(8,Math.min(innerWidth-w-8,x+14))+'px';refusalBadge.style.top=Math.max(8,Math.min(innerHeight-h-8,y+18))+'px';
+}
+function hideRefusal(){refusalBadge.hidden=true;}
 function bindDiagram(svg){
   svg.ondblclick=e=>{
     // Pointer capture can retarget dblclick to the SVG root. Hit-test the
@@ -690,7 +697,9 @@ function bindDiagram(svg){
   }
   let drag=null;
   cancelCanvasEdit=()=>{drag=null;endLiveDrag();svg.querySelector('.studio-overlay')?.removeAttribute('transform');directTools?.cancel(false);};
+  let refused=null;
   svg.onpointerdown=e=>{
+    hideRefusal();
     if(e.target.closest('input,textarea,select,.canvas-overlay'))return;
     // The diagram is a manipulation surface, including inspect-only objects.
     // Block native text selection before any unsupported/stale early return.
@@ -709,14 +718,17 @@ function bindDiagram(svg){
     if(!o?.editable){
       const capabilities=connectorCapabilities({object:o,scene,source:renderedSource});
       const connector=capabilities&&['arrow','line','spline','arc'].includes(o.kind);
-      const message=/nested/i.test(o?.reason||'')
-        ?'This shape is inside a group and is inspect-only. Choose Pipeline and Load example to try dragging editable shapes.'
-        :connector&&capabilities.endpoints?'Drag a blue end handle to reconnect. Dragging the line only selects it.'
+      const message=connector&&capabilities.endpoints?'Drag a blue end handle to reconnect. Dragging the line only selects it.'
           :connector&&capabilities.route?'Use Waypoints in the inspector to move a bend. Dragging the line only selects it.'
           :connector&&capabilities.styles?'Use Style or Suggested routes in the inspector. Dragging the line only selects it.'
           :connector?'This connector is inspect-only here: edit its endpoints or route in source.'
           :dragBlocked(o);
-      status(message);document.querySelector('.diagram-pane .hint').textContent=message;return;
+      status(message);document.querySelector('.diagram-pane .hint').textContent=message;
+      if(!connector&&o){
+        refused={pointerId:e.pointerId,message,clientX:e.clientX,clientY:e.clientY,moved:false};
+        try{svg.setPointerCapture(e.pointerId);}catch{}
+      }
+      return;
     }
     document.querySelector('.diagram-pane .hint').textContent='Release to preview ranked source edits. Accept one, or press Escape to keep the original.';
     e.preventDefault();clearProposal();
@@ -725,6 +737,9 @@ function bindDiagram(svg){
     try{svg.setPointerCapture(e.pointerId);}catch{drag=null;}
   };
   svg.onpointermove=e=>{
+    if(refused&&refused.pointerId===e.pointerId&&(refused.moved||Math.hypot(e.clientX-refused.clientX,e.clientY-refused.clientY)>3)){
+      refused.moved=true;svg.style.cursor='not-allowed';showRefusal(refused.message,e.clientX,e.clientY);return;
+    }
     if(!drag||drag.pointerId!==e.pointerId)return;
     const p=new DOMPoint(e.clientX,e.clientY).matrixTransform(svg.getScreenCTM().inverse()).matrixTransform(matrix().inverse());
     drag.raw={x:drag.object.center.x+p.x-drag.x,y:drag.object.center.y+p.y-drag.y};drag.alt=e.altKey;
@@ -736,6 +751,12 @@ function bindDiagram(svg){
     liveDragFrame(drag);
   };
   svg.onpointerup=e=>{
+    if(refused&&refused.pointerId===e.pointerId){
+      // The refusal stays put where the shape was released.
+      const r=refused;refused=null;svg.style.cursor='';
+      if(r.moved){status(r.message);showRefusal(r.message,e.clientX,e.clientY);}
+      return;
+    }
     if(!drag||drag.pointerId!==e.pointerId)return;const d=drag;drag=null;endLiveDrag();
     if(d.target&&Math.hypot(e.clientX-d.clientX,e.clientY-d.clientY)>3)suggest(d.object,d.target,!$('auto-apply').checked,{precise:!!d.precise,bringAlong:e.altKey||!!d.alt});
     // A click (no drag) on a member of a multi-selection selects just that
@@ -748,8 +769,8 @@ function bindDiagram(svg){
     if(e.key==='Escape'&&e.type==='keydown'){const id=drag.pointerId;drag=null;endLiveDrag();try{svg.releasePointerCapture(id);}catch{}svg.querySelector('.studio-overlay')?.removeAttribute('transform');drawOverlay();status('Move cancelled.');e.preventDefault();e.stopImmediatePropagation();return;}
     if(!drag.raw||e.key!=='Shift')return;applyDragConstraint(drag,e.type==='keydown',svg);liveDragFrame(drag);
   };
-  svg.onpointercancel=()=>{drag=null;endLiveDrag();clearProposal();drawOverlay();};
-  svg.onlostpointercapture=()=>{if(drag){drag=null;endLiveDrag();drawOverlay();}};
+  svg.onpointercancel=()=>{if(refused){refused=null;svg.style.cursor='';hideRefusal();}drag=null;endLiveDrag();clearProposal();drawOverlay();};
+  svg.onlostpointercapture=()=>{if(refused){refused=null;svg.style.cursor='';}if(drag){drag=null;endLiveDrag();drawOverlay();}};
 }
 // Capture phase, registered before the canvas tools attach their own
 // Enter/Escape capture handlers, so a live preview owns these keys.
@@ -776,7 +797,7 @@ $('diagram').addEventListener('keydown',e=>{
 },true);
 $('diagram').addEventListener('keydown',e=>{
   if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();if(selectedIds.size&&sourceInvalid())status(FIX_SOURCE);else $('delete-selected').click();return;}
-  if(e.key==='Escape'){panMode=false;$('pan-mode').setAttribute('aria-pressed','false');$('diagram').style.cursor='';cancelCanvasEdit();clearProposal();clearSelection();return;}
+  if(e.key==='Escape'){hideRefusal();panMode=false;$('pan-mode').setAttribute('aria-pressed','false');$('diagram').style.cursor='';cancelCanvasEdit();clearProposal();clearSelection();return;}
   const delta={ArrowLeft:[-.1,0],ArrowRight:[.1,0],ArrowUp:[0,.1],ArrowDown:[0,-.1]}[e.key],o=current();
   // Focus on a rendered object: arrows walk the object list. Focus on the
   // canvas itself: arrows nudge the selection.
@@ -799,8 +820,18 @@ function nudge(e,delta){
 }
 async function suggest(o,target,withPreview=false,{precise=!withPreview,bringAlong=false,keepForm=false}={}){
   let options;
-  try{options=selectedIds.size>1?[{...moveObjects(source.value,scene.objects.filter(n=>selectedIds.has(n.id)),scene,target.x-o.center.x,target.y-o.center.y,{pinDependents:!bringAlong}),selectionNames:scene.objects.filter(n=>selectedIds.has(n.id)).map(n=>n.name)}]:candidates(source.value,o,scene,target,{precise,keepForm}).slice(0,6).map(option=>bringAlong?option:pinMove(source.value,scene,option,[o.id]));}catch(e){status(e.message);return;}
-  if(!options.length){status('This placement expression is inspect-only. Try a named box with a literal at (x,y) clause.');drawOverlay();return;}
+  try{
+    if(selectedIds.size>1)options=[{...moveObjects(source.value,scene.objects.filter(n=>selectedIds.has(n.id)),scene,target.x-o.center.x,target.y-o.center.y,{pinDependents:!bringAlong}),selectionNames:scene.objects.filter(n=>selectedIds.has(n.id)).map(n=>n.name)}];
+    else{
+      // Each candidate is rendered and settled: shapes that would follow the
+      // moved one are pinned where they are, unless Alt brings them along.
+      const base=source.value,rev=revision,raw=candidates(base,o,scene,target,{precise,keepForm}).slice(0,6);
+      options=bringAlong?raw:(await Promise.all(raw.map(option=>settleMove(base,scene,option,o,render)))).filter(Boolean);
+      if(rev!==revision||base!==source.value)return;
+      if(raw.length&&!options.length){status('Can’t move '+describe(o,base)+' there: Studio could not keep the other shapes in place. Hold Alt to move them along, or edit the source (S).');drawOverlay();return;}
+    }
+  }catch(e){status(e.message);return;}
+  if(!options.length){status(dragBlocked(o));drawOverlay();return;}
   return withPreview&&selectedIds.size<=1?previewSuggestions(o,options):validateSuggestions(o,options);
 }
 // Live drag: while the pointer moves, render the top-ranked candidate for the
@@ -822,16 +853,18 @@ function liveDragFrame(d){
   // unless Alt is held, which lets Pikchr carry them along.
   try{option=selectedIds.size>1
     ?moveObjects(source.value,scene.objects.filter(n=>selectedIds.has(n.id)),scene,target.x-d.object.center.x,target.y-d.object.center.y,{pinDependents:!d.alt})
-    :candidates(source.value,d.object,scene,target,{precise:!!d.precise})[0];
-    if(option&&selectedIds.size<=1&&!d.alt)option=pinMove(source.value,scene,option,[d.object.id]);}catch{return;}
+    :candidates(source.value,d.object,scene,target,{precise:!!d.precise})[0];}catch{return;}
   if(!option)return;
   d.busy=true;
-  render(option.source).then(result=>{
+  const settle=selectedIds.size<=1&&!d.alt?settleMove(source.value,scene,option,d.object,render)
+    :render(option.source).then(result=>({...option,result}));
+  settle.then(settled=>{
     d.busy=false;
     if(liveDragState!==d)return;
-    if(!result.error&&result.svg)paintLiveDrag(d,option,result);
+    const result=settled?.result;
+    if(result&&!result.error&&result.svg)paintLiveDrag(d,settled,result);
     if(d.target!==target)liveDragFrame(d);
-  });
+  },()=>{d.busy=false;});
 }
 // Paint a rendered candidate over the committed diagram (which is hidden)
 // without replacing the root SVG, so pointer capture and overlays survive.
@@ -867,7 +900,7 @@ function paintLiveDrag(d,option,result){
   if(!paintLiveResult(result))return;
   const svg=$('diagram').querySelector('svg');
   d.painted=true;
-  const moved=result.objects.find(n=>n.kind===d.object.kind&&n.name===d.object.name);
+  const moved=result.objects.find(n=>n.id===d.object.id&&n.kind===d.object.kind);
   if(moved){
     const from=svgPoint(d.object.center),to=svgPoint(moved.center);
     svg.querySelector('.studio-overlay')?.setAttribute('transform','translate('+(to.x-from.x)+' '+(to.y-from.y)+')');
@@ -991,7 +1024,7 @@ async function previewSuggestions(o,options){
     if(g!==gesture||rev!==revision)return false;
     if(result.error||!result.svg){failure??=result.error||'Renderer returned no diagram.';continue;}
     if(!correspondingObject(result.objects,o,option))continue;
-    valid.push({...option,result,base,rev,subject:o.name||o.kind});
+    valid.push({...option,result,base,rev,subject:describe(o,base)});
   }
   if(g!==gesture)return false;
   if(!valid.length){const message=failure||'No valid placement was found for that drop point.';$('suggestions').textContent=message;status('Edit not applied. '+message);drawOverlay();return false;}
@@ -1095,7 +1128,7 @@ async function validateSuggestions(o,options,{reject}={}){
     if(g!==gesture||rev!==revision)return false;
     if(result.error||!result.svg){failures.push(result.error||'Renderer returned no diagram.');continue;}
     if(!option.clearSelection&&!correspondingObject(result.objects,o,option))continue;
-    valid.push({...option,result,base,rev,subject:o?.name||o?.kind||option.selectName});
+    valid.push({...option,result,base,rev,subject:o?describe(o,base):option.selectName});
   }
   if(g!==gesture)return false;
   $('suggestions').replaceChildren();

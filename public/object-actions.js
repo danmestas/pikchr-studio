@@ -141,19 +141,101 @@ function pinPatches(source,scene,movedIds){
   const pins=[];
   for(const other of scene.objects){
     if(movedIds.has(other.id)||isConnector(other)||!other.dependencies?.some(id=>movedIds.has(id)))continue;
-    const edit=candidates(source,other,scene,other.center,{precise:true}).find(c=>!c.references.length);
+    const edit=candidates(source,other,scene,other.center,{precise:true}).find(c=>!c.references.length&&!c.extended);
     if(!edit)throw new Error(`${other.name||other.kind} is positioned against a moved shape with an expression Studio cannot pin. Hold Alt to move it along, or edit its placement.`);
     pins.push({object:other,patch:edit.patch});
   }
   return pins;
 }
-// Wrap a single-shape move candidate with pins for its unselected dependents.
-export function pinMove(source,scene,option,movedIds){
-  const pins=pinPatches(source,scene,new Set(movedIds));
-  if(!pins.length)return option;
-  const names=pins.map(p=>p.object.name||p.object.kind).join(', ');
-  return {...option,...combined(source,[option.patch,...pins.map(p=>p.patch)],`${option.label}; pin ${names} in place`,option.selectName),
-    selectId:option.selectId,selectName:option.selectName,target:option.target};
+// How the studio names an object in labels: its name, else its kind and label.
+export function describe(object,source){
+  if(object?.name)return object.name;
+  const span=object?.spans?.label;let label='';
+  // A macro-expanded object has no label span; its statement holds the label.
+  try{if(span&&source!==undefined)label=source.slice(byteOffsetToIndex(source,span.start),byteOffsetToIndex(source,span.end));
+    else if(object?.span?.start>=0&&source!==undefined)label=source.slice(byteOffsetToIndex(source,object.span.start),byteOffsetToIndex(source,object.span.end)).match(/"(?:\\.|[^"\\])*"/)?.[0]||'';}catch{}
+  label=label.replace(/^"|"$/g,'');
+  return (object?.kind==='[]'?'[ ] group':object?.kind||'object')+(label?` "${label.length>24?label.slice(0,23)+'…':label}"`:'');
+}
+
+const shapeKinds=['box','cylinder','circle','ellipse','oval','diamond','file','text'];
+const same=(p,q,tolerance=1e-4)=>Math.abs(p.x-q.x)<=tolerance&&Math.abs(p.y-q.y)<=tolerance;
+const shifted=(before,after)=>!same(before.center,after.center)
+  ||(before.path||[]).length!==(after.path||[]).length||(before.path||[]).some((p,i)=>!same(p,after.path[i]));
+// Mask strings, comments and macro bodies so brackets are only real blocks.
+const code=text=>text.replace(/"(?:\\.|[^"\\])*"|#[^\n]*|\/\/[^\n]*/g,m=>' '.repeat(m.length))
+  .replace(/\bdefine\s+\w+\s*\{[^}]*\}/g,m=>' '.repeat(m.length));
+// The k-th top-level [ ] block: the offsets of its brackets and of the end of
+// its statement.
+function blockStatement(text,k){
+  const masked=code(text);let depth=0,count=-1,open=-1;
+  for(let i=0;i<masked.length;i++){
+    if(masked[i]==='['&&depth++===0){count++;open=i;}
+    else if(masked[i]===']'&&--depth===0&&count===k)
+      return {open,close:i,end:Math.min(...[masked.indexOf('\n',i),masked.indexOf(';',i),masked.length].filter(n=>n>=0))};
+  }
+  return null;
+}
+// Give a displaced [ ] block an explicit centre where it was.
+function blockPin(text,scene,block,center){
+  const blocks=scene.objects.filter(o=>o.kind==='[]'&&!/nested|macro/i.test(o.reason||''));
+  const at=blockStatement(text,blocks.indexOf(block));
+  if(!at||/\b(?:at|with)\b/.test(code(text).slice(at.close+1,at.end)))return null;
+  const insert=bytes(text.slice(0,at.close+1)),add=` at (${coordinate(center.x)}, ${coordinate(center.y)})`;
+  return {base:text,start:insert,end:insert,expected:'',text:add};
+}
+const coordinate=value=>Number(Number(value).toFixed(4)).toString();
+
+// A dragged shape moves alone. Pikchr chains place an unplaced object after
+// the one before it, and placements name other shapes, so moving one shape
+// can carry others along. Render, find the first shape that moved and should
+// not have, give it an explicit placement where it was (keeping its own form,
+// or extending the bare connector it hangs from), and repeat until only the
+// dragged shape and the connectors attached to it have moved. A follower that
+// cannot be pinned (a macro use) moves along and the label says so.
+// render(source) returns a scene ({objects, error}), synchronously or not.
+export async function settleMove(source,scene,option,object,render){
+  const before=new Map(scene.objects.map(o=>[o.id,o]));
+  const pinned=[],carried=new Set();let text=option.source,result=null;
+  for(let round=0;;round++){
+    if(round>scene.objects.length+1)return null;
+    result=await render(text);
+    if(!result||result.error||!Array.isArray(result.objects))return null;
+    const now=result.objects.find(o=>o.id===object.id);
+    if(!now||!option.target||!same(now.center,option.target,1e-3))return null;
+    // Connectors never block: they follow the shapes they are attached to.
+    // Shapes inside a [ ] block follow the block, which is pinned instead.
+    const order=o=>o.span?.start>=0?o.span.start:Infinity;
+    const next=result.objects.filter(o=>before.has(o.id)&&o.id!==object.id&&!carried.has(o.id)&&!/nested/i.test(o.reason||'')
+      &&(shapeKinds.includes(o.kind)||o.kind==='[]')&&shifted(before.get(o.id),o)).sort((a,b)=>order(a)-order(b))[0];
+    if(!next)break;
+    const origin=before.get(next.id);
+    const patch=next.kind==='[]'?blockPin(text,result,next,origin.center)
+      :editability(next,result).editable?candidates(text,next,result,origin.center,{precise:true,keepForm:true})[0]?.patch:null;
+    if(!patch){
+      carried.add(next.id);
+      // Everything inside a carried block moves with it.
+      if(next.kind==='[]')for(const o of result.objects)if(/nested/i.test(o.reason||'')&&o.bbox&&next.bbox
+        &&o.center.x>=next.bbox.x&&o.center.x<=next.bbox.x+next.bbox.width&&o.center.y>=next.bbox.y&&o.center.y<=next.bbox.y+next.bbox.height)carried.add(o.id);
+      continue;
+    }
+    pinned.push(describe(next,text));
+    text=applyPatch(text,{...patch,base:text});
+  }
+  const names=[...carried].map(id=>result.objects.find(o=>o.id===id)).filter(o=>o&&!/nested/i.test(o.reason||'')).map(o=>describe(o,text));
+  const label=option.label+(pinned.length?`; pin ${pinned.join(', ')} in place`:'')
+    +(names.length?`; ${names.join(', ')} move${names.length===1?'s':''} with it (Studio can’t pin ${names.length===1?'it':'them'})`:'');
+  return {...option,label,source:text,patch:linePatch(source,text),selectId:object.id,targetKind:object.kind,result,
+    ...(names.length?{summary:`Moved ${describe(object,source)}; ${names.join(', ')} moved with it (Studio can’t pin ${names.length===1?'it':'them'})`}:{})};
+}
+// One patch covering the changed lines, so the diff reads as whole statements.
+function linePatch(source,text){
+  let a=0;while(a<source.length&&a<text.length&&source[a]===text[a])a++;
+  a=source.lastIndexOf('\n',a-1)+1;
+  let b=0;while(b<source.length-a&&b<text.length-a&&source[source.length-1-b]===text[text.length-1-b])b++;
+  const tail=source.indexOf('\n',source.length-b);const keep=tail<0?0:source.length-tail;
+  return {base:source,start:bytes(source.slice(0,a)),end:bytes(source.slice(0,source.length-keep)),
+    expected:source.slice(a,source.length-keep),text:text.slice(a,text.length-keep)};
 }
 
 // pinDependents: a remaining shape positioned against a deleted one is
@@ -166,7 +248,7 @@ export function deleteObjects(source,objects,scene,{includeConnectors=false,pinD
   const references=(object,target)=>target.name&&new RegExp(`\\b${target.name}\\b`).test(masked(source.slice(byteOffsetToIndex(source,object.span.start),byteOffsetToIndex(source,object.span.end))).replace(/^\s*[A-Z][A-Za-z0-9_]*\s*:/,''));
   const pins=new Map();
   const pin=other=>{
-    const edit=candidates(source,other,scene,other.center,{precise:true}).find(c=>!c.references.length);
+    const edit=candidates(source,other,scene,other.center,{precise:true}).find(c=>!c.references.length&&!c.extended);
     if(!edit)throw new Error(`${other.name||other.kind} is positioned relative to this selection with an expression Studio cannot pin. Edit its placement first.`);
     pins.set(other,edit.patch);
   };
