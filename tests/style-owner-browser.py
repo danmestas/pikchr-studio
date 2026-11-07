@@ -152,8 +152,8 @@ with sync_playwright() as pw:
     select(page, "Time")
     close_popovers(page)
     page.wait_for_function("!document.querySelector('.cl-textbar').hidden")
-    bar.get_by_role("button", name="Line & text red", exact=True).click()
-    wait_time(page, 'Time: oval "Zeit Zone!" bold italic fill 0xe8f0d2 at NBT.n + (0, NBT.ht) color red')
+    bar.get_by_role("button", name="Line & text firebrick", exact=True).click()
+    wait_time(page, 'Time: oval "Zeit Zone!" bold italic fill 0xe8f0d2 at NBT.n + (0, NBT.ht) color firebrick')
 
     # Bug 1: a colour written as a variable locks just its row, calmly.
     set_source(page, LOCKED)

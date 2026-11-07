@@ -1,6 +1,6 @@
-import {inspectProperties,isColour,documentThickness,lockedMessage} from './properties.js?v=20261106f';
-import {changeAppearance} from './object-actions.js?v=20261106f';
-import {textStyle,textStyleCandidate,textSizes} from './text-style.js?v=20261106f';
+import {inspectProperties,isColour,documentThickness,lockedMessage} from './properties.js?v=20261106g';
+import {changeAppearance} from './object-actions.js?v=20261106g';
+import {textStyle,textStyleCandidate,textSizes} from './text-style.js?v=20261106g';
 let appearanceOpen=false;
 // Pikchr colour names for the swatches. Every ink keeps at least 4.5:1 (WCAG AA)
 // against both canvases (#ffffff, #161b22) and every fill, in light mode and in
@@ -68,6 +68,12 @@ export const contrast=(a,b)=>{const[x,y]=[luminance(a),luminance(b)].sort((p,q)=
 function shownColour(role,colour,dark){
   if(colour==='none'||colour==='off')return role==='fill'?CANVAS[dark?'dark':'light']:null;
   return dark?darkColours.get(role+':'+colour)??null:hex(colour);
+}
+// Paints an element's --swatch as the canvas shows this ink or fill in the
+// current theme, and repaints it when the theme changes (used by the text bar).
+export function paintSwatch(node,role,colour){
+  const refresh=async()=>{await resolveDark(role,[colour]);const c=shownColour(role,colour,theme.dark);if(c)node.style.setProperty('--swatch',c);};
+  liveRows.add({box:node,refresh});refresh();
 }
 // Ink against the fill behind it (or the canvas) in both themes; the message
 // names each theme where it falls short.

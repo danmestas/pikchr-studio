@@ -33,10 +33,10 @@ test('size, bold, italic, alignment and colour toggles write Pikchr text attribu
   source = apply(source, pick, { italic: true });
   source = apply(source, pick, { align: 'left' });
   assert.equal(source, 'T1: text "Hello" big big bold italic ljust at (0,0)\n');
-  source = apply(source, pick, { colour: 'red' });
-  assert.equal(source, 'T1: text "Hello" big big bold italic ljust at (0,0) color red\n');
+  source = apply(source, pick, { colour: 'firebrick' });
+  assert.equal(source, 'T1: text "Hello" big big bold italic ljust at (0,0) color firebrick\n');
   const scene = render(source);
-  assert.deepEqual(textStyle(source, scene.objects[0], scene), { size: 'bigger', bold: true, italic: true, mono: false, align: 'left', colour: 'red', colourLocked: null });
+  assert.deepEqual(textStyle(source, scene.objects[0], scene), { size: 'bigger', bold: true, italic: true, mono: false, align: 'left', colour: 'firebrick', colourLocked: null });
   source = apply(source, pick, { size: 'normal' });
   source = apply(source, pick, { bold: false });
   source = apply(source, pick, { italic: false });

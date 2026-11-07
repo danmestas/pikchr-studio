@@ -134,14 +134,14 @@ test('text style reads hex and named colours, toggles monospace, and recolours t
   const spelled=oval('fill 0xe8f0d2 at (0,1)').replace('italic','italic monospace'),ss=render(spelled);
   assert.equal(textStyle(spelled,time(ss),ss).mono,true);
   // Colour is Pikchr's color, the same rewrite as Style's Line & text row.
-  const red=textStyleCandidate(source,o,scene,{colour:'red'});
-  assert.equal(red.source.split('\n')[1],'Time: oval "Zeit" italic fill 0xe8f0d2 at NBT.n + (0, 0.6*2) color red');
-  assert.equal(red.source,changeAppearance(source,o,scene,{color:'red'}).source);
+  const red=textStyleCandidate(source,o,scene,{colour:'firebrick'});
+  assert.equal(red.source.split('\n')[1],'Time: oval "Zeit" italic fill 0xe8f0d2 at NBT.n + (0, 0.6*2) color firebrick');
+  assert.equal(red.source,changeAppearance(source,o,scene,{color:'firebrick'}).source);
   const reset=textStyleCandidate(source,o,scene,{colour:'default'});
   assert.equal(reset.source.split('\n')[1],'Time: oval "Zeit" italic fill 0xe8f0d2 at NBT.n + (0, 0.6*2)');
   // A colour Studio cannot rewrite is reported; the other text styles still apply.
   const locked='$ink = 0x2d6a4f\n'+oval('color $ink at (0,1)'),ls=render(locked);
   assert.equal(textStyle(locked,time(ls),ls).colourLocked,'color $ink');
-  assert.throws(()=>textStyleCandidate(locked,time(ls),ls,{colour:'red'}),/Written as "color \$ink" in source/);
+  assert.throws(()=>textStyleCandidate(locked,time(ls),ls,{colour:'firebrick'}),/Written as "color \$ink" in source/);
   assert.match(textStyleCandidate(locked,time(ls),ls,{bold:true}).source,/"Zeit" bold italic color \$ink/);
 });

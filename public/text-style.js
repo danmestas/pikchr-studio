@@ -3,12 +3,13 @@
 // the same managed attributes. Colour is Pikchr's statement-wide color, which
 // also draws the outline, so it goes through the same rewrite as Style's
 // Line & text row rather than a second, different one.
-import {readProperties,propertyCandidate,attributeClauses,colourValue,lockedMessage} from './properties.js?v=20261106f';
-import {changeAppearance} from './object-actions.js?v=20261106f';
+import {readProperties,propertyCandidate,attributeClauses,colourValue,lockedMessage} from './properties.js?v=20261106g';
+import {changeAppearance} from './object-actions.js?v=20261106g';
 
 export const textSizes=['small','normal','big','bigger'];
 export const textAligns=['left','center','right'];
-export const textColours=['default','black','red','blue','green','gray'];
+// The default plus the theme-safe inks from the Style editor (see property-ui.js INKS).
+export const textColours=['default','black','firebrick','blue','darkgreen','dimgray'];
 const SIZE_WORDS={small:['small'],normal:[],big:['big'],bigger:['big','big']};
 const ALIGN_WORDS={left:['ljust'],center:[],right:['rjust']};
 // Pikchr has one font choice, monospace, spelled mono or monospace.

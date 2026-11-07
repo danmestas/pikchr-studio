@@ -495,12 +495,8 @@ body.layout-canvas .cl-textbar .cl-tb svg{width:18px;height:18px;vertical-align:
 body.layout-canvas .cl-textbar .cl-tb[aria-pressed=true]{background:var(--cl-accent-bg);color:var(--cl-accent)}
 body.layout-canvas .cl-textbar .cl-tb.cl-swatch{flex:0 0 22px;min-width:22px;min-height:22px;max-height:22px;width:22px;height:22px;margin:0 2px;padding:0;border-radius:50%;border:2px solid var(--cl-line)}
 body.layout-canvas .cl-textbar .cl-tb.cl-swatch[aria-pressed=true]{border-color:var(--cl-accent);box-shadow:0 0 0 2px var(--cl-accent-bg)}
+body.layout-canvas .cl-textbar .cl-tb.cl-swatch:not([data-colour=default]){background:var(--swatch,var(--cl-ink))}
 body.layout-canvas .cl-textbar .cl-tb.cl-swatch[data-colour=default]{background:linear-gradient(135deg,var(--cl-ink) 50%,var(--cl-canvas) 50%)}
-body.layout-canvas .cl-textbar .cl-tb.cl-swatch[data-colour=black]{background:#000}
-body.layout-canvas .cl-textbar .cl-tb.cl-swatch[data-colour=red]{background:#d1242f}
-body.layout-canvas .cl-textbar .cl-tb.cl-swatch[data-colour=blue]{background:#0969da}
-body.layout-canvas .cl-textbar .cl-tb.cl-swatch[data-colour=green]{background:#1a7f37}
-body.layout-canvas .cl-textbar .cl-tb.cl-swatch[data-colour=gray]{background:#8c959f}
 @media (max-width:700px){body.layout-canvas .cl-textbar{flex-wrap:wrap;max-width:calc(100vw - 16px)}}
 /* Selected shapes stay highlighted in the live drag preview. */
 body.layout-canvas #diagram .live-drag .cl-live-selected :is(path,polygon,polyline,circle,ellipse,rect,line):not([stroke=transparent]):not([fill=transparent]){stroke:var(--cl-accent)!important}

@@ -2,14 +2,15 @@
 // the controls declared in index.html into chips, menus and popovers; every
 // control keeps its own handler. It also adds drag-to-connect, which submits
 // ordinary candidate edits.
-import {attachPoints,nearestAnchor,targetAnchor,hitShape,connectCandidate,connectionLabel,elbowRoute} from './connect-drag.js?v=20261106f';
-import {connectableShapes} from './creation.js?v=20261106f';
-import {connectorCapabilities,connectorTitle} from './arrow-ui.js?v=20261106f';
-import {freeLineCandidate,pointText,snapToGrid,literalRoute,lineEnds,translateLineCandidate,moveEndpointCandidate} from './free-lines.js?v=20261106f';
-import {lockDirection} from './constrain.js?v=20261106f';
-import {inspectProperties} from './properties.js?v=20261106f';
-import {buildTextEdit} from './text-sizing.js?v=20261106f';
-import {textStyle,textStyleCandidate,textSizes,textColours} from './text-style.js?v=20261106f';
+import {attachPoints,nearestAnchor,targetAnchor,hitShape,connectCandidate,connectionLabel,elbowRoute} from './connect-drag.js?v=20261106g';
+import {connectableShapes} from './creation.js?v=20261106g';
+import {connectorCapabilities,connectorTitle} from './arrow-ui.js?v=20261106g';
+import {freeLineCandidate,pointText,snapToGrid,literalRoute,lineEnds,translateLineCandidate,moveEndpointCandidate} from './free-lines.js?v=20261106g';
+import {lockDirection} from './constrain.js?v=20261106g';
+import {inspectProperties} from './properties.js?v=20261106g';
+import {paintSwatch} from './property-ui.js?v=20261106g';
+import {buildTextEdit} from './text-sizing.js?v=20261106g';
+import {textStyle,textStyleCandidate,textSizes,textColours} from './text-style.js?v=20261106g';
 
 
 const $=id=>document.getElementById(id);
@@ -1120,6 +1121,7 @@ function install(studio){
   boldButton.style.fontWeight='700';italicButton.style.fontStyle='italic';monoButton.style.fontFamily='ui-monospace,SFMono-Regular,Menlo,monospace';
   const alignButtons={left:tb(iconMarkup(CHROME_ICONS.alignStart),'Align left',()=>({align:'left'})),center:tb(iconMarkup(CHROME_ICONS.alignCenter),'Align center',()=>({align:'center'})),right:tb(iconMarkup(CHROME_ICONS.alignEnd),'Align right',()=>({align:'right'}))};
   const colourButtons=Object.fromEntries(textColours.map(colour=>[colour,tb('',colour==='default'?'Default colour':`Colour ${colour}`,()=>({colour}),{class:'cl-tb cl-swatch','data-colour':colour})]));
+  for(const [colour,b] of Object.entries(colourButtons))if(colour!=='default')paintSwatch(b,'color',colour);
   const tsep=()=>el('span',{class:'cl-sep','aria-hidden':'true'});
   textBar.append(...Object.values(sizeButtons),tsep(),boldButton,italicButton,monoButton,tsep(),...Object.values(alignButtons),tsep(),...Object.values(colourButtons));
   // A press on the bar must not take focus from the label editor.
