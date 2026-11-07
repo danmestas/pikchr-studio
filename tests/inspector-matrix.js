@@ -163,6 +163,14 @@
       if (/^Editing is blocked/.test(text) && controls().some(e => !e.disabled))
         fail('banner', `"Editing is blocked" while controls are enabled: ${text}`);
     }
+    // Banners without the word "blocked" still name the real reason, and the
+    // panel offers nothing that looks editable beside them.
+    const reason = object.reason === 'Nested object' ? [/^This shape is inside a \[ \] group, which moves as one\./, 'nested shape']
+      : object.kind === '[]' ? [/^A \[ \] group moves as one\./, '[ ] group'] : object.kind === 'move' ? [/^A move has no outline to style/, 'move'] : null;
+    if (reason) {
+      if (!notes.some(t => reason[0].test(t))) fail('banner', `${reason[1]} lacks its banner: ${notes.join(' | ') || 'none'}`);
+      if (controls().length) fail('banner', `${reason[1]} banner says Source only, but the panel offers ${controls().map(keyOf).join(', ')}`);
+    }
     const blocked = notes.some(t => /blocked/i.test(t));
     if (cell.expect?.banner === false && blocked) fail('banner', `banner where nothing is blocked: ${notes.join(' | ')}`);
     if (cell.expect?.banner && !notes.some(t => new RegExp(cell.expect.banner, 'i').test(t)))
@@ -295,8 +303,11 @@
 
   // Click one control and check the edit, then undo it.
   async function exercise(cell, objectId, key, fail) {
+    // Keys are taken from enabled controls, and undo restores the panel, so a
+    // control that is gone or disabled now is a failure, not a skip.
     const e = find(key);
-    if (!e || e.disabled) return;
+    if (!e) return fail('control', `${key}: control vanished after the previous edit and its undo`);
+    if (e.disabled) return fail('control', `${key}: control became disabled after the previous edit and its undo`);
     const before = st().source, object = st().scene.objects.find(o => o.id === objectId);
     // A toggle (Bold, Along the line) turns off when pressed; a choice in a
     // group (swatch, preset, size) is the current value.
@@ -313,8 +324,9 @@
       e.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
     } else e.click();
     if (pressed) {
-      // The no-op is synchronous; one frame shows any proposal it started.
-      await new Promise(r => requestAnimationFrame(r));
+      // Settle on the renderer: the worker answers in order, so once a probe
+      // render returns, any render the click started has finished too.
+      await sleep(0); await pikchrStudio.render('box'); await until(() => st().valid, 1500); await frame();
       if (st().source !== before || st().queued || pikchrStudio.preview()) fail('control', `${key}: picking the current value ${pikchrStudio.preview() ? 'started a preview' : 'changed the source'}`);
       if (pikchrStudio.preview()) $('preview-discard').click();
       return undoTo(before, key, fail);
@@ -376,8 +388,13 @@
     for (const need of cell.expect?.controls || [])
       if (!controls().some(e => new RegExp(need).test(keyOf(e)))) fail('missing', `no control /${need}/ (have ${controls().map(keyOf).join(', ')})`);
     if (cell.expect?.macro) {
-      const rows = [...ins().querySelectorAll('.macro-values dt')].map(d => d.textContent);
-      for (const need of cell.expect.macro) if (!rows.includes(need)) fail('missing', `macro use has no read-only ${need} row (rows: ${rows.join(', ') || 'none'})`);
+      // Values arrive after a light render in dark mode.
+      await until(() => ins().querySelector('.macro-values dt'), 1500);
+      const rows = Object.fromEntries([...ins().querySelectorAll('.macro-values dt')].map(d => [d.textContent, d.nextElementSibling?.textContent]));
+      for (const [need, value] of Object.entries(cell.expect.macro)) {
+        if (!(need in rows)) fail('missing', `macro use has no read-only ${need} row (rows: ${Object.keys(rows).join(', ') || 'none'})`);
+        else if (value !== null && rows[need] !== value) fail('macro', `macro use shows ${need} = ${rows[need]}, the canvas draws ${value}`);
+      }
       const detach = [...ins().querySelectorAll('button')].filter(b => /^Detach/.test(b.textContent));
       if (!detach.length) fail('missing', 'macro use offers no Detach');
       for (const b of detach) if (b.disabled && !ins().querySelector('.inspector-detach-reason')) fail('disabled', `${b.textContent} is disabled without a shown reason`);
@@ -391,13 +408,14 @@
     if (opts.contrast) { contrast(fail); swatchesMatch(object, fail); }
     if (opts.debug) console.log('contrast ms', Math.round(performance.now() - t)); t = performance.now();
     if (opts.clicks) {
-      let keys = controls().map(keyOf);
+      let keys = controls().filter(e => !e.disabled).map(keyOf);
       if (opts.clicks === 'some') {
         // One unpressed and the pressed control of each group.
         const groups = new Map();
         for (const e of controls()) {
           const g = groupOf(e) || keyOf(e), entry = groups.get(g) || {};
-          if (e.getAttribute('aria-pressed') === 'true') entry.on ??= keyOf(e); else if (!e.disabled) entry.off ??= keyOf(e);
+          if (e.disabled) continue;
+          if (e.getAttribute('aria-pressed') === 'true') entry.on ??= keyOf(e); else entry.off ??= keyOf(e);
           groups.set(g, entry);
         }
         keys = [...groups.values()].flatMap(g => [g.on, g.off].filter(Boolean))

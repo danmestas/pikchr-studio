@@ -131,9 +131,9 @@ def shape_cells():
                 key = name or label.split('"')[1]
                 need = ["^Text/" if kind == "text" else "^Fill/"] + ([] if kind == "text" else ["^Line & text/", "^Thickness presets/"])
                 need += ["^Text size/", "^Font/", "^Text alignment/"]
-                movable = placement != "expression"
-                out.append(cell(f"{kind} / {form[0]} / {placement}", source, key, kind, form[0],
-                                controls=need, **({"banner": False} if movable else {})))
+                # Every placement form moves now, the expression one included
+                # (drag-matrix-browser.py), so no shape cell shows a banner.
+                out.append(cell(f"{kind} / {form[0]} / {placement}", source, key, kind, form[0], controls=need, banner=False))
     return out
 
 
@@ -167,8 +167,16 @@ def other_cells():
         cell("[ ] group / none / chain", 'box "A"\n[ box "in" ]\n', "kind:[]", "[]", "none", banner="moves as one"),
         cell("[ ] group / none / named", 'A: box "A"\nG: [ box "in" ] at A + (2,0)\n', "kind:[]", "[]", "none", banner="moves as one"),
         cell("[ ] member / fill / nested", 'A: box "A"\n[ box "in" fill aliceblue ]\n', "in", "box", "fill", banner="inside a \\[ \\] group"),
-        cell("macro use / none / chain", 'define m { box "M" }\nm\nA: box "A"\n', "macro", "box", "none", macro=["Label", "Fill", "Line & text", "Thickness"]),
-        cell("macro use / fill / chain", 'define m { box "M" fill aliceblue }\nA: box "A"\nm\nm\n', "macro", "box", "fill", macro=["Label", "Fill", "Line & text", "Thickness"]),
+        cell("macro use / none / chain", 'define m { box "M" }\nm\nA: box "A"\n', "macro", "box", "none",
+             macro={"Label": "M", "Fill": "none", "Line & text": "black", "Thickness": "0.015 in"}, banner="set there"),
+        cell("macro use / fill / chain", 'define m { box "M" fill aliceblue }\nA: box "A"\nm\nm\n', "macro", "box", "fill",
+             macro={"Label": "M", "Fill": "aliceblue", "Line & text": "black", "Thickness": "0.015 in"}, banner="set there"),
+        # The call adds to the body: values come from what Pikchr drew, and
+        # the banner says this use contributes.
+        cell("macro use / attribute after the call / chain", 'define m { box "M" }\nm fill red\n', "macro", "box", "fill",
+             macro={"Label": "M", "Fill": "red"}, banner="set by the macro m and the attributes written after it at this use"),
+        cell("macro use / arguments / chain", 'define m { box $1 fill $2 }\nm("hello", red)\n', "macro", "box", "fill",
+             macro={"Label": "hello", "Fill": "red"}, banner="set by the macro m and its arguments at this use"),
         cell("box / none / 40-object diagram", big + 'X: box "L" at (9,0)\n', "X", "box", "none", banner=False,
              controls=["^Fill/", "^Line & text/", "^Thickness presets/", "^Text size/"]),
     ]
@@ -193,7 +201,9 @@ def clicks_for(config, c):
         return "all" if c["form"] == "none" else "some"
     if config == "desktop dark":
         return "some" if c["form"] in ("none", "0xRRGGBB", "colour names in any case") else None
-    return "some" if c["form"] == "none" and c["name"].endswith(("literal at", "from to")) else None
+    if config == "phone light":
+        return "some" if c["form"] in ("none", "0xRRGGBB") else None
+    return "some" if c["form"] in ("none", "colour names in any case") and c["name"].endswith(("literal at", "from to", "chain", "40-object diagram")) else None
 
 
 def run(browser, config, viewport, touch, theme, cells, results):
@@ -266,6 +276,8 @@ def main(configs, with_extras=False):
         seen[(f["category"], config, c["name"], f["message"])] += 1
     for (category, config, name, message), n in sorted(seen.items()):
         print(f"FAIL [{category}] {config} | {name}: {message}")
+    clicking = sum(1 for config, c, _ in results if c.get("source") and clicks_for(config, c))
+    print(f"{clicking} of {len(results)} cells click their controls")
     cells = len(results)
     bad = len({(config, c["name"]) for config, c, _ in failed})
     print(f"{cells - bad}/{cells} cells pass in {time.time() - started:.1f}s; failures by category: {dict(by_category)}")

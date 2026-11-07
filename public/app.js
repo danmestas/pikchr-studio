@@ -1,4 +1,4 @@
-import {candidates,snap,applyPatch,byteOffsetToIndex,routeCandidates,movementBlocked,moveRefusal} from './edits.js?v=20261106i';
+import {candidates,snap,applyPatch,byteOffsetToIndex,routeCandidates,movementBlocked,moveRefusal,colourNames} from './edits.js?v=20261106i';
 import {routeStyleCandidates} from './route-styles.js?v=20261106i';
 import {correspondingObject} from './candidate-target.js?v=20261106i';
 import {alignmentGuides,gapMarks} from './guides.js?v=20261106i';
@@ -7,7 +7,7 @@ const params=new URL(location.href).searchParams;
 import {arrowEditor,connectorCapabilities,connectorLabel,connectorRows,editingBlocked} from './arrow-ui.js?v=20261106i';
 import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20261106i';
 import {propertyEditor,styleControls,setSwatchTheme} from './property-ui.js?v=20261106i';
-import {fitText,canFitText,inspectProperties,readProperties,documentThickness,macroProperties} from './properties.js?v=20261106i';
+import {fitText,canFitText,inspectProperties,readProperties,documentThickness,drawnProperties} from './properties.js?v=20261106i';
 import {duplicateObject,deleteObjects,layoutObjects,moveObjects,settleMove,describe,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20261106i';
 import {decodeLinkSource,encodeLinkSource,linkFragment,linkPayload} from './link-import.js?v=20261106i';
 import {createDocumentStore} from './documents.js?v=20261106i';
@@ -372,8 +372,12 @@ function select(id,highlight=false,additive=false,preserve=false){
   if(blocked&&o.reason!=='Macro-expanded object'){const note=document.createElement('p');note.className='inspector-status';note.setAttribute('role','note');note.textContent=blocked;ins.append(note);}
   if(o.reason==='Macro-expanded object'){
     const origin=document.createElement('p');origin.className='inspector-status inspector-origin';origin.setAttribute('role','note');
-    const uses=macroUses(renderedSource,o);
-    origin.textContent=uses?'This shape comes from define '+uses.name+', shared by '+uses.uses+(uses.uses===1?' use':' uses')+'. Its style and text are set there; detach it to edit it on its own.'
+    const uses=macroUses(renderedSource,o,scene),call=uses?.call;
+    // Never "set there" when this use adds to the body.
+    const from=!call?' Its style and text come from the macro and may also depend on this use;'
+      :call.args||call.extra?' Its style and text are set by the macro '+uses.name+' and '+[call.args&&'its arguments',call.extra&&'the attributes written after it'].filter(Boolean).join(' and ')+' at this use;'
+      :' Its style and text are set there;';
+    origin.textContent=uses?'This shape comes from define '+uses.name+', shared by '+uses.uses+(uses.uses===1?' use':' uses')+'.'+from+' detach it to edit it on its own.'
       :'This shape comes from a macro Studio cannot identify. Edit it in Source (S).';
     sourceButton.textContent='Inspect generating source';
     const detachButton=(id,label)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.disabled=!uses?.uses;
@@ -382,20 +386,24 @@ function select(id,highlight=false,additive=false,preserve=false){
     detachRow.append(detachButton('detach','Detach from macro'));
     if(uses?.uses>1)detachRow.append(detachButton('detach-all','Detach all '+uses.uses+' uses'));
     for(const b of detachRow.children)b.style.flex='1 1 0';
-    // What the define draws, read-only: editing a use would mean appending
-    // attributes to a macro call, which Pikchr's text expansion makes fragile.
-    const values=document.createElement('dl');values.className='macro-values';values.setAttribute('aria-label','Set by the macro');
-    let read=null;try{read=macroProperties(renderedSource,o);}catch{}
-    if(read){
-      const shown=(v,fallback)=>v===null?fallback:v;
+    // What Pikchr drew for this use, read-only: editing a use would mean
+    // appending attributes to a macro call, which Pikchr's text expansion
+    // makes fragile. Values come from a light render, as the source writes them.
+    const values=document.createElement('dl');values.className='macro-values';values.setAttribute('aria-label','As drawn');
+    const fillValues=read=>{
+      values.replaceChildren();if(!read)return;
+      const shown=(v,fallback)=>v===null?fallback:colourName(v);
       const rows=[['Label',read.text.replace(/\s+/g,' ')||'None'],
         ...(['arrow','line','spline','arc','move','text'].includes(o.kind)?[]:[['Fill',shown(read.fill,'none')]]),
-        [o.kind==='text'?'Text':'Line & text',shown(read.color,'black')],
-        ...(o.kind==='text'?[]:[['Thickness',read.thickness===null?'expression':Number(read.thickness.toFixed(4))+' in']]),
+        [o.kind==='text'?'Text':'Line & text',shown(read.color,'none')],
+        ...(o.kind==='text'||read.thickness===null?[]:[['Thickness',read.thickness+' in']]),
         ...(read.words.length?[['Text style',read.words.join(' ')]]:[])];
       for(const [k,v]of rows){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=k;dd.textContent=v;values.append(dt,dd);}
-    }
-    ins.append(origin,...(read?[values]:[]),sourceButton,detachRow);
+    };
+    const read=lightSvg(renderedSource);
+    if(typeof read==='string')fillValues(drawnProperties(read,o.id,scene.transform));
+    else read.then(svg=>{if(values.isConnected)fillValues(drawnProperties(svg,o.id,scene.transform));});
+    ins.append(origin,values,sourceButton,detachRow);
     if(!uses?.uses){const why=document.createElement('p');why.className='inspector-detach-reason';why.textContent=detachRow.firstChild.title+'.';ins.append(why);}
   }else advanced.append(sourceButton);
   if(sourceButton.disabled){const reason=document.createElement('p');reason.textContent='No independent source span is available. Open the source drawer to inspect the generating program.';advanced.append(reason);}
@@ -412,6 +420,21 @@ function select(id,highlight=false,additive=false,preserve=false){
   drawOverlay();
   installArrowEditor();
   directTools?.sync();
+}
+// The light-mode SVG of a source (the canvas's own when it is light), for
+// reading drawn values as the source writes them; a promise in dark mode.
+let lightCache={source:null,svg:null};
+function lightSvg(text){
+  if(renderFlags===1&&text===renderedSource&&scene?.svg)return scene.svg;
+  if(lightCache.source===text)return lightCache.svg;
+  const pending=render(text,1).then(r=>{lightCache={source:text,svg:r?.svg||''};return lightCache.svg;});
+  lightCache={source:text,svg:pending};return pending;
+}
+// #rrggbb as a Pikchr colour name when one matches, else the hex value.
+let namesByHex=null;
+function colourName(value){
+  if(!namesByHex){namesByHex=new Map();const c=document.createElement('canvas').getContext('2d');for(const n of colourNames){if(n==='none'||n==='off')continue;c.fillStyle='#000';c.fillStyle=n;if(!namesByHex.has(c.fillStyle))namesByHex.set(c.fillStyle,n.replace('grey','gray'));}}
+  return namesByHex.get(value)||value;
 }
 // Visual route choices for a connector: each button reads the same candidate
 // generators the route editor uses, and every click goes through the normal
@@ -857,7 +880,8 @@ async function suggest(o,target,withPreview=false,{precise=!withPreview,bringAlo
         .filter(option=>!same(option.target,o.center)&&flat(option.source)!==flat(base));
       if(!raw.length&&candidates(base,o,scene,target,{precise,keepForm}).length){status('Not moved: the drop is within the snapping grid of where '+describe(o,base)+' already is.');drawOverlay();return;}
       options=(await Promise.all(raw.map(option=>settleMove(base,scene,option,o,render,{bringAlong})))).filter(Boolean);
-      if(rev!==revision||base!==source.value||g!==gesture)return;
+      if(rev!==revision||base!==source.value)return;
+      if(g!==gesture){status('Nudge cancelled.');return;}
       if(raw.length&&!options.length){status('Can’t move '+describe(o,base)+' there: Studio could not keep the other shapes in place. Hold Alt to move them along, or edit the source (S).');drawOverlay();return;}
     }
   }catch(e){status(e.message);return;}

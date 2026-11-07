@@ -74,17 +74,6 @@ test('updating a connector label text keeps the words written after it', () => {
   assert.equal(statementOf(edit.source, render(edit.source).objects.at(-1)), 'arrow "y" below aligned bold');
 });
 
-import {macroProperties} from '../public/properties.js';
-test('a macro use reads its style and text from the define body, read-only', () => {
-  const source = 'define m { box "M" bold fill aliceblue color 0x1a7f37 thick }\nA: box "A"\nm\nm\n';
-  const scene = render(source), use = scene.objects.find(o => o.reason === 'Macro-expanded object');
-  assert.deepEqual(macroProperties(source, use), {text: 'M', fill: 'aliceblue', color: '#1a7f37', thickness: 0.0225, words: ['bold']});
-  const plain = 'define m { box }\nm\n', p = render(plain);
-  assert.deepEqual(macroProperties(plain, p.objects[0]), {text: '', fill: null, color: null, thickness: 0.015, words: []});
-  const expr = 'define m { box fill $c }\n$c = 0xff0000\nm\n', e = render(expr);
-  assert.equal(macroProperties(expr, e.objects[0]).fill, 'fill $c');
-});
-
 import {connectorStyleCandidate,strokeCandidates} from '../public/route-styles.js';
 test('keywords inside a comment are not clauses, for shapes and connectors', () => {
   const box = 'X: box "L" at (1,0) /* fill red */ color blue\n', b = last(box);
@@ -116,5 +105,39 @@ test('removing arrowheads leaves no stray space behind', () => {
     const source = `A: box "A"\nB: box "B" at (2,0)\n${line}\n`, {scene, object} = last(source);
     const edit = changeTermination(source, object, scene, 'none');
     assert.equal(edit.source, `A: box "A"\nB: box "B" at (2,0)\n${want}\n`);
+  }
+});
+
+import {drawnProperties} from '../public/properties.js';
+import {macroUses} from '../public/macro-detach.js';
+test('a macro use reports what Pikchr drew for it, arguments and call attributes included', () => {
+  const cases = [
+    ['define m { box "M" }\nm fill red\n', {text: 'M', fill: '#ff0000', color: '#000000', thickness: 0.015, words: []}, {args: false, extra: true}],
+    ['define m { box $1 fill $2 }\nm("hello", red)\n', {text: 'hello', fill: '#ff0000', color: '#000000', thickness: 0.015, words: []}, {args: true, extra: false}],
+    ['define m { box "a" bold italic mono thick color blue }\nm\n', {text: 'a', fill: null, color: '#0000ff', thickness: 0.0225, words: ['bold', 'italic', 'mono']}, {args: false, extra: false}],
+  ];
+  for (const [source, want, call] of cases) {
+    const r = compileStudio(source), o = r.scene.objects[0];
+    assert.deepEqual(drawnProperties(r.scene.svg, o.id, r.scene.transform), want, source);
+    const uses = macroUses(source, o, r.scene);
+    assert.deepEqual({args: uses.call.args, extra: uses.call.extra}, call, source);
+  }
+  // Two uses, one with an attribute: each object finds its own call.
+  const two = 'define m { box "M" }\nm\nm fill red\n', r = compileStudio(two);
+  assert.deepEqual(r.scene.objects.map(o => macroUses(two, o, r.scene).call.extra), [false, true]);
+  // Spanned at the call: each use is still its own.
+  const named = 'define tile { $1: box $2 at $3 }\ntile(A, "One", (0,0))\ntile(B, "Two", (2,0)) fill red\n', n = compileStudio(named);
+  assert.deepEqual(n.scene.objects.map(o => macroUses(named, o, n.scene).call), [{args: true, extra: false}, {args: true, extra: true}]);
+});
+
+import {parseConnector,connectorState} from '../public/route-styles.js';
+test('a parenthesised, variable or arithmetic colour or thickness is one locked clause, not path tokens', () => {
+  for (const [value, kind] of [['(0xff0000)', 'color'], ['$c', 'color'], ['0x10*2', 'color'], ['(A.color)', 'color'], ['0.01*2', 'thickness'], ['($t + 0.01)', 'thickness']]) {
+    const source = `$c = 0xff0000\n$t = 0.01\nA: box "A"\nB: box "B" at (2,0)\narrow from A.e to B.w ${kind} ${value} dashed\n`;
+    const {scene, object} = last(source), model = parseConnector(source, object, scene);
+    assert.deepEqual(model.path.map(t => t.text), ['from', 'A.e', 'to', 'B.w'], value);
+    if (kind === 'color') assert.equal(connectorState(source, object, scene).colour, value, value);
+    assert.equal(connectorStyleCandidate(source, object, scene, kind === 'color' ? {color: 'red'} : {thickness: 'thick'}), null, value);
+    assert.match(strokeCandidates(source, object, scene, 'dotted')[0].source, new RegExp(`${kind} ${value.replace(/[$()*+.]/g, '\\$&')} dotted\\n$`), value);
   }
 });

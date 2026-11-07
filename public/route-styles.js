@@ -6,7 +6,7 @@ import { obstacleRects } from './route-suggestions.js?v=20261106i';
 
 const CONNECTORS = ['arrow','line','spline','arc'];
 const NON_OBSTACLES = [...CONNECTORS, 'move'];
-const TOKEN = /"(?:\\.|[^"\\])*"|\/\*[\s\S]*?\*\/|<->|->|<-|0x[0-9a-fA-F]+|(?:\d+(?:\.\d*)?|\.\d+)(?:cm|mm|in|px|pt|%)?|[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*|\S/g;
+const TOKEN = /"(?:\\.|[^"\\])*"|\/\*[\s\S]*?\*\/|[$@][A-Za-z_][A-Za-z0-9_]*|<->|->|<-|0x[0-9a-fA-F]+|(?:\d+(?:\.\d*)?|\.\d+)(?:cm|mm|in|px|pt|%)?|[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*|\S/g;
 const NAME = /^[A-Z][A-Za-z0-9_]*$/;
 const REF = /^[A-Z][A-Za-z0-9_]*(?:\.(?:ne|nw|se|sw|c|n|s|e|w))?$/;
 const NUMBER = /^(?:\d+(?:\.\d*)?|\.\d+)(?:cm|mm|in|px|pt|%)?$/;
@@ -21,6 +21,23 @@ const MARGIN = 0.2, LOOP = 0.25, TIE = 0.05, EPS = 1e-6;
 const fmt = v => Number((Math.round(v / 0.05) * 0.05).toFixed(2)).toString();
 const up05 = v => Math.ceil(v / 0.05 - 1e-9) * 0.05;
 const refText = (name, anchor) => anchor === 'c' ? name : `${name}.${anchor}`;
+
+// The index of the last token of the value starting at k: an operand (a
+// token, or a balanced parenthesis), then any operator and operand pairs.
+// -1 when the value is missing or unbalanced.
+function valueEnd(tokens, k) {
+  const operand = j => {
+    if (tokens[j]?.text !== '(') return tokens[j] && !/^[)+\-*/,^]$/.test(tokens[j].text) ? j : -1;
+    for (let depth = 0; j < tokens.length; j++) {
+      if (tokens[j].text === '(') depth++;
+      else if (tokens[j].text === ')' && --depth === 0) return j;
+    }
+    return -1;
+  };
+  let end = operand(k);
+  while (end >= 0 && /^[+\-*/]$/.test(tokens[end + 1]?.text || '') && tokens[end + 2]) end = operand(end + 2);
+  return end;
+}
 
 // Tokenise one connector statement into header, kind, style groups and path
 // tokens. Anything this module cannot classify safely returns null.
@@ -57,9 +74,16 @@ export function parseConnector(source, object, scene) {
     else if (t === 'dashed' || t === 'dotted') i = take(i, 'dash', NUMBER.test(next || '') ? 1 : 0);
     else if (t === 'solid') i = take(i, 'dash');
     else if (t === 'thin' || t === 'thick') i = take(i, 'weight');
-    // A value Studio cannot read ($c, A.color) locks its own clause only.
-    else if (t === 'thickness') { if (!next) return null; const at = i; i = take(i, 'weight', 1); if (!NUMBER.test(next)) styles[tokens[at].group].locked = true; }
-    else if (t === 'color') { if (!next) return null; const at = i; i = take(i, 'color', 1); if (!(colourNames.has(next.toLowerCase()) || HEX.test(next) || NUMBER.test(next))) styles[tokens[at].group].locked = true; }
+    // The value is one operand, or an expression of them ((0xff0000), $c,
+    // 0x10*2); anything but a single literal locks this clause only.
+    else if (t === 'thickness' || t === 'color') {
+      const end = valueEnd(tokens, i + 1);
+      if (end < 0) return null;
+      const literal = end === i + 1 && (t === 'thickness' ? NUMBER.test(next) : colourNames.has(next.toLowerCase()) || HEX.test(next) || NUMBER.test(next));
+      const at = i; i = take(i, t === 'color' ? 'color' : 'weight', end - i);
+      styles[tokens[at].group].value = statement.slice(tokens[at + 1].start, tokens[end].end);
+      if (!literal) styles[tokens[at].group].locked = true;
+    }
     else if (t === 'rad' || t === 'radius') { if (!NUMBER.test(next || '')) return null; i = take(i, 'rad', 1); }
     else if (t === 'chop') i = take(i, 'chop');
     else if (t === 'cw' || t === 'ccw') i = take(i, 'turn');
@@ -69,8 +93,8 @@ export function parseConnector(source, object, scene) {
       i = take(i, 'label', extra);
     }
   }
-  // A value that continues as an expression (thickness 0.01*2) is locked too.
-  for (const group of styles) if (/^[+\-*/^(]$/.test(tokens[group.to + 1]?.text || '') && ['color','weight','rad','dash'].includes(group.cat)) group.locked = true;
+  // A rad or dash length that continues as an expression is locked too.
+  for (const group of styles) if (/^[+\-*/^(]$/.test(tokens[group.to + 1]?.text || '') && ['rad','dash'].includes(group.cat)) group.locked = true;
   return { source, object, statement, tokens, styles, kind:object.kind, name, kindIndex,
     path:tokens.filter(t => t.cat === 'path') };
 }
@@ -176,7 +200,7 @@ export function connectorState(source, object, scene) {
     kind:model.kind, heads:headsOf(model),
     dash:dash === 'dashed' || dash === 'dotted' ? dash : 'solid',
     weight:weight === 'thickness' ? 'custom' : weight || 'normal',
-    colour:styleOf(model, 'color').at(-1)?.text.split(' ')[1] || 'default',
+    colour:styleOf(model, 'color').at(-1)?.value || 'default',
     chop:styleOf(model, 'chop').length > 0, rounded:styleOf(model, 'rad').length > 0,
     turn:model.kind === 'arc' ? (styleOf(model, 'turn').at(-1)?.text || 'ccw') : null,
     label, labelEditable:labels.length <= 1,

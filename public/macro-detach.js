@@ -166,9 +166,27 @@ const nestedNote = (def, defs) => {
 };
 
 // Cheap and synchronous, for the inspector: the macro and its uses.
-export function macroUses(source, object) {
+// With the scene, `call` says whether this object's own use passes $n
+// arguments the body reads (args) or writes attributes after the call
+// (extra); null when Studio cannot tell which use made it. The k-th object
+// written by one body statement comes from the k-th use.
+export function macroUses(source, object, scene) {
   const defs = definitions(source), def = origin(source, object, defs);
-  return def ? {name:def.name, uses:sites(source, def.name, defs).length} : null;
+  if (!def) return null;
+  const all = sites(source, def.name, defs);
+  let call = null;
+  if (scene?.objects) {
+    // Pikchr spans some expansions at the call itself; otherwise at the body.
+    const twins = scene.objects.filter(o => o.span?.start === object.span?.start && o.span?.end === object.span?.end);
+    const site = all.find(c => object.span?.start >= c.span.start && object.span?.start < c.span.end)
+      || (twins.length === all.length ? all[twins.indexOf(object)] : null);
+    if (site) {
+      const reads = code(lex(def.body)).some(t => /^\$[1-9]$/.test(t.text));
+      const rest = source.slice(site.end).split(/[\n;]/)[0];
+      call = {args:reads && site.args.length > 0, extra:code(lex(rest)).length > 0};
+    }
+  }
+  return {name:def.name, uses:all.length, call};
 }
 
 // Why a macro shape refuses a direct edit (`verb`: deleted, duplicated,

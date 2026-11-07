@@ -220,19 +220,24 @@ export function changeTermination(source,object,scene,mode) {
   return {...candidate(source,object,statement,replacement,'Change line termination'),selectId:object.id,targetKind:mode==='none' ? 'line' : object.kind};
 }
 
-// What a macro use draws, read from its statement inside the define body, for
-// the inspector's read-only rows. A colour clause Studio cannot read as a
-// literal comes back as its source text; null means Pikchr's default.
-export function macroProperties(source, object) {
-  if (typeof source !== 'string' || !(object?.span?.start >= 0)) return null;
-  const statement = source.slice(byteOffsetToIndex(source,object.span.start), byteOffsetToIndex(source,object.span.end));
-  const labels = [...statement.matchAll(/"(?:\\.|[^"\\])*"/g)];
-  const colour = key => { const {clauses,written} = attributeClauses(statement,key); return written ?? (clauses.length ? colourValue(clauses.at(-1).value) : null); };
-  const first = labels[0], after = first ? TEXT_ATTRS_AFTER.exec(statement.slice(first.index+first[0].length))[0] : '';
+// What Pikchr drew for one object, read from its SVG group: the values the
+// author sees, whatever produced them (a macro body, its $n arguments,
+// attributes after the call). Colours are #rrggbb (null for none); thickness
+// is inches, through the scene's pixels-per-inch transform.
+export function drawnProperties(svg, id, transform) {
+  const group = new RegExp(`<g data-pikchr-id="${id}">([\\s\\S]*?)</g>`).exec(svg || '')?.[1];
+  if (group === undefined) return null;
+  const hex = rgb => { const m = /rgb\((\d+),(\d+),(\d+)\)/.exec(rgb || ''); return m ? '#' + m.slice(1).map(n => (+n).toString(16).padStart(2, '0')).join('') : null; };
+  const style = /<(?:path|polygon|ellipse|circle)[^>]*style="([^"]*)"/.exec(group)?.[1] || '';
+  const texts = [...group.matchAll(/<text([^>]*)>([^<]*)<\/text>/g)];
+  const first = texts[0]?.[1] || '', ppi = Math.abs(transform?.a || 144);
+  const width = /stroke-width:([\d.]+)/.exec(style);
+  const unescape = t => t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
   return {
-    text: labels.map(label=>label[0].slice(1,-1)).join('\n'),
-    fill: colour('fill'), color: colour('color'),
-    thickness: effectiveThickness(maskCode(statement),documentThickness(source)).value ?? null,
-    words: after.trim().split(/\s+/).filter(Boolean),
+    text: texts.map(t => unescape(t[2])).join('\n'),
+    fill: hex(/fill:([^;]*)/.exec(style)?.[1]),
+    color: hex(/stroke:([^;]*)/.exec(style)?.[1]) ?? hex(/fill="([^"]*)"/.exec(first)?.[1]),
+    thickness: width ? Math.round(Number(width[1]) / ppi * 10000) / 10000 : null,
+    words: [...(/font-weight="bold"/.test(first) ? ['bold'] : []), ...(/font-style="italic"/.test(first) ? ['italic'] : []), ...(/font-family="monospace"/.test(first) ? ['mono'] : [])],
   };
 }
