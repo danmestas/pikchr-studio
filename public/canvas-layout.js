@@ -1017,7 +1017,7 @@ function install(studio){
   function placeInline(d){
     const box=labelBox(d.object);if(!box)return;
     const svg=svgNow(),ctm=svg?.getScreenCTM(),scale=ctm?Math.hypot(ctm.a,ctm.b)||1:1;
-    const ta=d.ta,width=Math.max(140,box.right-box.left);
+    const ta=d.ta,width=Math.min(innerWidth-8,Math.max(140,box.right-box.left));
     ta.style.fontSize=Math.max(12,d.fontSize*scale)+'px';ta.style.width=width+'px';
     ta.style.height='auto';ta.style.height=ta.scrollHeight+'px';
     // Inside the visible area: the label may be partly off screen.

@@ -111,14 +111,19 @@ def build():
                 prefix, line, key = places[placement]
                 source = FRAME_TOP + prefix + line.format(kind=kind, label=label).rstrip() + FRAME_END
                 typed = TYPED[n % len(TYPED)]
-                # The pan and zoom check (slow: two re-renders) on every fourth cell.
-                cells.append(cell(f"{kind} / {start} / {placement} / {entry} / {edit}", source, key, kind, start, placement, entry, edit, typed, view=n % 4 == 0))
+                cells.append(cell(f"{kind} / {start} / {placement} / {entry} / {edit}", source, key, kind, start, placement, entry, edit, typed))
     # Macro uses and [ ] members refuse with a reason, from every entry point.
     for entry in ENTRIES:
         cells.append(cell(f"macro use / one string / chain / {entry} / refuse", 'define m { box "M" }\nm\nA: box "A" at (2,0)\n', "macro", "box",
                           "one string", "chain", entry, "replace", refuse="macro"))
         cells.append(cell(f"[ ] member / one string / nested / {entry} / refuse", 'A: box "A"\n[ box "in" ]\n', "index:2", "box",
                           "one string", "nested", entry, "replace", refuse=r"\[ \]|group"))
+    # The default Text fit at a literal position: a box wraps a long label
+    # inside its width, an oval (and every other shape) grows to fit it.
+    for kind, fit in [("box", "wrap"), ("oval", "grow"), ("circle", "grow"), ("cylinder", "grow")]:
+        for entry in ENTRIES:
+            cells.append(cell(f"{kind} / one string / literal at / {entry} / default {fit}", FRAME_TOP + f'X: {kind} "Label" at (1,0)' + FRAME_END,
+                              "X", kind, "one string", "literal at", entry, "replace", "a label much too long for the default shape", expectFit=fit))
     # Typing over an open preview: the label beside a previewed connector.
     for edit in ("replace", "escape"):
         cells.append(cell(f"box / one string / literal at / preview / {edit}", 'A: box "A"\nB: box "B" at (2,1)\narrow from A.e to B.w\n', "B", "box",
@@ -165,15 +170,20 @@ def new_page(browser, viewport, touch, theme, errors):
     return page
 
 
+# The pan and zoom check (two re-renders, slow) runs on every cell of one
+# kind per page, so each kind's code path is covered on some page.
+VIEW_KIND = {"desktop light": "box", "desktop dark": "oval", "phone light": "arrow", "phone dark": "circle"}
+
+
 def run(browser, config, viewport, touch, theme, results):
     errors = []
     page = new_page(browser, viewport, touch, theme, errors)
-    cells = cells_for(config)
+    cells = [{**c, "view": c["kind"] == VIEW_KIND[config]} for c in cells_for(config)]
     for start in range(0, len(cells), 30):
         if time.time() - STARTED > DEADLINE:
             raise TimeoutError(f"Text matrix exceeded its {DEADLINE:.0f}-second deadline")
         chunk = cells[start:start + 30]
-        out = page.evaluate("([cells,opts])=>textMatrix.run(cells,opts)", [chunk, {"touch": touch, "view": not touch}])
+        out = page.evaluate("([cells,opts])=>textMatrix.run(cells,opts)", [chunk, {"touch": touch, "view": True}])
         for c, r in zip(chunk, out):
             results.append((config, c, r["failures"]))
     for name, failures in real_input(page, config, touch):
@@ -189,6 +199,8 @@ def load(page, text):
     ok = page.evaluate("""async t=>{const s=document.getElementById('source');s.value=t;s.dispatchEvent(new Event('input',{bubbles:true}));
       document.getElementById('render').click();for(let i=0;i<400;i++){const x=pikchrStudio.state();if(x.source===t&&x.valid&&!x.queued)return true;await new Promise(r=>setTimeout(r,10));}return false}""", text)
     assert ok, "source did not render"
+    page.evaluate("()=>{const e=document.querySelector('textarea.cl-inline-text');if(!e)document.getElementById('fit-view').click()}")
+    page.wait_for_timeout(50)
 
 
 def point_of(page, key):

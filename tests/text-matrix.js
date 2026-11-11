@@ -268,7 +268,7 @@
     const before = st(), object = objectFor(before, cell);
     if (!object) { fail('setup', 'object not found'); return failures; }
     // Every cell starts from the fitted view (the pan and zoom checks move it).
-    if ($('zoom-level')?.textContent !== '100%' || moved) { $('fit-view')?.click(); moved = false; await frame(); }
+    $('fit-view')?.click(); moved = false; await frame();
     await until(() => st().valid && !$('diagram').classList.contains('stale'), 1500);
     await frame();
     const beforeStatement = object.span?.start >= 0 ? statementOf(before, object) : null;
@@ -292,7 +292,7 @@
     }
     if (!ta) {
       const p = labelPoint(object), hit = p && document.elementFromPoint(p.x, p.y);
-      fail('open', `the ${cell.entry} entry did not open the editor (status: "${stateText().slice(0, 140)}"; label at ${p && Math.round(p.x) + ',' + Math.round(p.y)} under ${hit ? hit.tagName + '.' + String(hit.className?.baseVal ?? hit.className) + ' in ' + (hit.closest('[data-pikchr-id]')?.getAttribute('data-pikchr-id') || hit.parentElement?.getAttribute('class')) + ' (object ' + object.id + ')' : 'nothing'})`);
+      fail('open', `the ${cell.entry} entry did not open the editor (status: "${stateText().slice(0, 140)}"; label at ${p && Math.round(p.x) + ',' + Math.round(p.y)} zoom ${$('zoom-level')?.textContent} viewBox ${document.querySelector('#diagram svg')?.getAttribute('viewBox')}; under ${hit ? hit.tagName + '.' + String(hit.className?.baseVal ?? hit.className) + ' in ' + (hit.closest('[data-pikchr-id]')?.getAttribute('data-pikchr-id') || hit.parentElement?.getAttribute('class')) + ' (object ' + object.id + ')' : 'nothing'})`);
       return failures;
     }
     if (cell.shownFit !== undefined && cell.shownFit !== null && cell.shownFit !== fitMode) fail('sizing', `the inspector's Text fit shows ${cell.shownFit}, but label edits follow ${fitMode}`);
@@ -389,6 +389,13 @@
       if (fellBack && /\bat\s*\(\s*[-+\d.]+\s*,\s*[-+\d.]+\s*\)/.test(skeletonless(oldStatement)))
         fail('sizing', `Text fit ${fitMode} fell back to Fixed at a literal position: ${committedStatus}`);
       const mode = effective;
+      // The named default: a box wraps (several lines, same width, explicit
+      // height), an oval grows (fit), never falling back.
+      if (cell.expectFit && fitMode !== cell.expectFit) fail('sizing', `default Text fit for a ${object.kind} is ${fitMode}, expected ${cell.expectFit}`);
+      if (cell.expectFit === 'wrap' && !(landed.split('\n').length > 1 && /\b(?:height|ht)\b/.test(skeletonless(newStatement)) && newObject.bbox.height > object.bbox.height))
+        fail('sizing', 'a default box did not wrap its long label: ' + newStatement);
+      if (cell.expectFit === 'grow' && !(/\bfit\b/.test(skeletonless(newStatement)) && newObject.bbox.width > object.bbox.width))
+        fail('sizing', `a default ${object.kind} did not grow to its label: ` + newStatement);
       if (mode === 'wrap' && Math.abs(newObject.bbox.width - object.bbox.width) > 1e-6) fail('sizing', `Text fit is Wrap but the width changed from ${object.bbox.width.toFixed(3)} to ${newObject.bbox.width.toFixed(3)}`);
       if (mode === 'wrap' && plan.expect.trim() && !/\b(?:width|wid)\b/.test(skeletonless(newStatement)) && !/\bfit\b/.test(skeletonless(newStatement))) fail('sizing', 'Text fit is Wrap but no width is kept: ' + newStatement);
       if (mode === 'fixed' && sizes(newStatement) !== sizes(oldStatement)) fail('sizing', `Text fit is Fixed but the size clauses changed: "${sizes(oldStatement)}" -> "${sizes(newStatement)}"`);
