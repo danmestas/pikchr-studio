@@ -360,16 +360,16 @@
     const index = before.scene.objects.indexOf(object), newObject = after.scene.objects[index];
     const newStatement = newObject?.span ? statementOf(after, newObject) : '';
     const oldStatement = beforeStatement;
-    // A label that changes the shape's size may rewrite its own placement and
-    // pin its neighbours (as a drag does); comments stay byte-identical and
-    // nothing else may change. Otherwise only this statement changes.
+    // Only this statement changes, whatever the label does to the size: an
+    // explicit placement is rewritten inside it to keep the centre, and a
+    // chain shape's followers flow; no other statement is pinned.
     const resized = !!newObject?.bbox && (Math.abs(newObject.bbox.width - object.bbox.width) > 1e-6 || Math.abs(newObject.bbox.height - object.bbox.height) > 1e-6);
-    const comments = t => t.match(/#[^\n]*|\/\*[\s\S]*?\*\//g)?.join('|') || '';
-    if (!resized) {
+    const explicit = !!(object.spans?.placement && object.spans.placement.end > object.spans.placement.start);
+    {
       const head = before.source.length - slice(before.source, object.span.start, 1e9).length, tail = slice(before.source, object.span.end, 1e9).length;
       if (after.source.slice(0, head) !== before.source.slice(0, head) || after.source.slice(after.source.length - tail) !== before.source.slice(before.source.length - tail))
-        fail('diff', 'text outside the edited statement changed');
-    } else if (comments(masked(after.source)) !== comments(masked(before.source))) fail('diff', 'a resize changed a comment');
+        fail('diff', `text outside the edited statement changed${resized ? ' (a resize)' : ''}`);
+    }
     const landed = strings(newStatement).map(s => s.text).join('\n');
     const fellBack = /kept its size/.test(committedStatus);
     const effective = fellBack ? 'fixed' : fitMode;
@@ -383,7 +383,7 @@
     if ((wrapped ? landed : wantLines.join('\n')).split('\n').filter(l => l.trim()).join('\n') !== drawn.filter(l => l.trim()).join('\n')) fail('render', `render shows ${JSON.stringify(drawn)}, expected ${JSON.stringify(wantLines)}`);
     // (b) only text and size clauses change; untouched strings keep their style.
     const own = (state, o, text) => { const p = o.spans?.placement; return p && p.end > p.start ? text.replace(slice(state.source, p.start, p.end), ' ') : text; };
-    if (skeleton(resized ? own(after, newObject, newStatement) : newStatement) !== skeleton(resized ? own(before, object, oldStatement) : oldStatement)) fail('diff', `statement structure changed: ${JSON.stringify(oldStatement)} -> ${JSON.stringify(newStatement)}`);
+    if (skeleton(resized && explicit ? own(after, newObject, newStatement) : newStatement) !== skeleton(resized && explicit ? own(before, object, oldStatement) : oldStatement)) fail('diff', `statement structure changed: ${JSON.stringify(oldStatement)} -> ${JSON.stringify(newStatement)}`);
     const was = strings(oldStatement), now = strings(newStatement);
     // A style click toggles bold on every string (the text bar styles the
     // whole label); otherwise each string keeps exactly its own words.
@@ -413,15 +413,19 @@
       if (mode === 'grow' && plan.expect.trim() && !/\bfit\b/.test(skeletonless(newStatement))) fail('sizing', 'Text fit is Grow but the statement no longer fits: ' + newStatement);
     }
     if (newObject) {
-      // The shape keeps its centre; no other shape moves; the connectors on
-      // either side of it stay attached.
+      // An explicitly placed shape keeps its centre; a chain shape keeps its
+      // entry (it flows from the connector before it). Nothing before it and
+      // nothing placed on its own moves; its chain followers may flow. The
+      // connectors on either side stay attached.
       const near = (a, b, tol = 1e-3) => Math.abs(a.x - b.x) <= tol && Math.abs(a.y - b.y) <= tol;
       const at = p => `${p.x.toFixed(3)},${p.y.toFixed(3)}`;
-      if (!near(object.center, newObject.center)) fail('sizing', `the centre moved from ${at(object.center)} to ${at(newObject.center)}: ${newStatement}`);
       const lines = ['arrow', 'line', 'spline', 'arc', 'move'];
+      if (lines.includes(object.kind) || explicit) { if (!near(object.center, newObject.center)) fail('sizing', `the centre moved from ${at(object.center)} to ${at(newObject.center)}: ${newStatement}`); }
+      else if (!near(object.anchors.w, newObject.anchors.w)) fail('sizing', `the chain entry moved from ${at(object.anchors.w)} to ${at(newObject.anchors.w)}: ${newStatement}`);
+      const ownPlace = o => !!(o.spans?.placement && o.spans.placement.end > o.spans.placement.start);
       for (const [i, o] of before.scene.objects.entries()) {
         const n = after.scene.objects[i];
-        if (i === index || lines.includes(o.kind) || !o.center || !n?.center) continue;
+        if (i === index || lines.includes(o.kind) || !o.center || !n?.center || i > index && !ownPlace(o)) continue;
         if (!near(o.center, n.center)) { fail('sizing', `${o.name || o.kind + ' ' + i} moved from ${at(o.center)} to ${at(n.center)}`); break; }
       }
       if (!lines.includes(object.kind)) {

@@ -1,4 +1,5 @@
 import {endpointCandidates,moveVertexCandidates,routeCandidates,byteOffsetToIndex} from './edits.js?v=20261110a';
+import {decodeLabel} from './properties.js?v=20261110a';
 import {routeEditor,routeStyleGallery} from './route-ui.js?v=20261110a';
 import {connectorState,routeStyleCandidates} from './route-styles.js?v=20261110a';
 import {inspectProperties,changeTermination} from './properties.js?v=20261110a';
@@ -245,6 +246,6 @@ export function arrowEditor({object,scene,source,svg,slots,propose,status,valid,
 }
 function objectLabel(object,source){
   const bytes=new TextEncoder().encode(source),statement=new TextDecoder().decode(bytes.slice(object.span.start,object.span.end));
-  const labels=[...statement.matchAll(/"([^"\\]*)"/g)].map(m=>m[1]);
+  const labels=[...statement.matchAll(/"(?:\\.|[^"\\])*"/g)].map(m=>decodeLabel(m[0]));
   return labels.length?`${labels.join(' / ')} (${object.name||object.id})`:object.name||object.id;
 }

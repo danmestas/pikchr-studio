@@ -82,7 +82,7 @@ test('bundled native renderer has a five-term limit and wrapping reports actiona
   await assert.rejects(buildTextEdit(source,scene,object,{text:'word word word word word word',mode:'wrap',width:0.35},render),/more than five lines.*Increase the wrap width or choose Grow/);
   await assert.rejects(buildTextEdit(source,scene,object,{text:'1\n2\n3\n4\n5\n6',mode:'wrap'},render),/at most five text lines/);
 });
-test('Grow and Wrap keep a chained, relative or expression-placed shape and its neighbours in place', async () => {
+test('Grow and Wrap rewrite only the edited statement: an explicit placement keeps its centre, a chain flows', async () => {
   const near = (a, b) => Math.abs(a.x - b.x) < 1e-3 && Math.abs(a.y - b.y) < 1e-3;
   const forms = {
     chain: 'box "start"\narrow\n{X}\narrow\nbox "next"\n',
@@ -96,26 +96,17 @@ test('Grow and Wrap keep a chained, relative or expression-placed shape and its 
     const edit = await buildTextEdit(source, scene, object, { text: 'a label much too long for this shape', mode }, render);
     const result = render(edit.source), now = result.objects[index], label = `${form} ${kind} ${mode}: ${edit.source}`;
     assert.equal(result.error, null, label);
-    assert.ok(near(now.center, object.center), 'centre moved: ' + label);
     assert.ok(mode === 'wrap' ? now.bbox.height > object.bbox.height : now.bbox.width > object.bbox.width, 'did not resize: ' + label);
-    // Every other shape stays; every connector still touches the shapes it joins.
-    for (const [i, o] of scene.objects.entries()) if (i !== index && o.kind !== 'arrow') assert.ok(near(result.objects[i].center, o.center), `${o.kind} ${i} moved: ${label}`);
-    const after = result.objects.find((o, i) => i > index && o.kind === 'arrow');
-    assert.ok(near(after.path[0], now.anchors.e) || near(after.path[0], now.anchors.s), 'follower connector detached: ' + label);
-    // The drawn path stops short of an arrowhead by the same gap as before.
-    const gap = (o, p) => Math.hypot(o.anchors.w.x - p.x, o.anchors.w.y - p.y);
-    if (form === 'chain') assert.ok(Math.abs(gap(now, result.objects[1].path.at(-1)) - gap(object, scene.objects[1].path.at(-1))) < 1e-3, 'leading connector detached: ' + label);
-  }
-});
-test('a chained shape grown twice keeps the connector before it attached', async () => {
-  let source = 'box "start"\narrow\noval "x"\narrow\nbox "next"\n', scene = render(source);
-  const first = scene.objects[2];
-  for (const text of ['a longer label', 'an even longer label than that']) {
-    const edit = await buildTextEdit(source, scene, scene.objects[2], { text, mode: 'grow' }, render);
-    source = edit.source; scene = render(source);
-    const now = scene.objects[2], arrow = scene.objects[1];
-    assert.ok(Math.abs(now.center.x - first.center.x) < 1e-3, source);
-    assert.ok(Math.abs(Math.hypot(now.anchors.w.x - arrow.path.at(-1).x, now.anchors.w.y - arrow.path.at(-1).y) - 0) < 0.1, 'detached: ' + source);
-    assert.match(source, /^box "start"\narrow to \(/, source);
+    // Only the edited statement changes.
+    const lines = source.split('\n'), after = edit.source.split('\n');
+    assert.equal(after.length, lines.length, label);
+    for (const [i, line] of lines.entries()) if (i !== index) assert.equal(after[i], line, label);
+    if (form === 'chain') {
+      // A chain shape flows from the connector before it: its entry stays put.
+      assert.ok(near(now.anchors.w, object.anchors.w), 'entry moved: ' + label);
+    } else assert.ok(near(now.center, object.center), 'centre moved: ' + label);
+    // Its follower still starts at its exit.
+    const follower = result.objects.find((o, i) => i > index && o.kind === 'arrow');
+    assert.ok(near(follower.path[0], now.anchors.e) || near(follower.path[0], now.anchors.s), 'follower detached: ' + label);
   }
 });

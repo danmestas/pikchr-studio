@@ -6,6 +6,7 @@ placed implicitly (the common case) cannot grow to fit without moving their
 neighbours, so they keep their size; nothing is dropped silently. A refused
 label keeps the editor open with the reason next to it."""
 import os
+import re
 from browser_helpers import set_auto_apply
 from playwright.sync_api import sync_playwright, expect
 
@@ -76,7 +77,12 @@ def run(page, queued):
                 assert '"old"' not in after, case + " kept the old label: " + after
                 line = after.split("\n")[2]
                 assert line.startswith(("C: " if named else "") + kind + ' "'), case + ": " + line
-                assert (" width " in line and '"label"' in line) if kind == "box" else ('"' + LABEL + '"' in line and line.endswith(" fit")), case + ": " + line
+                words = [w for part in re.findall(r'"((?:\\.|[^"\\])*)"', line) for w in part.split()]
+                assert words == LABEL.split(), case + ": words out of order: " + line
+                if kind == "box":
+                    assert " width " in line and line.count('"') > 2, case + ": a box wraps: " + line
+                else:
+                    assert re.findall(r'"((?:\\.|[^"\\])*)"', line) == [LABEL] and line.endswith(" fit"), case + ": exact text: " + line
                 assert after.split("\n")[0] == 'box "A"' and after.split("\n")[4] == 'box "B"', case + ": neighbours changed"
                 assert all(w in page.locator("#diagram svg").text_content().replace("\xa0", " ") for w in LABEL.split()), case + ": label not rendered"
                 if queued:

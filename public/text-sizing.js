@@ -1,6 +1,5 @@
 import { changeText, encodeLabel, readProperties, propertyCandidate } from './properties.js';
 import { candidates } from './edits.js?v=20261110a';
-import { settleMove } from './object-actions.js?v=20261110a';
 
 const LIMIT = 32;
 // The bundled native PObj has aTxt[5]; additional labels cannot render.
@@ -90,26 +89,29 @@ export async function buildTextEdit(source, scene, object, { text, mode = 'grow'
 
 const SHAPES = ['box', 'circle', 'ellipse', 'oval', 'cylinder', 'diamond', 'file', 'text'];
 const same = (a, b) => Math.abs(a.x - b.x) < 1e-6 && Math.abs(a.y - b.y) < 1e-6;
-// A label that changes a shape's size must not move it or anything around
-// it, whatever its placement: as after a drag, the shape's own placement is
-// rewritten (same form) to keep its rendered centre, a connector it hangs
-// from is extended, and chain followers are pinned (settleMove). A shape
-// that cannot be kept in place refuses the size change with the reason.
+// A label that changes a shape's size rewrites only its own statement. A
+// shape placed explicitly (at …, with …) keeps its rendered centre: its
+// placement is rewritten in the same form, as a drag does. A shape placed
+// implicitly in a chain keeps its implicit placement and flows from the
+// connector before it, its followers flowing after it, as Pikchr authors
+// expect. A placement Studio cannot rewrite refuses the size change.
 export async function keepInPlace(source, scene, object, option, render) {
   if (typeof render !== 'function' || !SHAPES.includes(object.kind)) return option;
+  const placed = object.spans?.placement;
+  if (!placed || !(placed.end > placed.start)) return option;
   const index = scene.objects.indexOf(object);
   const result = await render(option.source);
   if (result.error) throw new Error('Pikchr could not render this label: ' + result.error);
   const now = result.objects?.[index];
   if (!now?.center || now.kind !== object.kind) throw new Error('Pikchr could not identify the resized shape.');
-  let text = option.source;
-  if (!same(now.center, object.center)) {
-    const back = candidates(text, now, result, object.center, { precise: true, keepForm: true })[0];
-    if (!back) throw new Error('Studio can’t keep this shape in place while its size changes.');
-    text = back.source;
-  }
-  const settled = await settleMove(source, scene, { ...option, source: text, target: object.center }, object, render);
-  if (!settled) throw new Error('Studio can’t keep the shapes around this one in place while its size changes.');
-  if (settled.source === option.source) return option;
-  return { ...option, source: settled.source, patch: settled.patch, label: settled.label };
+  if (same(now.center, object.center)) return option;
+  const back = candidates(option.source, now, result, object.center, { precise: true, keepForm: true })[0];
+  if (!back || back.patch.start !== now.span.start) throw new Error('Studio can’t keep this shape in place while its size changes.');
+  const text = back.source, check = await render(text);
+  if (check.error || !same(check.objects?.[index]?.center || {x: NaN, y: NaN}, object.center)) throw new Error('Studio can’t keep this shape in place while its size changes.');
+  // One patch: the edited statement only.
+  const start = object.span.start, end = object.span.end, bytes = t => new TextEncoder().encode(t);
+  const tail = bytes(source).length - end, total = bytes(text);
+  const replaced = new TextDecoder().decode(total.slice(start, total.length - tail));
+  return { ...option, source: text, patch: { base: source, start, end, expected: new TextDecoder().decode(bytes(source).slice(start, end)), text: replaced } };
 }

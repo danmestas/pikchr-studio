@@ -42,17 +42,27 @@ let cancelCanvasEdit=()=>{},manualEditBase=null;
 // (Studio's own edits, undo and redo keep the view as it is).
 let viewMoved=false,typedSource=false;
 // A view is never refitted under a gesture: while a pointer is down on the
-// page, a drag preview is open, or the label dialog is previewing. A refit
-// asked for then (a window resize, the chrome rearranging) waits for it.
-// A press that moved is a drag: its edit (and any preview) is still being
-// worked out after the release, so the refit waits for the preview to close.
+// page, a drag preview is open, the label dialog is previewing, or the author
+// is typing. A refit asked for then (a window resize, the chrome rearranging)
+// waits for it to end. A press that moved is a drag: its edit (and any
+// preview) is still being worked out after the release, so the refit waits
+// for the preview; a drag that ends without one drops it.
 let pointerHeld=false,pointerDragged=false,refitPending=false;
 // Counts fits of the view: a reveal's pan is only undone on the view it moved.
 let fits=0;
-const viewBusy=()=>pointerHeld||!!preview||!!directTools?.busy?.();
+// Typing (the on-canvas label editor or any text field) also holds the view:
+// an on-screen keyboard resizing the window must not refit under the caret.
+const typing=()=>!!document.querySelector('textarea.cl-inline-text')||!!document.activeElement?.matches?.('input:not([type=checkbox]):not([type=radio]):not([type=button]),textarea,select,[contenteditable]');
+const viewBusy=()=>pointerHeld||!!preview||!!directTools?.busy?.()||typing();
+const runPendingRefit=()=>setTimeout(()=>{if(refitPending&&!viewBusy())window.pikchrStudio?.refit();});
+addEventListener('focusout',runPendingRefit,true);
 addEventListener('pointerdown',()=>{pointerHeld=true;pointerDragged=false;},true);
 addEventListener('pointermove',()=>{if(pointerHeld)pointerDragged=true;},true);
-for(const type of ['pointerup','pointercancel'])addEventListener(type,()=>{pointerHeld=false;if(!pointerDragged)setTimeout(()=>{if(refitPending&&!viewBusy())window.pikchrStudio?.refit();});},true);
+for(const type of ['pointerup','pointercancel'])addEventListener(type,()=>{pointerHeld=false;
+  if(!pointerDragged){runPendingRefit();return;}
+  // A drag settles into a preview (which runs the refit when it closes) or
+  // straight into an edit; without a preview the request is dropped.
+  setTimeout(()=>{if(!preview&&!pointerHeld)refitPending=false;},400);},true);
 let draftBase=null,discarded=null;
 let rendering=false,renderVersion=0;
 const selectionHistory=new Map();
@@ -279,7 +289,7 @@ async function renderSource(preRendered=null){
   const typed=typedSource;typedSource=false;
   if(!oldViewport)viewMoved=false;
   // Never under a gesture: a drag, preview or label dialog keeps its view.
-  else if(typed&&!viewMoved&&!viewBusy()&&!contentVisible(svg,vx,vy,vw,vh)){svg.dataset.baseViewBox=svg.dataset.fitViewBox;zoom=1;pan={x:0,y:0};fits++;applyViewport();}
+  else if(typed&&!viewMoved&&!pointerHeld&&!preview&&!directTools?.busy?.()&&!document.querySelector('textarea.cl-inline-text')&&!contentVisible(svg,vx,vy,vw,vh)){svg.dataset.baseViewBox=svg.dataset.fitViewBox;zoom=1;pan={x:0,y:0};fits++;applyViewport();}
   bindDiagram(svg);
   directTools?.sync();
   if(focusResize)svg.querySelector(`[data-resize="${focusResize}"]`)?.focus({preventScroll:true});
@@ -727,7 +737,8 @@ $('focus-selection').onclick=()=>{
   const corners=objects.flatMap(o=>[svgPoint({x:o.bbox.x,y:o.bbox.y}),svgPoint({x:o.bbox.x+o.bbox.width,y:o.bbox.y+o.bbox.height})]);
   const xs=corners.map(p=>p.x),ys=corners.map(p=>p.y),left=Math.min(...xs),top=Math.min(...ys),w=Math.max(...xs)-left,h=Math.max(...ys)-top;
   const [x,y,bw,bh]=svg.dataset.baseViewBox.split(/[ ,]+/).map(Number);
-  zoom=clampZoom(Math.min(3,bw/Math.max(w*2,30),bh/Math.max(h*2,30)));pan={x:left+w/2-x-bw/2,y:top+h/2-y-bh/2};applyViewport();refreshHandles();
+  // A deliberate view: a later resize must not refit it away.
+  viewMoved=true;zoom=clampZoom(Math.min(3,bw/Math.max(w*2,30),bh/Math.max(h*2,30)));pan={x:left+w/2-x-bw/2,y:top+h/2-y-bh/2};applyViewport();refreshHandles();
 };
 // Why a press on an object cannot move it, in plain words with the way out.
 // The reason comes from the edit engine (moveRefusal), computed per render.

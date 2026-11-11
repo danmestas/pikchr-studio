@@ -81,13 +81,18 @@ export function canvasTools({clearSelection,host,toolbar,getState,render,propose
     const width=Number(sizeWidth.value),height=Number(sizeHeight.value);
     if(width===Number(o.bbox.width.toFixed(3))&&height===Number(o.bbox.height.toFixed(3))){restoreSize();return;}
     applying=true;let reason='';
-    try{if(await submit(await sizedCandidate(s,{width,height}),s,text=>{reason=text;})){typed=null;showError('');}else showError(reason||'Size not applied.');}
+    // A typed size follows the same rule as a resize handle: a new width on a
+    // wrapping (or growing) box rewraps, any other new size is a fixed size.
+    const policy=dragPolicy(s,height===Number(o.bbox.height.toFixed(3))?'e':'n');
+    try{if(await submit(await sizedCandidate(s,{width,height},policy),s,text=>{reason=text;})){typed=null;showError('');}else showError(reason||'Size not applied.');}
     catch(error){showError(error.message);status('Size not applied. '+error.message);}
     finally{applying=false;}
   }
   async function fit(mode){
     const s=snapshot(),o=s.object;if(!s.valid||!o){status('Render the current source before changing text fit.');return;}
     restoreSize();
+    // Choosing the Text fit already in force writes nothing.
+    if(mode===fitOf(s)){status(`Text fit is already ${mode==='grow'?'Grow shape':mode==='wrap'?'Wrap':'Fixed'}.`);return;}
     try{await submit(await sizedCandidate(s,{width:o.bbox.width,height:o.bbox.height},mode),s,showError);}catch(error){showError(error.message);status(error.message);}
   }
   for(const field of [sizeWidth,sizeHeight]){
@@ -120,7 +125,9 @@ export function canvasTools({clearSelection,host,toolbar,getState,render,propose
 
   function validSnapshot(s){const now=getState();return (s.toolEpoch===undefined||s.toolEpoch===epoch)&&now.valid&&now.key===s.key&&now.source===s.source;}
   async function submit(option,s,reject){if(!validSnapshot(s)){status('The document changed. Select the object again.');reject?.('The document changed. Select the object again.');return false;}return propose(s.object,[option],{reject});}
-  async function sizedCandidate(s,dimensions,mode=s.sizing?.mode||'fixed'){
+  // Every sizing path follows the one Text fit the inspector shows (app.js textFitFor).
+  const fitOf=s=>s.textFit||s.sizing?.mode||'fixed';
+  async function sizedCandidate(s,dimensions,mode=fitOf(s)){
     const original=s.sizing?.text??inspectProperties(s.source,s.object,s.scene).text;
     if(mode==='grow'){const result=await buildTextEdit(s.source,s.scene,s.object,{text:original,mode},render);return {...result,sizingPreference:{mode,text:original}};}
     let option=resizeShape(s.source,s.scene,s.object,dimensions);
@@ -136,7 +143,7 @@ export function canvasTools({clearSelection,host,toolbar,getState,render,propose
     return {...option,sizingPreference:{mode,text:original}};
   }
   const horizontalOnly=handle=>handle==='e'||handle==='w';
-  const dragPolicy=(s,handle)=>s.sizing?.mode==='grow'?(horizontalOnly(handle)&&s.object.kind==='box'?'wrap':'fixed'):s.sizing?.mode==='wrap'&&!horizontalOnly(handle)?'fixed':s.sizing?.mode||'fixed';
+  const dragPolicy=(s,handle)=>{const mode=fitOf(s);return mode==='grow'?(horizontalOnly(handle)&&s.object.kind==='box'?'wrap':'fixed'):mode==='wrap'&&!horizontalOnly(handle)?'fixed':mode;};
   function reconnectStart(which){closeInspector();setMode(which);}
   // Touch screens have no Escape key: hints name the tap that stops instead.
   const touch=()=>matchMedia('(pointer:coarse)').matches;
@@ -164,11 +171,11 @@ export function canvasTools({clearSelection,host,toolbar,getState,render,propose
     let resizable=false;if(s.valid&&o&&!s.multiple){try{resizeShape(s.source,s.scene,o,{width:o.bbox.width,height:o.bbox.height});resizable=true;}catch{}}
     sizing.hidden=!resizable;
     if(resizable){
-      const key=fieldKey(s),mode=s.textFit||s.sizing?.mode||'fixed';
+      const key=fieldKey(s),mode=fitOf(s);
       if(typed!==key){typed=null;showError('');sizeWidth.value=Number(o.bbox.width.toFixed(3));sizeHeight.value=Number(o.bbox.height.toFixed(3));}
       for(const b of fitButtons){b.setAttribute('aria-pressed',String(b.dataset.value===mode));b.disabled=b.dataset.value==='wrap'&&o.kind!=='box';}
       fitButtons[1].title=o.kind==='box'?'The label wraps to the shape width; the height grows':'Only boxes wrap their label';
-      sizeWidth.disabled=mode==='grow';sizeHeight.disabled=mode!=='fixed';syncLock(o);
+      sizeWidth.disabled=sizeHeight.disabled=false;syncLock(o);
     }
     sizeWarning.hidden=true;if(resizable){const a=drawPoint({x:o.bbox.x,y:o.bbox.y+o.bbox.height}),b=drawPoint({x:o.bbox.x+o.bbox.width,y:o.bbox.y});try{const overflow=[...host.querySelectorAll(`[data-pikchr-id="${o.id}"] text`)].some(text=>{const r=text.getBBox();return r.x<a.x-.5||r.y<a.y-.5||r.x+r.width>b.x+.5||r.y+r.height>b.y+.5;});if(overflow){sizeWarning.hidden=false;sizeWarning.textContent='Text exceeds shape: choose Grow or Wrap.';}}catch{}}
     drawHandles();
@@ -289,7 +296,7 @@ export function canvasTools({clearSelection,host,toolbar,getState,render,propose
     const canGrow=!['line','arrow','text'].includes(s.object.kind);
     policy.select.querySelector('[value="grow"]').disabled=!canGrow;
     policy.select.querySelector('[value="wrap"]').disabled=s.object.kind!=='box';
-    input.value=s.sizing?.text??props.text;policy.select.value=s.sizing?.mode||(canGrow?'grow':'fixed');width.value=s.object.bbox.width.toFixed(3);widthLabel.hidden=policy.select.value!=='wrap';
+    input.value=s.sizing?.text??props.text;policy.select.value=canGrow?fitOf(s):'fixed';width.value=s.object.bbox.width.toFixed(3);widthLabel.hidden=policy.select.value!=='wrap';
     dialogSession={s,version:0,candidate:null,original:host.innerHTML,viewBox:host.querySelector('svg')?.getAttribute('viewBox')};message.textContent='Preparing preview…';done.disabled=true;
     document.body.classList.remove('inspector-open','objects-open','creation-open');dialog.showModal();input.focus();input.select();previewText();
   }

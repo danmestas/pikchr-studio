@@ -203,13 +203,26 @@ with sync_playwright() as pw:
     # Text fit drives the label sizing modes through the same edit path.
     fit = page.locator("#inspector").get_by_role("group", name="Text fit", exact=True)
     expect(fit.get_by_role("button", name="Wrap", exact=True)).to_be_disabled()  # only boxes wrap
+    # A cylinder's Text fit is Grow unless chosen otherwise; choosing it again
+    # writes nothing. Choosing Fixed, then Grow, fits the shape to its label.
+    expect(fit.locator("[aria-pressed=true]")).to_have_text("Grow shape")
+    before = source(page)
+    fit.get_by_role("button", name="Grow shape", exact=True).click()
+    page.wait_for_timeout(300)
+    assert source(page) == before
+    fit.get_by_role("button", name="Fixed", exact=True).click()
+    page.wait_for_function("()=>document.querySelector('#inspector [aria-label=\"Text fit\"] [aria-pressed=true]')?.dataset.value==='fixed'")
+    open_more(page)
+    fit = page.locator("#inspector").get_by_role("group", name="Text fit", exact=True)
     before = source(page)
     fit.get_by_role("button", name="Grow shape", exact=True).click()
     changed_from(page, before)
     open_more(page)
     fit = page.locator("#inspector").get_by_role("group", name="Text fit", exact=True)
     expect(fit.locator("[aria-pressed=true]")).to_have_text("Grow shape")
-    expect(page.get_by_label("Shape width", exact=True)).to_be_disabled()
+    # The size fields stay editable in every Text fit (text-fit-browser.py):
+    # a typed size is a fixed size, as a resize handle makes one.
+    expect(page.get_by_label("Shape width", exact=True)).to_be_enabled()
 
     # Dragging a shape that cannot move explains why in plain words, with
     # the way out, rather than echoing an engine reason.

@@ -1,4 +1,5 @@
 import {createShape,createConnector,changeShape,connectableShapes,repeatPosition,repeatShape} from './creation.js?v=20261110a';
+import {decodeLabel} from './properties.js?v=20261110a';
 const kinds=['box','circle','ellipse','oval','cylinder','diamond','text'];
 const creationState={kind:'box',label:'New shape',fit:true,width:'',height:'',fill:'none',color:'black',thickness:'',shapeOpen:false,styleOpen:false,connectorOpen:false,fromAnchor:'e',toAnchor:'w',connector:'arrow',repeat:false,dx:'0',dy:'-1',lastName:null,pending:null,includeText:false};
 const anchors=['c','n','ne','e','se','s','sw','w','nw'];
@@ -125,6 +126,6 @@ export function shapeTypeEditor({object,scene,source,propose,status,valid}){
 }
 function objectLabel(object,source){
   const bytes=new TextEncoder().encode(source),statement=new TextDecoder().decode(bytes.slice(object.span.start,object.span.end));
-  const labels=[...statement.matchAll(/"([^"\\]*)"/g)].map(m=>m[1]);
+  const labels=[...statement.matchAll(/"(?:\\.|[^"\\])*"/g)].map(m=>decodeLabel(m[0]));
   return labels.length?`${labels.join(' / ')} (${object.name||object.id})`:object.name||object.id;
 }

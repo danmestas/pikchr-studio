@@ -148,3 +148,10 @@ test('a monospace label can grow to fit',()=>{
   const edit=changeText(source,object,scene,'longer code',{fit:true});
   assert.match(edit.source,/C: box "longer code" mono big at \(4,0\) fit/);assert.equal(render(edit.source).error,null);
 });
+test('lines the author did not edit keep their source text, unknown escapes included',()=>{
+  const {source,object,scene}=fixture('C: box "a\\tb" bold "two" at (4,0)');
+  assert.equal(inspectProperties(source,object,scene).text,'atb\ntwo');
+  const edit=changeText(source,object,scene,'atb\nTWO');
+  assert.match(edit.source,/C: box "a\\tb" bold "TWO" at/);
+  assert.equal(changeText(source,object,scene,'atb\ntwo').source,source);
+});

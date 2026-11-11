@@ -209,7 +209,9 @@ export function changeText(source,object,scene,text,{fit,anyPlacement=false}={})
   const attrs=labels.map(m=>TEXT_ATTRS_AFTER.exec(statement.slice(m.index+m[0].length))[0]);
   const lastEnd=label?labels.at(-1).index+labels.at(-1)[0].length:0;
   const tailAttrs=label?attrs.at(-1).length:0;
-  const styled=label?text.split('\n').map((line,i)=>quoteLine(line)+attrs[Math.min(i,attrs.length-1)]).join(' '):encoded;
+  // A line that reads as before keeps its source text (escapes as written).
+  const kept=(line,i)=>labels[i]&&decodeLabel(labels[i][0])===line?labels[i][0]:quoteLine(line);
+  const styled=label?text.split('\n').map((line,i)=>kept(line,i)+attrs[Math.min(i,attrs.length-1)]).join(' '):encoded;
   let replacement=label
     ? statement.slice(0,label.index)+styled+statement.slice(lastEnd+tailAttrs)
     : statement.slice(0,header[0].length)+` ${encoded}`+statement.slice(header[0].length);

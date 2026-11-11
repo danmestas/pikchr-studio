@@ -138,3 +138,8 @@ test('remove deletes one document, leaves the others, and forgets it as current 
   store.remove('11111111');assert.equal(store.list().length,1);
   assert.throws(()=>store.remove('../bad'),/Invalid document ID/);
 });
+test('a derived title reads an escaped quote and skips comments',()=>{
+  const storage=setup(),store=createDocumentStore(storage);
+  store.save(state('# a "comment"\nbox "say \\"hi\\""'));
+  assert.equal(store.list()[0].title,'say "hi"');
+});

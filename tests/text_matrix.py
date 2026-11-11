@@ -110,6 +110,10 @@ def build():
                 edits = EDITS
             else:
                 edits = [EDITS[(si + SHAPES.index(kind) if kind in SHAPES else si) % len(EDITS)], EDITS[(si * 3 + 1) % len(EDITS)]]
+                # The style click and the no-change commit meet every starting
+                # text on a box, an oval and a connector label.
+                if kind in ("box", "oval", "arrow"):
+                    edits += [e for e in ("style", "nochange") if e not in edits]
             for ei, edit in enumerate(edits):
                 n += 1
                 placement = names[(si + ei) % len(names)]
@@ -241,8 +245,9 @@ def real_input(page, config, touch):
         page.evaluate("()=>{const t=document.querySelector('textarea.cl-inline-text');if(t)t.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))}")
         out.append((name, failures))
 
-    # Both shapes grow to fit (Text fit Grow), so typed text lands verbatim.
-    source = FRAME_TOP + 'X: box "Label" fit at (1,0)\nY: box "two" "lines" fit at (3,0)\n' + FRAME_END
+    # Default Text fits, no `fit`: the oval grows (typed text lands verbatim),
+    # the box wraps (its words land in order, broken into lines).
+    source = FRAME_TOP + 'X: oval "Label" at (1,0)\nY: box "two" "lines" at (3,0)\n' + FRAME_END
 
     def open_on(key):
         p = point_of(page, key)
@@ -321,11 +326,12 @@ def real_input(page, config, touch):
             page.touchscreen.tap(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
         else:
             bold.click()
-        page.wait_for_function("b=>{const t=document.querySelector('textarea.cl-inline-text');return t&&t.value==='two\\nlines more'&&pikchrStudio.state().valid&&pikchrStudio.state().source!==b}", arg=before, timeout=4000)
+        page.wait_for_function("b=>{const t=document.querySelector('textarea.cl-inline-text');return t&&pikchrStudio.state().valid&&pikchrStudio.state().source!==b}", arg=before, timeout=4000)
+        # Y is a default box: it wraps, so its words land in order, maybe on more lines.
         got = statement_text(page, "Y")
-        stmt = page.evaluate("pikchrStudio.state().source")
-        if got != "two\nlines more" or '"lines more" bold' not in stmt:
-            failures.append({"category": "textbar", "message": f"style mid-edit gave {got!r}"})
+        stmt = page.evaluate("pikchrStudio.state().source").split("\n")[2]
+        if got.split() != ["two", "lines", "more"] or stmt.count('" bold') != stmt.count('"') // 2:
+            failures.append({"category": "textbar", "message": f"style mid-edit gave {got!r}: {stmt}"})
         page.keyboard.press("Enter")
 
     def text_tool(failures):
@@ -352,9 +358,14 @@ def real_input(page, config, touch):
         load(page, source)
         open_on("X")
         size = page.viewport_size
+        view = page.evaluate("document.querySelector('#diagram svg').getAttribute('viewBox')")
         page.set_viewport_size({"width": size["width"], "height": int(size["height"] * 0.55)})
         try:
             page.wait_for_timeout(300)
+            # No refit under the caret: the canvas view holds while typing.
+            now = page.evaluate("document.querySelector('#diagram svg').getAttribute('viewBox')")
+            if now != view:
+                failures.append({"category": "geometry", "message": f"keyboard open: the view refitted while typing ({view} -> {now})"})
             msgs = page.evaluate("""()=>{const out=[],t=document.querySelector('textarea.cl-inline-text'),b=document.querySelector('.cl-textbar');
               if(!t)return ['the editor closed when the keyboard opened'];const r=t.getBoundingClientRect(),h=innerHeight;
               if(r.top<0||r.bottom>h)out.push(`editor ${Math.round(r.top)}-${Math.round(r.bottom)} is outside the ${h}px visible area`);
