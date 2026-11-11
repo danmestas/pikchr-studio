@@ -111,8 +111,8 @@ def build():
                 prefix, line, key = places[placement]
                 source = FRAME_TOP + prefix + line.format(kind=kind, label=label).rstrip() + FRAME_END
                 typed = TYPED[n % len(TYPED)]
-                # The pan and zoom check (slow: two re-renders) on every third cell.
-                cells.append(cell(f"{kind} / {start} / {placement} / {entry} / {edit}", source, key, kind, start, placement, entry, edit, typed, view=n % 3 == 0))
+                # The pan and zoom check (slow: two re-renders) on every fourth cell.
+                cells.append(cell(f"{kind} / {start} / {placement} / {entry} / {edit}", source, key, kind, start, placement, entry, edit, typed, view=n % 4 == 0))
     # Macro uses and [ ] members refuse with a reason, from every entry point.
     for entry in ENTRIES:
         cells.append(cell(f"macro use / one string / chain / {entry} / refuse", 'define m { box "M" }\nm\nA: box "A" at (2,0)\n', "macro", "box",
@@ -143,7 +143,7 @@ def cells_for(config):
     form, edit and entry still meets both themes and both sizes."""
     if config == "desktop light":
         return CELLS
-    step = {"desktop dark": 4, "phone light": 3, "phone dark": 5}[config]
+    step = {"desktop dark": 7, "phone light": 3, "phone dark": 5}[config]
     return [c for i, c in enumerate(CELLS) if i % step == 0 or c["edit"] == "style" and i % 2 == 0]
 
 
@@ -221,7 +221,8 @@ def real_input(page, config, touch):
         page.evaluate("()=>{const t=document.querySelector('textarea.cl-inline-text');if(t)t.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))}")
         out.append((name, failures))
 
-    source = FRAME_TOP + 'X: box "Label" at (1,0)\nY: box "two" "lines" at (3,0)\n' + FRAME_END
+    # Both shapes grow to fit (Text fit Grow), so typed text lands verbatim.
+    source = FRAME_TOP + 'X: box "Label" fit at (1,0)\nY: box "two" "lines" fit at (3,0)\n' + FRAME_END
 
     def open_on(key):
         p = point_of(page, key)

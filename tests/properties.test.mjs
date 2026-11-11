@@ -143,3 +143,8 @@ test('a fitted text object keeps its fit when its text changes',()=>{
   const edit=changeText(source,object,scene,'',{fit:false});
   assert.match(edit.source,/T: text "" fit at \(4,0\)/);assert.equal(render(edit.source).error,null);
 });
+test('a monospace label can grow to fit',()=>{
+  const {source,object,scene}=fixture('C: box "code" mono big at (4,0)');
+  const edit=changeText(source,object,scene,'longer code',{fit:true});
+  assert.match(edit.source,/C: box "longer code" mono big at \(4,0\) fit/);assert.equal(render(edit.source).error,null);
+});

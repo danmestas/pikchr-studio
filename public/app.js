@@ -137,6 +137,14 @@ function render(text,flags=renderFlags){
 }
 startWorker();
 const current=()=>scene?.objects.find(o=>o.id===selectedId);
+// The Text fit an object's label edits follow, and the inspector shows: a
+// saved choice, else Grow for a statement with fit, else the default that
+// never overflows (boxes wrap, other shapes grow). Text and connectors are
+// always as written (Fixed).
+function textFitFor(object){
+  if(!object||!['box','circle','ellipse','oval','cylinder','diamond','file'].includes(object.kind))return 'fixed';
+  return sizingFor(object)?.mode||(object.kind==='box'?'wrap':'grow');
+}
 function sizingFor(object){if(!object)return null;const saved=readSizingPreference(source.value,scene,object,sizingPreferences);if(saved)return saved;try{const props=inspectProperties(source.value,object,scene);if(/\bfit\b/.test(readProperties(source.value,object,scene).statement.replace(/"(?:\\.|[^"\\])*"/g,'')))return{mode:'grow',text:props.text,width:object.bbox.width};}catch{}return null;}
 function clearProposal(){
   ++gesture;proposal=null;
@@ -1314,8 +1322,8 @@ window.pikchrStudio={
   state:()=>({source:source.value,scene,object:current(),selectedIds:[...selectedIds],queued:draft.length,
     valid:!!scene&&!rendering&&source.value===renderedSource&&!$('diagram').classList.contains('stale')}),
   render,propose:options=>validateSuggestions(null,options),select:id=>select(id,false,false,true),
-  // The Text fit an object's label edits follow: {mode,text,width} or null (Fixed).
-  sizing:object=>sizingFor(object),
+  // The Text fit an object's label edits follow: 'grow', 'wrap' or 'fixed'.
+  textFit:object=>textFitFor(object),
   modelToScreen:p=>{const svg=$('diagram').querySelector('svg');if(!scene||!svg?.getScreenCTM())return null;return new DOMPoint(p.x,p.y).matrixTransform(matrix()).matrixTransform(svg.getScreenCTM());},
   setDark:on=>{setSwatchTheme(on,render);const flags=on?3:1;if(flags===renderFlags)return;renderFlags=flags;for(const id of lastValid.keys())if(id!==activeDocumentId)lastValid.delete(id);if(source.value.trim()||scene)renderSource();},
   refit:()=>{const svg=$('diagram').querySelector('svg');const box=svg?.dataset.exportViewBox;if(!box)return;const [x,y,w,h]=box.split(/[ ,]+/).map(Number);svg.dataset.fitViewBox=fitBox(x,y,w,h);if(zoom===1&&pan.x===0&&pan.y===0){svg.dataset.baseViewBox=svg.dataset.fitViewBox;applyViewport();refreshHandles();}},
@@ -1457,7 +1465,7 @@ $('restore-workspace').onclick=()=>$('backup-input').click();
 $('backup-input').onchange=async e=>{const file=e.target.files[0];if(!file)return;const originalId=activeDocumentId;let count=0;try{if(file.size>16*1024*1024)throw Error('Backup exceeds 16 MB.');const records=parseWorkspace(await file.text());const saved=persistDocument();if(!saved.ok)throw Error(saved.error);clearTimeout(saveTimer);for(const record of records){documents.create();const result=documents.save(record.state);if(!result.ok)throw Error(result.error);count++;}status('Restored '+count+' document copies. Your current diagram is unchanged.');}catch(error){status('Restored '+count+' copies. '+error.message+' Existing documents were not replaced.');}finally{try{documents.open(originalId);activeDocumentId=originalId;refreshDocuments();}catch(error){status('Reopen your current document: '+error.message);}e.target.value='';}};
 directTools=canvasTools({clearSelection,host:$('diagram'),toolbar:$('direct-tools'),render,livePreview:liveSourcePreview,liveClear:liveSourceClear,propose:validateSuggestions,select,selectMany:ids=>{selectedIds=new Set(ids);select(ids[0]||null,false,false,true);},status,invalidate:clearProposal,
   stopPan:()=>{panMode=false;$('pan-mode').setAttribute('aria-pressed','false');$('diagram').style.cursor='';},
-  getState:()=>({source:source.value,scene,object:current(),sizing:sizingFor(current()),multiple:selectedIds.size>1,key:activeDocumentId+':'+revision,
+  getState:()=>({source:source.value,scene,object:current(),sizing:sizingFor(current()),textFit:textFitFor(current()),multiple:selectedIds.size>1,key:activeDocumentId+':'+revision,
     valid:!!scene&&!rendering&&source.value===renderedSource&&!$('diagram').classList.contains('stale'),
     rebind:()=>{const svg=$('diagram').querySelector('svg');if(svg){bindDiagram(svg);refreshHandles();}}})});
 routeReview=createCandidateReview({host:$('diagram'),render,propose:validateSuggestions,status,

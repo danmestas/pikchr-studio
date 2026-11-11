@@ -1079,12 +1079,11 @@ function install(studio){
     d.ta.remove();d.error?.remove();for(const t of d.hidden)t.style.visibility='';
     diagram.focus({preventScroll:true});schedule();
   }
-  // Sizing follows the shape's Text fit (Fixed unless it fits or a fit was
-  // chosen). A shape that cannot wrap or grow as asked (no explicit
+  // Sizing follows the shape's Text fit as the inspector shows it. A shape that cannot wrap or grow as asked (no explicit
   // position, size expressions) keeps its size; the reason travels with the
   // edit for the status line.
   async function labelEdit(s,object,text){
-    const mode=['box','cylinder','circle','ellipse','oval','diamond','file'].includes(object.kind)&&studio.sizing?.(object)?.mode||'fixed';
+    const mode=studio.textFit?.(object)||'fixed';
     const modes=mode==='fixed'?['fixed']:[mode,'fixed'];
     let failure;
     for(const mode of modes){
@@ -1118,7 +1117,7 @@ function install(studio){
     removeInline(d);
     const kept=!!edit.reason;
     const applied=await studio.propose([{...edit.option,...(kept?{label:'Change text (keep shape size)'}:{}),...(d.object.name?{selectName:d.object.name}:{selectId:d.object.id,targetKind:d.object.kind})}]);
-    if(applied&&kept)$('state').textContent='Label changed; the shape kept its size. It could not grow to fit: '+edit.reason;
+    if(applied&&kept)$('state').textContent='Label changed; the shape kept its size. Its Text fit could not apply: '+edit.reason;
   }
   diagram.addEventListener('dblclick',e=>{
     // Pointer capture on the canvas retargets the event to the SVG root, so
@@ -1225,10 +1224,10 @@ function install(studio){
     const text=d.ta.value.replace(/\r/g,'').replace(/\s+$/,'');
     if(text.split('\n').length>5){inlineError('Pikchr shows at most five lines of text per shape. Remove some line breaks.');return;}
     d.busy=true;
-    let option;
+    let option,reason;
     try{
       if(text!==d.original&&text.trim()){
-        const edit=await labelEdit(s,d.object,text),next=edit.option.source;
+        const edit=await labelEdit(s,d.object,text),next=edit.option.source;reason=edit.reason;
         const result=await studio.render(next);
         if(result.error||!result.objects)throw new Error('Pikchr cannot render this label: '+(result.error||'no diagram'));
         const object=result.objects.find(n=>d.object.name?n.name===d.object.name:n.id===d.object.id);
@@ -1244,6 +1243,7 @@ function install(studio){
     removeInline(d);
     const applied=await studio.propose([{...option,...(object.name?{selectName:object.name}:{selectId:object.id,targetKind:object.kind})}]);
     if(!applied)return;
+    if(reason)$('state').textContent='Label changed; the shape kept its size. Its Text fit could not apply: '+reason;
     const again=studio.state().object;
     if(again&&openInline(again)){const at=Math.min(caret,inline.ta.value.length);inline.ta.setSelectionRange(at,at);}
   }

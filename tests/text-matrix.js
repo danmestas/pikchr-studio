@@ -106,6 +106,8 @@
       if (shown(document.querySelector('.cl-view-objects'))) document.querySelector('.cl-back')?.click();
       const edit = await until(() => [...$('inspector').querySelectorAll('.label-row button')].find(shown), 1500);
       if (!edit) return cell.refuse ? null : 'no Edit label button in the inspector';
+      const fit = [...document.querySelectorAll('.canvas-sizing [aria-label="Text fit"] button')].filter(shown);
+      cell.shownFit = fit.length ? (fit.find(b => b.getAttribute('aria-pressed') === 'true')?.dataset.value || 'none') : null;
       edit.click();
     } else if (cell.entry === 'preview') {
       // A route preview is open on the connector when the label is double-clicked.
@@ -257,6 +259,7 @@
   }
 
   let moved = false;
+  const SHAPES = ['box', 'circle', 'ellipse', 'oval', 'cylinder', 'diamond', 'file'];
   // ---- one cell --------------------------------------------------------------------
   async function runCell(cell, opts) {
     const failures = [];
@@ -269,6 +272,10 @@
     await until(() => st().valid && !$('diagram').classList.contains('stale'), 1500);
     await frame();
     const beforeStatement = object.span?.start >= 0 ? statementOf(before, object) : null;
+    // The Text fit this label's edits must follow: Grow when the statement
+    // fits, else boxes wrap and the other shapes grow; text and connectors are
+    // as written. No cell saves a preference, so this is the shown default.
+    const fitMode = !SHAPES.includes(object.kind) ? 'fixed' : /\bfit\b/.test(skeletonless(beforeStatement || '')) ? 'grow' : object.kind === 'box' ? 'wrap' : 'grow';
     const problem = await openEditor(cell, object);
     if (problem) { fail('setup', problem); return failures; }
     const ta = await until(editor, 1500);
@@ -288,6 +295,7 @@
       fail('open', `the ${cell.entry} entry did not open the editor (status: "${stateText().slice(0, 140)}"; label at ${p && Math.round(p.x) + ',' + Math.round(p.y)} under ${hit ? hit.tagName + '.' + String(hit.className?.baseVal ?? hit.className) + ' in ' + (hit.closest('[data-pikchr-id]')?.getAttribute('data-pikchr-id') || hit.parentElement?.getAttribute('class')) + ' (object ' + object.id + ')' : 'nothing'})`);
       return failures;
     }
+    if (cell.shownFit !== undefined && cell.shownFit !== null && cell.shownFit !== fitMode) fail('sizing', `the inspector's Text fit shows ${cell.shownFit}, but label edits follow ${fitMode}`);
     const startText = strings(beforeStatement).map(s => s.text).join('\n');
     if (ta.value !== startText) fail('open', `editor opened with ${JSON.stringify(ta.value)}, label is ${JSON.stringify(startText)}`);
     await frame();
@@ -322,7 +330,8 @@
       if (styled) return x.source !== before.source && editor() && editor().value === normal(typedValue);
       return x.source !== before.source && !editor() || alertText();
     }, 4000);
-    const after = st();
+    await sleep(30);
+    const after = st(), committedStatus = stateText();
     if (!settled) {
       if (editor()) fail('lost', `the commit did not land; editor still open with ${JSON.stringify(editor().value)}; alert "${alertText()}"; status "${stateText().slice(0, 140)}"`);
       else if (plan.expect !== null) fail('lost', `the typed text was discarded: source unchanged, editor closed; status "${stateText().slice(0, 160)}"`);
@@ -351,11 +360,17 @@
     if (after.source.slice(0, startIndex) !== before.source.slice(0, startIndex) || after.source.slice(after.source.length - tailLength) !== before.source.slice(before.source.length - tailLength))
       fail('diff', 'text outside the edited statement changed');
     const landed = strings(newStatement).map(s => s.text).join('\n');
-    if (landed !== plan.expect) fail('lost', `source holds ${JSON.stringify(landed)}, typed ${JSON.stringify(plan.expect)}: ${newStatement}`);
+    const fellBack = /kept its size/.test(committedStatus);
+    const effective = fellBack ? 'fixed' : fitMode;
+    // Wrap breaks lines at spaces (dropped) or between characters; the
+    // typed text and its own line breaks survive.
+    const wrapped = effective === 'wrap' && landed.replace(/\s/g, '') === plan.expect.replace(/\s/g, '')
+      && plan.expect.split('\n').length <= landed.split('\n').length;
+    if (landed !== plan.expect && !wrapped) fail('lost', `source holds ${JSON.stringify(landed)}, typed ${JSON.stringify(plan.expect)}: ${newStatement}`);
     const newObject = after.scene.objects.find(o => o.span?.start === startByte) || objectFor(after, cell);
     const drawn = [...(document.querySelectorAll(`#diagram [data-pikchr-id="${newObject?.id}"] text`) || [])].map(t => t.textContent.replace(/\u00a0/g, ' '));
     const wantLines = plan.expect.split('\n').filter(l => l.trim());
-    if (wantLines.join('\n') !== drawn.filter(l => l.trim()).join('\n')) fail('render', `render shows ${JSON.stringify(drawn)}, expected ${JSON.stringify(wantLines)}`);
+    if ((wrapped ? landed : wantLines.join('\n')).split('\n').filter(l => l.trim()).join('\n') !== drawn.filter(l => l.trim()).join('\n')) fail('render', `render shows ${JSON.stringify(drawn)}, expected ${JSON.stringify(wantLines)}`);
     // (b) only text and size clauses change; untouched strings keep their style.
     if (skeleton(newStatement) !== skeleton(oldStatement)) fail('diff', `statement structure changed: ${JSON.stringify(oldStatement)} -> ${JSON.stringify(newStatement)}`);
     const was = strings(oldStatement), now = strings(newStatement);
@@ -368,8 +383,14 @@
       if (want.join(' ') !== [...now[i].words].sort().join(' ')) { fail('diff', `string ${i + 1} style ${JSON.stringify(was[i].words)} became ${JSON.stringify(now[i].words)}: ${newStatement}`); break; }
     }
     // (c) sizing follows the Text fit mode; the anchor stays.
-    if (newObject && !['text', 'arrow', 'line', 'spline'].includes(object.kind)) {
-      const mode = /\bfit\b/.test(skeletonless(oldStatement)) ? 'grow' : 'fixed';
+    if (newObject && SHAPES.includes(object.kind)) {
+      // A Text fit may fall back to Fixed only where its placement cannot
+      // keep the anchor, and must say so; never at a literal position.
+      if (fellBack && /\bat\s*\(\s*[-+\d.]+\s*,\s*[-+\d.]+\s*\)/.test(skeletonless(oldStatement)))
+        fail('sizing', `Text fit ${fitMode} fell back to Fixed at a literal position: ${committedStatus}`);
+      const mode = effective;
+      if (mode === 'wrap' && Math.abs(newObject.bbox.width - object.bbox.width) > 1e-6) fail('sizing', `Text fit is Wrap but the width changed from ${object.bbox.width.toFixed(3)} to ${newObject.bbox.width.toFixed(3)}`);
+      if (mode === 'wrap' && plan.expect.trim() && !/\b(?:width|wid)\b/.test(skeletonless(newStatement)) && !/\bfit\b/.test(skeletonless(newStatement))) fail('sizing', 'Text fit is Wrap but no width is kept: ' + newStatement);
       if (mode === 'fixed' && sizes(newStatement) !== sizes(oldStatement)) fail('sizing', `Text fit is Fixed but the size clauses changed: "${sizes(oldStatement)}" -> "${sizes(newStatement)}"`);
       if (mode === 'fixed' && (Math.abs(newObject.bbox.width - object.bbox.width) > 1e-6 || Math.abs(newObject.bbox.height - object.bbox.height) > 1e-6))
         fail('sizing', `Text fit is Fixed but the size changed from ${object.bbox.width.toFixed(3)}x${object.bbox.height.toFixed(3)} to ${newObject.bbox.width.toFixed(3)}x${newObject.bbox.height.toFixed(3)}`);

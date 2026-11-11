@@ -164,7 +164,7 @@ export function canvasTools({clearSelection,host,toolbar,getState,render,propose
     let resizable=false;if(s.valid&&o&&!s.multiple){try{resizeShape(s.source,s.scene,o,{width:o.bbox.width,height:o.bbox.height});resizable=true;}catch{}}
     sizing.hidden=!resizable;
     if(resizable){
-      const key=fieldKey(s),mode=s.sizing?.mode||'fixed';
+      const key=fieldKey(s),mode=s.textFit||s.sizing?.mode||'fixed';
       if(typed!==key){typed=null;showError('');sizeWidth.value=Number(o.bbox.width.toFixed(3));sizeHeight.value=Number(o.bbox.height.toFixed(3));}
       for(const b of fitButtons){b.setAttribute('aria-pressed',String(b.dataset.value===mode));b.disabled=b.dataset.value==='wrap'&&o.kind!=='box';}
       fitButtons[1].title=o.kind==='box'?'The label wraps to the shape width; the height grows':'Only boxes wrap their label';
