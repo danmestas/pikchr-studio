@@ -171,6 +171,10 @@ with sync_playwright() as pw:
         page.mouse.up()
         # A drag previews ranked source edits; accepting the top one queues it.
         page.wait_for_function("!document.querySelector('#preview-actions').hidden")
+        # The preview bar sits inside the visible viewport at any body zoom.
+        inside = page.evaluate("""()=>{const r=document.querySelector('#preview-accept').getBoundingClientRect(),b=document.querySelector('#preview-actions').getBoundingClientRect();
+          return [r.left>=0&&r.top>=0&&r.right<=innerWidth&&r.bottom<=innerHeight&&b.left>=0&&b.top>=0&&b.right<=innerWidth&&b.bottom<=innerHeight,[b.left,b.top,b.right,b.bottom].map(Math.round),innerWidth,innerHeight]}""")
+        assert inside[0], (viewport, zoom, "preview bar outside the viewport", inside)
         page.locator("#preview-accept").click()
         ready_preview(coordinate_source)
         menu_click(page, "#accept")

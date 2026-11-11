@@ -647,18 +647,26 @@ function install(studio){
     const a=studio.modelToScreen({x:b.x,y:b.y+b.height}),z=studio.modelToScreen({x:b.x+b.width,y:b.y});
     if(!a||!z)return null;return {left:Math.min(a.x,z.x),top:Math.min(a.y,z.y),right:Math.max(a.x,z.x),bottom:Math.max(a.y,z.y)};
   }
+  // Floating chrome is placed in viewport pixels: the rects it is placed
+  // against and innerWidth/innerHeight are viewport pixels, but under a CSS
+  // zoom on the body a fixed element's left, top and offset sizes are its own
+  // zoomed pixels. zoomOf is that ratio, measured on the node itself, and
+  // putAt and sizeOf convert, so the chrome stays on screen at any zoom.
+  const zoomOf=node=>{const w=node.offsetWidth,r=node.getBoundingClientRect().width;return w&&r?r/w:1;};
+  const sizeOf=node=>{const r=node.getBoundingClientRect();return {w:r.width,h:r.height};};
+  function putAt(node,left,top){const k=zoomOf(node);if(left!==null)node.style.left=left/k+'px';if(top!==null)node.style.top=top/k+'px';}
   function place(node,box,gap=12){
-    const w=node.offsetWidth,h=node.offsetHeight,vw=innerWidth,vh=innerHeight;
+    const {w,h}=sizeOf(node),vw=innerWidth,vh=innerHeight;
     let left=(box.left+box.right)/2-w/2;left=Math.max(8,Math.min(vw-w-8,left));
     let top=box.top-h-gap;if(top<64)top=box.bottom+gap;top=Math.max(64,Math.min(vh-h-64,top));
-    node.style.left=left+'px';node.style.top=top+'px';
+    putAt(node,left,top);
   }
   // Move node beside panel (left of it, else below it) when they collide.
   function stepAside(node,panel){
     const r=node.getBoundingClientRect();
     if(!(r.left<panel.right&&r.right>panel.left&&r.top<panel.bottom&&r.bottom>panel.top))return;
-    if(panel.left-r.width-8>=8)node.style.left=(panel.left-r.width-8)+'px';
-    else if(panel.bottom+8+r.height<=innerHeight-8)node.style.top=(panel.bottom+8)+'px';
+    if(panel.left-r.width-8>=8)putAt(node,panel.left-r.width-8,null);
+    else if(panel.bottom+8+r.height<=innerHeight-8)putAt(node,null,panel.bottom+8);
   }
   function markSelection(){
     const svg=svgNow(),ids=new Set(studio.state().selectedIds||[]);
@@ -692,7 +700,7 @@ function install(studio){
       const overlay=diagram.querySelector('.preview-overlay rect')?.getBoundingClientRect();
       const target=overlay?{left:overlay.left,top:overlay.top,right:overlay.right,bottom:overlay.bottom}:box;
       if(target){
-        const w=previewActions.offsetWidth,h=previewActions.offsetHeight;
+        const {w,h}=sizeOf(previewActions);
         let left=Math.max(8,Math.min(innerWidth-w-8,(target.left+target.right)/2-w/2));
         let top=target.bottom+14;if(top+h>innerHeight-64)top=Math.max(64,target.top-h-14);
         if(!more.hidden){
@@ -704,7 +712,7 @@ function install(studio){
             else if(panel.bottom+h+8<=innerHeight-8)top=panel.bottom+8;
           }
         }
-        previewActions.style.left=left+'px';previewActions.style.top=top+'px';
+        putAt(previewActions,left,top);
       }
       if(!context.hidden&&previewActions.getBoundingClientRect().top<context.getBoundingClientRect().bottom+4&&previewActions.getBoundingClientRect().bottom>context.getBoundingClientRect().top)context.hidden=true;
     }
@@ -923,10 +931,10 @@ function install(studio){
     let best=null;for(let i=1;i<c.screen.length;i++){const a=c.screen[i-1],b=c.screen[i],len=Math.hypot(b.x-a.x,b.y-a.y);if(!best||len>best.len)best={a,b,len};}
     if(!best)return;
     const mx=(best.a.x+best.b.x)/2,my=(best.a.y+best.b.y)/2,horizontal=Math.abs(best.b.x-best.a.x)>=Math.abs(best.b.y-best.a.y);
-    const w=badge.offsetWidth,h=badge.offsetHeight;
+    const {w,h}=sizeOf(badge);
     let left=horizontal?mx-w/2:mx+12,top=horizontal?my-h-10:my-h/2;
     left=Math.max(8,Math.min(innerWidth-w-8,left));top=Math.max(8,Math.min(innerHeight-h-8,top));
-    badge.style.left=left+'px';badge.style.top=top+'px';
+    putAt(badge,left,top);
   };
   diagram.addEventListener('pointermove',e=>{
     if(!connect||connect.pointerId!==e.pointerId)return;
@@ -1022,12 +1030,12 @@ function install(studio){
     const box=labelBox(d.object);if(!box)return;
     const svg=svgNow(),ctm=svg?.getScreenCTM(),scale=ctm?Math.hypot(ctm.a,ctm.b)||1:1;
     const ta=d.ta,width=Math.min(innerWidth-8,Math.max(140,box.right-box.left));
-    ta.style.fontSize=Math.max(12,d.fontSize*scale)+'px';ta.style.width=width+'px';
+    const k=zoomOf(ta);
+    ta.style.fontSize=Math.max(12,d.fontSize*scale)/k+'px';ta.style.width=width/k+'px';
     ta.style.height='auto';ta.style.height=ta.scrollHeight+'px';
     // Inside the visible area: the label may be partly off screen.
-    const vw=innerWidth,vh=innerHeight,h=ta.offsetHeight;
-    ta.style.left=Math.max(4,Math.min(vw-width-4,(box.left+box.right)/2-width/2))+'px';
-    ta.style.top=Math.max(4,Math.min(vh-h-4,(box.top+box.bottom)/2-h/2))+'px';
+    const vw=innerWidth,vh=innerHeight,h=sizeOf(ta).h;
+    putAt(ta,Math.max(4,Math.min(vw-width-4,(box.left+box.right)/2-width/2)),Math.max(4,Math.min(vh-h-4,(box.top+box.bottom)/2-h/2)));
     if(d.error)inlineError(d.error.textContent);
   }
   function labelBox(object){
@@ -1076,7 +1084,7 @@ function install(studio){
     if(!d.error){d.error=el('p',{class:'cl-inline-error',role:'alert'});document.body.append(d.error);}
     d.error.textContent=message;
     const r=d.ta.getBoundingClientRect();
-    Object.assign(d.error.style,{left:r.left+'px',top:(r.bottom+4)+'px',width:Math.max(r.width,220)+'px'});
+    d.error.style.width=Math.max(r.width,220)/zoomOf(d.ta)+'px';putAt(d.error,r.left,r.bottom+4);
   }
   function removeInline(d){
     if(inline===d)inline=null;
@@ -1193,13 +1201,13 @@ function install(studio){
       }
     }
     textBar.hidden=false;
-    const w=textBar.offsetWidth,h=textBar.offsetHeight;
+    const {w,h}=sizeOf(textBar),k=zoomOf(textBar);
     if(inline){
       // Above the shape and its editor, or below them when there is no room;
       // never over the text being typed.
       const r=inline.ta.getBoundingClientRect(),shape=boxOnScreen(o)||r;
-      let top=Math.min(r.top,shape.top)-h-10;if(top<64)top=Math.max(r.bottom+(inline.error?inline.error.offsetHeight+8:0),shape.bottom)+10;
-      textBar.style.left=Math.max(8,Math.min(innerWidth-w-8,(r.left+r.right)/2-w/2))+'px';textBar.style.top=Math.max(8,Math.min(innerHeight-h-8,top))+'px';
+      let top=Math.min(r.top,shape.top)-h-10;if(top<64)top=Math.max(r.bottom+(inline.error?sizeOf(inline.error).h+8:0),shape.bottom)+10;
+      putAt(textBar,Math.max(8,Math.min(innerWidth-w-8,(r.left+r.right)/2-w/2)),Math.max(8,Math.min(innerHeight-h-8,top)));
       return;
     }
     const c=context.getBoundingClientRect();
@@ -1210,8 +1218,8 @@ function install(studio){
     let top=toolbarAbove?box.bottom+12:box.top-h-12;
     if(top<64||top+h>innerHeight-64)top=toolbarAbove?c.top-h-6:c.bottom+6;
     // Clear of the top and bottom chrome rows, which it must never cover.
-    const low=Math.max(64,chrome.top),high=innerHeight-h-Math.max(64,chrome.bottom);
-    textBar.style.left=Math.max(8,Math.min(innerWidth-w-8,(box.left+box.right)/2-w/2))+'px';textBar.style.top=Math.max(low,Math.min(high,top))+'px';
+    const low=Math.max(64,chrome.top*k),high=innerHeight-h-Math.max(64,chrome.bottom*k);
+    putAt(textBar,Math.max(8,Math.min(innerWidth-w-8,(box.left+box.right)/2-w/2)),Math.max(low,Math.min(high,top)));
   }
   async function applyTextStyle(change){
     if(inline)return styleWhileEditing(change);
@@ -1324,7 +1332,7 @@ function install(studio){
       const end=target?target.anchors[d.targetAnchor]:{x:snapToGrid(p.x),y:snapToGrid(p.y)};
       drawLineGhost(d.which==='from'?[end,other]:[other,end],target);
       badge.hidden=false;badge.textContent=(d.which==='from'?'Start → ':'End → ')+(target?`${target.name}.${d.targetAnchor}`:pointText(end));
-      badge.style.left=(e.clientX+14)+'px';badge.style.top=(e.clientY+14)+'px';
+      putAt(badge,e.clientX+14,e.clientY+14);
     }else{
       let dx=p.x-d.start.x,dy=p.y-d.start.y;
       if(shift){const q=lockDirection({x:0,y:0},{x:dx,y:dy}).point;dx=q.x;dy=q.y;}
