@@ -667,7 +667,12 @@ function connectorExtension(source, object, scene, delta, absorb = 'end') {
     gapStart = byteOffsetToIndex(source, object.span.start);
   } catch { return null; }
   if (!/^(?:\s|;|\b(?:up|down|left|right)\b)*$/.test(maskCode(source.slice(b, gapStart)))) return null;
-  const statement = source.slice(a, b), masked = maskCode(statement);
+  const original = source.slice(a, b);
+  // An end set by an earlier extension (`to (x, y)`, nothing else routing
+  // it) is replaced, so the connector can follow the shape again.
+  const ended = maskCode(original).match(new RegExp(`\\s+to\\s*\\(\\s*${number}\\s*,\\s*${number}\\s*\\)`));
+  const statement = ended && before.path.length === 2 ? original.slice(0, ended.index) + original.slice(ended.index + ended[0].length) : original;
+  const masked = maskCode(statement);
   const header = masked.match(new RegExp(`^\\s*(?:(${namePattern})\\s*:\\s*)?(arrow|line|move)\\b`));
   if (!header || (header[1] || '') !== (before.name || '')
       || /\b(?:from|to|at|heading|same|close|with|chop)\b|[\[\]{}]/.test(masked)) return null;
@@ -681,13 +686,13 @@ function connectorExtension(source, object, scene, delta, absorb = 'end') {
   const end = object.anchors[entry.name];
   if (before.path.length > 2) {
     const text = legsMoved(statement, masked, header[0].length, [...before.path.slice(0, -1), end], delta, absorb);
-    return text && {start:before.span.start, end:before.span.end, expected:statement, text, kind:before.kind};
+    return text && {start:before.span.start, end:before.span.end, expected:original, text, kind:before.kind};
   }
   // A bare length (arrow 1) would still apply after `to`; the end replaces it.
   const length = masked.slice(header[0].length).match(new RegExp(`^\\s+${number}${unit}(?=\\s|$)`));
   const kept = length ? statement.slice(0, header[0].length) + statement.slice(header[0].length + length[0].length) : statement;
   const text = kept.trimEnd() + ` to ${offsetText(end.x + delta.x, end.y + delta.y)}` + kept.slice(kept.trimEnd().length);
-  return {start:before.span.start, end:before.span.end, expected:statement, text, kind:before.kind};
+  return {start:before.span.start, end:before.span.end, expected:original, text, kind:before.kind};
 }
 
 // A routed connector (right then down then right) keeps its legs: the end

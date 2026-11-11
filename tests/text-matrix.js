@@ -27,6 +27,7 @@
   const ATTR = /^\s+(bold|italic|big|small|ljust|rjust|center|above|below|aligned|mono|monospace)\b/;
   const SIZE = /\b(?:width|wid|height|ht|radius|rad|diameter|diam)\s+[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:in|cm|mm|px|pt|%)?|\bfit\b/g;
   const decode = s => s.slice(1, -1).replace(/\\(.)/g, '$1');
+  const masked = t => t.replace(STRING, m => ' '.repeat(m.length));
   // The strings of one statement with the attribute words after each.
   function strings(statement) {
     return [...statement.matchAll(STRING)].map(m => {
@@ -353,12 +354,20 @@
       return failures;
     }
     // (a) the text landed, escaped, and renders.
-    const startByte = object.span.start, startIndex = before.source.length - slice(before.source, startByte, 1e9).length;
-    const tailLength = before.source.length - (before.source.length - slice(before.source, object.span.end, 1e9).length);
-    const newStatement = after.source.slice(startIndex, after.source.length - tailLength);
+    // No edit adds or removes objects, so the object keeps its index.
+    const index = before.scene.objects.indexOf(object), newObject = after.scene.objects[index];
+    const newStatement = newObject?.span ? statementOf(after, newObject) : '';
     const oldStatement = beforeStatement;
-    if (after.source.slice(0, startIndex) !== before.source.slice(0, startIndex) || after.source.slice(after.source.length - tailLength) !== before.source.slice(before.source.length - tailLength))
-      fail('diff', 'text outside the edited statement changed');
+    // A label that changes the shape's size may rewrite its own placement and
+    // pin its neighbours (as a drag does); comments stay byte-identical and
+    // nothing else may change. Otherwise only this statement changes.
+    const resized = !!newObject?.bbox && (Math.abs(newObject.bbox.width - object.bbox.width) > 1e-6 || Math.abs(newObject.bbox.height - object.bbox.height) > 1e-6);
+    const comments = t => t.match(/#[^\n]*|\/\*[\s\S]*?\*\//g)?.join('|') || '';
+    if (!resized) {
+      const head = before.source.length - slice(before.source, object.span.start, 1e9).length, tail = slice(before.source, object.span.end, 1e9).length;
+      if (after.source.slice(0, head) !== before.source.slice(0, head) || after.source.slice(after.source.length - tail) !== before.source.slice(before.source.length - tail))
+        fail('diff', 'text outside the edited statement changed');
+    } else if (comments(masked(after.source)) !== comments(masked(before.source))) fail('diff', 'a resize changed a comment');
     const landed = strings(newStatement).map(s => s.text).join('\n');
     const fellBack = /kept its size/.test(committedStatus);
     const effective = fellBack ? 'fixed' : fitMode;
@@ -367,12 +376,12 @@
     const wrapped = effective === 'wrap' && landed.replace(/\s/g, '') === plan.expect.replace(/\s/g, '')
       && plan.expect.split('\n').length <= landed.split('\n').length;
     if (landed !== plan.expect && !wrapped) fail('lost', `source holds ${JSON.stringify(landed)}, typed ${JSON.stringify(plan.expect)}: ${newStatement}`);
-    const newObject = after.scene.objects.find(o => o.span?.start === startByte) || objectFor(after, cell);
     const drawn = [...(document.querySelectorAll(`#diagram [data-pikchr-id="${newObject?.id}"] text`) || [])].map(t => t.textContent.replace(/\u00a0/g, ' '));
     const wantLines = plan.expect.split('\n').filter(l => l.trim());
     if ((wrapped ? landed : wantLines.join('\n')).split('\n').filter(l => l.trim()).join('\n') !== drawn.filter(l => l.trim()).join('\n')) fail('render', `render shows ${JSON.stringify(drawn)}, expected ${JSON.stringify(wantLines)}`);
     // (b) only text and size clauses change; untouched strings keep their style.
-    if (skeleton(newStatement) !== skeleton(oldStatement)) fail('diff', `statement structure changed: ${JSON.stringify(oldStatement)} -> ${JSON.stringify(newStatement)}`);
+    const own = (state, o, text) => { const p = o.spans?.placement; return p && p.end > p.start ? text.replace(slice(state.source, p.start, p.end), ' ') : text; };
+    if (skeleton(resized ? own(after, newObject, newStatement) : newStatement) !== skeleton(resized ? own(before, object, oldStatement) : oldStatement)) fail('diff', `statement structure changed: ${JSON.stringify(oldStatement)} -> ${JSON.stringify(newStatement)}`);
     const was = strings(oldStatement), now = strings(newStatement);
     // A style click toggles bold on every string (the text bar styles the
     // whole label); otherwise each string keeps exactly its own words.
@@ -384,10 +393,8 @@
     }
     // (c) sizing follows the Text fit mode; the anchor stays.
     if (newObject && SHAPES.includes(object.kind)) {
-      // A Text fit may fall back to Fixed only where its placement cannot
-      // keep the anchor, and must say so; never at a literal position.
-      if (fellBack && /\bat\s*\(\s*[-+\d.]+\s*,\s*[-+\d.]+\s*\)/.test(skeletonless(oldStatement)))
-        fail('sizing', `Text fit ${fitMode} fell back to Fixed at a literal position: ${committedStatus}`);
+      // Every placement form keeps its Text fit: no fallback to Fixed.
+      if (fellBack) fail('sizing', `Text fit ${fitMode} fell back to Fixed (${cell.placement}): ${committedStatus}`);
       const mode = effective;
       // The named default: a box wraps (several lines, same width, explicit
       // height), an oval grows (fit), never falling back.
@@ -404,9 +411,25 @@
       if (mode === 'grow' && plan.expect.trim() && !/\bfit\b/.test(skeletonless(newStatement))) fail('sizing', 'Text fit is Grow but the statement no longer fits: ' + newStatement);
     }
     if (newObject) {
-      const chain = !/\bat\b/.test(skeletonless(oldStatement)) && !['arrow', 'line', 'spline'].includes(object.kind);
-      const a = chain ? {x: object.bbox.x, y: object.center.y} : object.center, b = chain ? {x: newObject.bbox.x, y: newObject.center.y} : newObject.center;
-      if (Math.abs(a.x - b.x) > 1e-6 || Math.abs(a.y - b.y) > 1e-6) fail('sizing', `the ${chain ? 'west edge' : 'centre'} moved from ${a.x.toFixed(3)},${a.y.toFixed(3)} to ${b.x.toFixed(3)},${b.y.toFixed(3)}`);
+      // The shape keeps its centre; no other shape moves; the connectors on
+      // either side of it stay attached.
+      const near = (a, b, tol = 1e-3) => Math.abs(a.x - b.x) <= tol && Math.abs(a.y - b.y) <= tol;
+      const at = p => `${p.x.toFixed(3)},${p.y.toFixed(3)}`;
+      if (!near(object.center, newObject.center)) fail('sizing', `the centre moved from ${at(object.center)} to ${at(newObject.center)}: ${newStatement}`);
+      const lines = ['arrow', 'line', 'spline', 'arc', 'move'];
+      for (const [i, o] of before.scene.objects.entries()) {
+        const n = after.scene.objects[i];
+        if (i === index || lines.includes(o.kind) || !o.center || !n?.center) continue;
+        if (!near(o.center, n.center)) { fail('sizing', `${o.name || o.kind + ' ' + i} moved from ${at(o.center)} to ${at(n.center)}`); break; }
+      }
+      if (!lines.includes(object.kind)) {
+        const next = after.scene.objects.find((o, i) => i > index && lines.includes(o.kind)), was = before.scene.objects[after.scene.objects.indexOf(next)];
+        if (next && was && near(was.path?.[0] || {x: NaN, y: NaN}, object.anchors.e) && !near(next.path[0], newObject.anchors.e)) fail('sizing', `the connector after it starts at ${at(next.path[0])}, not its east edge ${at(newObject.anchors.e)}`);
+        const prior = before.scene.objects[index - 1], prev = after.scene.objects[index - 1];
+        const gap = (o, p) => Math.hypot(o.anchors.w.x - p.x, o.anchors.w.y - p.y);
+        if (prior && lines.includes(prior.kind) && prior.path?.length && gap(object, prior.path.at(-1)) < 0.1 && Math.abs(gap(newObject, prev.path.at(-1)) - gap(object, prior.path.at(-1))) > 1e-3)
+          fail('sizing', `the connector before it no longer ends at its west edge: ${at(prev.path.at(-1))} vs ${at(newObject.anchors.w)}`);
+      }
     }
     if (styled) {
       // The editor reopened with the typed text; Enter writes nothing more.

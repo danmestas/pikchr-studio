@@ -9,7 +9,7 @@ import {freeLineCandidate,pointText,snapToGrid,literalRoute,lineEnds,translateLi
 import {lockDirection} from './constrain.js?v=20261110a';
 import {inspectProperties} from './properties.js?v=20261110a';
 import {paintSwatch} from './property-ui.js?v=20261110a';
-import {buildTextEdit} from './text-sizing.js?v=20261110a';
+import {buildTextEdit,keepInPlace} from './text-sizing.js?v=20261110a';
 import {textStyle,textStyleCandidate,textSizes,textColours} from './text-style.js?v=20261110a';
 
 
@@ -1212,7 +1212,7 @@ function install(studio){
   async function applyTextStyle(change){
     if(inline)return styleWhileEditing(change);
     const s=studio.state(),o=s.object;if(!s.valid||!o)return;
-    let option;try{option=textStyleCandidate(s.source,o,s.scene,change);}catch(error){$('state').textContent=error.message;return;}
+    let option;try{option=textStyleCandidate(s.source,o,s.scene,change);option={...option,...await keepInPlace(s.source,s.scene,o,option,studio.render)};}catch(error){$('state').textContent=error.message;return;}
     await studio.propose([option]);
   }
   // Styling a label mid-edit keeps what was typed: the new text and the style
@@ -1236,6 +1236,9 @@ function install(studio){
         option={...styled,label:'Change text; '+styled.label.toLowerCase(),source:styled.source,
           patch:{base:s.source,start:0,end:new TextEncoder().encode(s.source).length,expected:s.source,text:styled.source}};
       }else option=textStyleCandidate(s.source,d.object,s.scene,change);
+      // A style that resizes the shape (bold, big) keeps it and its
+      // neighbours in place, as a label edit does.
+      option={...option,...await keepInPlace(s.source,s.scene,d.object,{...option,patch:{base:s.source,start:0,end:new TextEncoder().encode(s.source).length,expected:s.source,text:option.source}},studio.render)};
     }catch(error){d.busy=false;inlineError(error.message);d.ta.focus();return;}
     d.busy=false;
     if(inline!==d||studio.state().source!==d.source){inlineError('The diagram changed while you typed. Press Escape and edit the text again.');return;}

@@ -62,7 +62,9 @@ def run(page, queued):
                 page.keyboard.press("Enter")
                 case = f"{stmt!r} ({'queue' if queued else 'auto'})"
                 try:
-                    page.wait_for_function("l=>document.getElementById('source').value.includes(l)", arg='"' + LABEL + '"', timeout=5000)
+                    # A box wraps the label inside its width (Text fit's default);
+                    # every other shape grows to fit it on one line.
+                    page.wait_for_function("t=>{const v=document.getElementById('source').value;return v!==t&&!document.querySelector('textarea.cl-inline-text')&&(v.split('\\n')[2].match(/\"[^\"]*\"/g)||[]).map(s=>s.slice(1,-1)).join(' ')===%r}" % LABEL, arg=source, timeout=5000)
                 except Exception:
                     raise AssertionError(f"{case}: label not committed; source={src(page)!r}; state={page.evaluate('document.getElementById(`state`).textContent')!r}")
                 if queued:
@@ -73,9 +75,10 @@ def run(page, queued):
                 assert editor.count() == 0, case
                 assert '"old"' not in after, case + " kept the old label: " + after
                 line = after.split("\n")[2]
-                assert line.startswith(("C: " if named else "") + kind + ' "' + LABEL + '"'), case + ": " + line
+                assert line.startswith(("C: " if named else "") + kind + ' "'), case + ": " + line
+                assert (" width " in line and '"label"' in line) if kind == "box" else ('"' + LABEL + '"' in line and line.endswith(" fit")), case + ": " + line
                 assert after.split("\n")[0] == 'box "A"' and after.split("\n")[4] == 'box "B"', case + ": neighbours changed"
-                assert LABEL in page.locator("#diagram svg").text_content().replace("\xa0", " "), case + ": label not rendered"
+                assert all(w in page.locator("#diagram svg").text_content().replace("\xa0", " ") for w in LABEL.split()), case + ": label not rendered"
                 if queued:
                     assert page.locator("#queue-list li").count() == 1, case
                     page.locator(".cl-status").get_by_role("button", name="Discard", exact=True).click()

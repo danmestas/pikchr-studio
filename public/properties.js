@@ -140,16 +140,26 @@ const shapeKinds = ['box','cylinder','circle','ellipse','oval','diamond','file']
 const numeric = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)';
 const maskLabels = statement => statement.replace(/"(?:\\.|[^"\\])*"/g,match=>' '.repeat(match.length));
 
-function fitStatement(statement,object) {
+// placement: the statement's own placement text when the caller keeps the
+// shape's centre itself (text-sizing.js re-places it after the resize), so
+// any placement form, or none, may fit. Without it the centre must be
+// explicit, so fitting cannot move the shape.
+function fitStatement(statement,object,placement) {
   if (!shapeKinds.includes(object.kind)) throw new Error('Fit to text is available for native shapes, not connectors.');
   const masked=maskLabels(statement);
   const header=masked.match(/^\s*(?:[A-Z][A-Za-z0-9_]*\s*:\s*)?(?:box|cylinder|circle|ellipse|oval|diamond|file)\b/);
   const body=masked.slice(header[0].length);
-  const point=`\\(\\s*${numeric}\\s*,\\s*${numeric}\\s*\\)`;
-  const placements=[...body.matchAll(new RegExp(`\\b(?:with\\s+\\.c\\s+)?at\\s*(?:[A-Z][A-Za-z0-9_]*\\.c\\s*\\+\\s*)?${point}`, 'g'))];
-  if (placements.length!==1) throw new Error('Fit to text needs an explicit center position or supported center alignment.');
-  const placement=placements[0];
-  const attributes=body.slice(0,placement.index)+body.slice(placement.index+placement[0].length);
+  let attributes;
+  if (placement!==undefined) {
+    const at=placement?body.indexOf(placement):-1;
+    if (placement&&at<0) throw new Error('Studio can’t find this shape’s placement to keep it in place.');
+    attributes=at<0?body:body.slice(0,at)+body.slice(at+placement.length);
+  } else {
+    const point=`\\(\\s*${numeric}\\s*,\\s*${numeric}\\s*\\)`;
+    const placements=[...body.matchAll(new RegExp(`\\b(?:with\\s+\\.c\\s+)?at\\s*(?:[A-Z][A-Za-z0-9_]*\\.c\\s*\\+\\s*)?${point}`, 'g'))];
+    if (placements.length!==1) throw new Error('Fit to text needs an explicit center position or supported center alignment.');
+    attributes=body.slice(0,placements[0].index)+body.slice(placements[0].index+placements[0][0].length);
+  }
   // Reject expressions rather than accidentally changing their meaning when
   // removing explicit size overrides. Labels and numeric centers are masked.
   if (!safeAttributes(attributes)) {
@@ -188,7 +198,9 @@ export function encodeLabel(text) {
   if (typeof text !== 'string' || /[\u0000-\u0009\u000b-\u001f\u007f]/.test(text)) throw new Error('Use plain text without control characters. Line breaks are supported.');
   return text.split('\n').map(quoteLine).join(' ');
 }
-export function changeText(source,object,scene,text,{fit}={}) {
+// anyPlacement: the caller keeps the shape's centre (text-sizing.js), so
+// fitting is offered whatever form the placement takes.
+export function changeText(source,object,scene,text,{fit,anyPlacement=false}={}) {
   const encoded=encodeLabel(text);
   const {statement,header,labels}=read(source,object,scene,{lines:true});
   const label=labels[0];
@@ -204,8 +216,9 @@ export function changeText(source,object,scene,text,{fit}={}) {
   // A statement that already fits keeps its fit: Pikchr refits the new text
   // around the same placement, whatever form that placement takes.
   const fitted=/\bfit\b/.test(maskLabels(statement));
+  const own=anyPlacement?placementText(source,object):undefined;
   if (fit && text.trim()) {
-    try { replacement=fitStatement(replacement,object); } catch (error) { if (!fitted) throw error; }
+    try { replacement=fitStatement(replacement,object,own); } catch (error) { if (!fitted) throw error; }
   }
   // A text object is always as big as its text: its fit just stays.
   else if (fit===false && shapeKinds.includes(object.kind) && /\bfit\b/.test(maskLabels(statement))) {
@@ -213,12 +226,18 @@ export function changeText(source,object,scene,text,{fit}={}) {
     // rather than leaving an old automatic-fit instruction active.
     const {width,height}=object.bbox||{};
     if (!Number.isFinite(width)||!Number.isFinite(height)||width<=0||height<=0) fail();
-    replacement=fitStatement(replacement,object).replace(/ fit$/,'');
+    replacement=fitStatement(replacement,object,own).replace(/ fit$/,'');
     replacement+=object.kind==='circle' ? ` radius ${width/2}` : ` width ${width} height ${height}`;
   }
   return candidate(source,object,statement,replacement,fit&&text.trim()&&!fitted?'Change text and fit shape':'Change text');
 }
 
+// The placement as written (masked of strings), '' when it is implicit.
+function placementText(source,object){
+  const p=object.spans?.placement;
+  if(!p||!(p.end>p.start))return '';
+  return maskLabels(source.slice(byteOffsetToIndex(source,p.start),byteOffsetToIndex(source,p.end)));
+}
 export function changeTermination(source,object,scene,mode) {
   if (!['none','start','end','both'].includes(mode) || !['line','arrow'].includes(object.kind)) fail();
   const {statement,header,flags}=read(source,object,scene);

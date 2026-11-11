@@ -19,8 +19,11 @@ For every cell the label editor is opened on that object and must:
 The in-page half is text-matrix.js and runs batches of cells per page. The
 real-input cells here drive the keyboard, IME composition (CDP), paste, the
 Text tool, touch taps and a shrinking viewport (the on-screen keyboard).
-text-matrix-desktop-browser.py and text-matrix-phone-browser.py each run
-half of the configurations.
+text-matrix-desktop-light-browser.py, text-matrix-desktop-dark-browser.py
+and text-matrix-phone-browser.py split the configurations between them.
+Desktop light runs every cell; the others run every cell of fixed kinds
+(KINDS_FOR), and each page checks pan and zoom on every cell of one kind
+(VIEW_KIND). Nothing is sampled.
 """
 import os
 import sys
@@ -78,6 +81,9 @@ ENTRIES = ["dblclick", "enter", "inspector"]
 EDITS = ["replace", "newline", "delete", "paste", "quotes", "ime", "escape", "blur", "nochange", "style"]
 TYPED = ["New label", "naïve 日本 🎉", "שלום עולם", "e\u0301te\u0301 combining", "A_very_long_unbroken_word_for_wrapping"]
 
+# A chain follower after every shape under test: it must not move, and the
+# connector between them must stay attached, whatever the label does.
+FOLLOWER = '\narrow\nbox "next"'
 # A comment and a neighbour on every source: both must stay byte-identical.
 FRAME_TOP = "# keep: this comment\n"
 FRAME_END = '\nZ: box "after" at (0,-2) # trailing note\n'
@@ -109,7 +115,7 @@ def build():
                 placement = names[(si + ei) % len(names)]
                 entry = ENTRIES[(si + ei + len(kind)) % len(ENTRIES)]
                 prefix, line, key = places[placement]
-                source = FRAME_TOP + prefix + line.format(kind=kind, label=label).rstrip() + FRAME_END
+                source = FRAME_TOP + prefix + line.format(kind=kind, label=label).rstrip() + ("" if connector or kind == "text" and start == "none" else FOLLOWER) + FRAME_END
                 typed = TYPED[n % len(TYPED)]
                 cells.append(cell(f"{kind} / {start} / {placement} / {entry} / {edit}", source, key, kind, start, placement, entry, edit, typed))
     # Macro uses and [ ] members refuse with a reason, from every entry point.
@@ -118,12 +124,14 @@ def build():
                           "one string", "chain", entry, "replace", refuse="macro"))
         cells.append(cell(f"[ ] member / one string / nested / {entry} / refuse", 'A: box "A"\n[ box "in" ]\n', "index:2", "box",
                           "one string", "nested", entry, "replace", refuse=r"\[ \]|group"))
-    # The default Text fit at a literal position: a box wraps a long label
+    # The default Text fit in every placement form: a box wraps a long label
     # inside its width, an oval (and every other shape) grows to fit it.
     for kind, fit in [("box", "wrap"), ("oval", "grow"), ("circle", "grow"), ("cylinder", "grow")]:
-        for entry in ENTRIES:
-            cells.append(cell(f"{kind} / one string / literal at / {entry} / default {fit}", FRAME_TOP + f'X: {kind} "Label" at (1,0)' + FRAME_END,
-                              "X", kind, "one string", "literal at", entry, "replace", "a label much too long for the default shape", expectFit=fit))
+        for i, (placement, (prefix, line, key)) in enumerate(PLACEMENTS.items()):
+            for entry in ENTRIES if kind in ("box", "oval") else [ENTRIES[i % len(ENTRIES)]]:
+                source = FRAME_TOP + prefix + line.format(kind=kind, label='"Label"') + FOLLOWER + FRAME_END
+                cells.append(cell(f"{kind} / one string / {placement} / {entry} / default {fit}", source, key, kind, "one string", placement, entry,
+                                  "replace", "a label much too long for the default shape", expectFit=fit))
     # Typing over an open preview: the label beside a previewed connector.
     for edit in ("replace", "escape"):
         cells.append(cell(f"box / one string / literal at / preview / {edit}", 'A: box "A"\nB: box "B" at (2,1)\narrow from A.e to B.w\n', "B", "box",
@@ -143,13 +151,15 @@ CONFIGS = [
 ]
 
 
+# Every cell at the desktop in light. Elsewhere every cell of a fixed set of
+# kinds (no sampling), plus every refusal, preview and default-fit cell.
+KINDS_FOR = {"desktop dark": ("box", "oval"), "phone light": ("box", "text", "arrow", "diamond"), "phone dark": ("box", "oval")}
+
+
 def cells_for(config):
-    """Every cell at the desktop in light; a rotating share elsewhere, so each
-    form, edit and entry still meets both themes and both sizes."""
     if config == "desktop light":
         return CELLS
-    step = {"desktop dark": 7, "phone light": 3, "phone dark": 5}[config]
-    return [c for i, c in enumerate(CELLS) if i % step == 0 or c["edit"] == "style" and i % 2 == 0]
+    return [c for c in CELLS if c["kind"] in KINDS_FOR[config] or c.get("refuse") or c.get("expectFit") or c["entry"] == "preview"]
 
 
 STARTED = time.time()

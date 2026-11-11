@@ -1,4 +1,6 @@
 import { changeText, encodeLabel, readProperties, propertyCandidate } from './properties.js';
+import { candidates } from './edits.js?v=20261110a';
+import { settleMove } from './object-actions.js?v=20261110a';
 
 const LIMIT = 32;
 // The bundled native PObj has aTxt[5]; additional labels cannot render.
@@ -15,7 +17,7 @@ const graphemes = text => {
 export async function buildTextEdit(source, scene, object, { text, mode = 'grow', width } = {}, render) {
   encodeLabel(text);
   if (!['grow', 'fixed', 'wrap'].includes(mode)) throw new Error('Choose Grow, Wrap, or Fixed text sizing.');
-  if (mode !== 'wrap') return changeText(source, object, scene, text, { fit: mode === 'grow' });
+  if (mode !== 'wrap') return keepInPlace(source, scene, object, changeText(source, object, scene, text, { fit: mode === 'grow', anyPlacement: typeof render === 'function' }), render);
   if (object?.kind !== 'box') throw new Error('Wrap is currently available for boxes. Choose Grow for other shapes.');
   const { statement } = readProperties(source, object, scene);
   const targetWidth = width === undefined ? object.bbox?.width : Number(width);
@@ -28,7 +30,7 @@ export async function buildTextEdit(source, scene, object, { text, mode = 'grow'
     if (cache.has(label)) return cache.get(label);
     // Reserve two renders for the complete multiline label and final source.
     if (renderCount >= LIMIT - 2) throw new Error('This label needs more wrapping work than the safe limit. Add line breaks, widen the box, or use Grow.');
-    const candidate = changeText(source, object, scene, label.trim() ? label : 'x', { fit: true });
+    const candidate = changeText(source, object, scene, label.trim() ? label : 'x', { fit: true, anyPlacement: true });
     renderCount++;
     const result = await render(candidate.source);
     if (result.error) throw new Error('Pikchr could not measure this label: ' + result.error);
@@ -67,7 +69,7 @@ export async function buildTextEdit(source, scene, object, { text, mode = 'grow'
   const wrapped = lines.join('\n');
   // Empty labels still need a fit measurement to preserve native line padding.
   const measurementText = wrapped.trim() ? wrapped : lines.map(() => 'x').join('\n');
-  const fitted = changeText(source, object, scene, measurementText, { fit: true });
+  const fitted = changeText(source, object, scene, measurementText, { fit: true, anyPlacement: true });
   renderCount++;
   const fittedScene = await render(fitted.source);
   if (fittedScene.error) throw new Error('Pikchr could not size the wrapped label: ' + fittedScene.error);
@@ -82,5 +84,32 @@ export async function buildTextEdit(source, scene, object, { text, mode = 'grow'
   renderCount++;
   const validated = await render(candidate.source);
   if (validated.error) throw new Error('Pikchr could not render the wrapped label: ' + validated.error);
-  return { ...candidate, sizing: { mode, width: targetWidth, lines: lines.length, renderCount } };
+  const kept = await keepInPlace(source, scene, object, candidate, text => { renderCount++; return render(text); });
+  return { ...kept, sizing: { mode, width: targetWidth, lines: lines.length, renderCount } };
+}
+
+const SHAPES = ['box', 'circle', 'ellipse', 'oval', 'cylinder', 'diamond', 'file', 'text'];
+const same = (a, b) => Math.abs(a.x - b.x) < 1e-6 && Math.abs(a.y - b.y) < 1e-6;
+// A label that changes a shape's size must not move it or anything around
+// it, whatever its placement: as after a drag, the shape's own placement is
+// rewritten (same form) to keep its rendered centre, a connector it hangs
+// from is extended, and chain followers are pinned (settleMove). A shape
+// that cannot be kept in place refuses the size change with the reason.
+export async function keepInPlace(source, scene, object, option, render) {
+  if (typeof render !== 'function' || !SHAPES.includes(object.kind)) return option;
+  const index = scene.objects.indexOf(object);
+  const result = await render(option.source);
+  if (result.error) throw new Error('Pikchr could not render this label: ' + result.error);
+  const now = result.objects?.[index];
+  if (!now?.center || now.kind !== object.kind) throw new Error('Pikchr could not identify the resized shape.');
+  let text = option.source;
+  if (!same(now.center, object.center)) {
+    const back = candidates(text, now, result, object.center, { precise: true, keepForm: true })[0];
+    if (!back) throw new Error('Studio can’t keep this shape in place while its size changes.');
+    text = back.source;
+  }
+  const settled = await settleMove(source, scene, { ...option, source: text, target: object.center }, object, render);
+  if (!settled) throw new Error('Studio can’t keep the shapes around this one in place while its size changes.');
+  if (settled.source === option.source) return option;
+  return { ...option, source: settled.source, patch: settled.patch, label: settled.label };
 }
