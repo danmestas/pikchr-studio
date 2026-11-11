@@ -1,27 +1,27 @@
-import {candidates,snap,applyPatch,byteOffsetToIndex,routeCandidates,movementBlocked,moveRefusal,colourNames} from './edits.js?v=20261106i';
-import {routeStyleCandidates} from './route-styles.js?v=20261106i';
-import {correspondingObject} from './candidate-target.js?v=20261106i';
-import {alignmentGuides,gapMarks} from './guides.js?v=20261106i';
-import {constrainDrag,smartSnap} from './constrain.js?v=20261106i';
+import {candidates,snap,applyPatch,byteOffsetToIndex,routeCandidates,movementBlocked,moveRefusal,colourNames} from './edits.js?v=20261110a';
+import {routeStyleCandidates} from './route-styles.js?v=20261110a';
+import {correspondingObject} from './candidate-target.js?v=20261110a';
+import {alignmentGuides,gapMarks} from './guides.js?v=20261110a';
+import {constrainDrag,smartSnap} from './constrain.js?v=20261110a';
 const params=new URL(location.href).searchParams;
-import {arrowEditor,connectorCapabilities,connectorLabel,connectorRows,editingBlocked} from './arrow-ui.js?v=20261106i';
-import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20261106i';
-import {propertyEditor,styleControls,setSwatchTheme} from './property-ui.js?v=20261106i';
-import {fitText,canFitText,inspectProperties,readProperties,documentThickness,drawnProperties} from './properties.js?v=20261106i';
-import {duplicateObject,deleteObjects,layoutObjects,moveObjects,settleMove,describe,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20261106i';
-import {decodeLinkSource,encodeLinkSource,linkFragment,linkPayload} from './link-import.js?v=20261106i';
-import {createDocumentStore} from './documents.js?v=20261106i';
-import {canvasNavigation,clampZoom} from './canvas-navigation.js?v=20261106i';
-import {examplePicker} from './example-picker.js?v=20261106i';
-import {canvasTools} from './canvas-tools.js?v=20261106i';
-import {copySelection,pasteSelection} from './subgraph.js?v=20261106i';
-import {createComponentLibrary} from './component-library.js?v=20261106i';
-import {exportWorkspace,parseWorkspace} from './workspace-backup.js?v=20261106i';
-import {tidyRouteCandidate} from './route-suggestions.js?v=20261106i';
-import {createCandidateReview} from './candidate-review.js?v=20261106i';
-import {cleanSVG,downloadPNG} from './diagram-export.js?v=20261106i';
-import {readSizingPreference,writeSizingPreference} from './sizing-preferences.js?v=20261106i';
-import {detachCandidates,macroBlocked,macroUses} from './macro-detach.js?v=20261106i';
+import {arrowEditor,connectorCapabilities,connectorLabel,connectorRows,editingBlocked} from './arrow-ui.js?v=20261110a';
+import {creationTools,shapeTypeEditor} from './creation-ui.js?v=20261110a';
+import {propertyEditor,styleControls,setSwatchTheme} from './property-ui.js?v=20261110a';
+import {fitText,canFitText,inspectProperties,readProperties,documentThickness,drawnProperties} from './properties.js?v=20261110a';
+import {duplicateObject,deleteObjects,layoutObjects,moveObjects,settleMove,describe,changeSelectionAppearance,groupStyleCapabilities} from './object-actions.js?v=20261110a';
+import {decodeLinkSource,encodeLinkSource,linkFragment,linkPayload} from './link-import.js?v=20261110a';
+import {createDocumentStore} from './documents.js?v=20261110a';
+import {canvasNavigation,clampZoom} from './canvas-navigation.js?v=20261110a';
+import {examplePicker} from './example-picker.js?v=20261110a';
+import {canvasTools} from './canvas-tools.js?v=20261110a';
+import {copySelection,pasteSelection} from './subgraph.js?v=20261110a';
+import {createComponentLibrary} from './component-library.js?v=20261110a';
+import {exportWorkspace,parseWorkspace} from './workspace-backup.js?v=20261110a';
+import {tidyRouteCandidate} from './route-suggestions.js?v=20261110a';
+import {createCandidateReview} from './candidate-review.js?v=20261110a';
+import {cleanSVG,downloadPNG} from './diagram-export.js?v=20261110a';
+import {readSizingPreference,writeSizingPreference} from './sizing-preferences.js?v=20261110a';
+import {detachCandidates,macroBlocked,macroUses} from './macro-detach.js?v=20261110a';
 const $=id=>document.getElementById(id);
 const examples={
   pipeline:'Client: box "Client" at (0,0)\nAPI: box "API" at (2,0)\nDatabase: cylinder "Database" at (4,0)\narrow from Client.e to API.w\narrow from API.e to Database.w\n',
@@ -137,7 +137,7 @@ function render(text,flags=renderFlags){
 }
 startWorker();
 const current=()=>scene?.objects.find(o=>o.id===selectedId);
-function sizingFor(object){if(!object)return null;const saved=readSizingPreference(source.value,scene,object,sizingPreferences);if(saved)return saved;try{const props=inspectProperties(source.value,object,scene);if(/\bfit\b/.test(readProperties(source.value,object,scene).statement.replace(/"[^"\n]*"/g,'')))return{mode:'grow',text:props.text,width:object.bbox.width};}catch{}return null;}
+function sizingFor(object){if(!object)return null;const saved=readSizingPreference(source.value,scene,object,sizingPreferences);if(saved)return saved;try{const props=inspectProperties(source.value,object,scene);if(/\bfit\b/.test(readProperties(source.value,object,scene).statement.replace(/"(?:\\.|[^"\\])*"/g,'')))return{mode:'grow',text:props.text,width:object.bbox.width};}catch{}return null;}
 function clearProposal(){
   ++gesture;proposal=null;
   const had=preview;if(had)restoreViewBox();preview=null;
@@ -1314,6 +1314,8 @@ window.pikchrStudio={
   state:()=>({source:source.value,scene,object:current(),selectedIds:[...selectedIds],queued:draft.length,
     valid:!!scene&&!rendering&&source.value===renderedSource&&!$('diagram').classList.contains('stale')}),
   render,propose:options=>validateSuggestions(null,options),select:id=>select(id,false,false,true),
+  // The Text fit an object's label edits follow: {mode,text,width} or null (Fixed).
+  sizing:object=>sizingFor(object),
   modelToScreen:p=>{const svg=$('diagram').querySelector('svg');if(!scene||!svg?.getScreenCTM())return null;return new DOMPoint(p.x,p.y).matrixTransform(matrix()).matrixTransform(svg.getScreenCTM());},
   setDark:on=>{setSwatchTheme(on,render);const flags=on?3:1;if(flags===renderFlags)return;renderFlags=flags;for(const id of lastValid.keys())if(id!==activeDocumentId)lastValid.delete(id);if(source.value.trim()||scene)renderSource();},
   refit:()=>{const svg=$('diagram').querySelector('svg');const box=svg?.dataset.exportViewBox;if(!box)return;const [x,y,w,h]=box.split(/[ ,]+/).map(Number);svg.dataset.fitViewBox=fitBox(x,y,w,h);if(zoom===1&&pan.x===0&&pan.y===0){svg.dataset.baseViewBox=svg.dataset.fitViewBox;applyViewport();refreshHandles();}},

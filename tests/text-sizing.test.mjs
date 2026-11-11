@@ -48,7 +48,7 @@ test('Wrap preserves explicit blank lines and whole Unicode graphemes', async ()
 });
 test('Wrap fails safely for unsupported inputs, narrow boxes and excessive measurement work', async () => {
   const { source, scene, object } = fixture();
-  for (const options of [{ text: 'x', width: 0 }, { text: 'x', width: 0.001 }, { text: 'a"b' }, { text: 'a\\b' }, { text: 'x'.repeat(4097) }]) {
+  for (const options of [{ text: 'x', width: 0 }, { text: 'x', width: 0.001 }, { text: 'a\tb' }, { text: 'a\u0007b' }, { text: 'x'.repeat(4097) }]) {
     await assert.rejects(buildTextEdit(source, scene, object, { mode: 'wrap', ...options }, render));
   }
   let calls = 0;

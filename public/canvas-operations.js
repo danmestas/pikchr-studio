@@ -1,6 +1,6 @@
-import {createShape, connectableShapes} from './creation.js?v=20261106i';
-import {applyPatch, safeAttributes, byteOffsetToIndex} from './edits.js?v=20261106i';
-import {readProperties, propertyCandidate} from './properties.js?v=20261106i';
+import {createShape, connectableShapes} from './creation.js?v=20261110a';
+import {applyPatch, safeAttributes, byteOffsetToIndex} from './edits.js?v=20261110a';
+import {readProperties, propertyCandidate} from './properties.js?v=20261110a';
 
 const mask = value => value.replace(/"(?:\\.|[^"\\])*"/g, label => ' '.repeat(label.length));
 const numeric = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)';

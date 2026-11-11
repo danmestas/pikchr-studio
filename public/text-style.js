@@ -3,8 +3,8 @@
 // the same managed attributes. Colour is Pikchr's statement-wide color, which
 // also draws the outline, so it goes through the same rewrite as Style's
 // Line & text row rather than a second, different one.
-import {readProperties,propertyCandidate,attributeClauses,colourValue,lockedMessage} from './properties.js?v=20261106i';
-import {changeAppearance} from './object-actions.js?v=20261106i';
+import {readProperties,propertyCandidate,attributeClauses,colourValue,lockedMessage} from './properties.js?v=20261110a';
+import {changeAppearance} from './object-actions.js?v=20261110a';
 
 export const textSizes=['small','normal','big','bigger'];
 export const textAligns=['left','center','right'];
@@ -34,10 +34,12 @@ function wordsAfter(statement,from){
 
 // colour is the drawn color (a name or #rrggbb) or 'default'; colourLocked
 // is the clause as written when it is not a literal Studio can replace.
-export function textStyle(source,object,scene){
+// A label-less object has no style unless empty is set (the label editor
+// styles the text being typed into it): then it reads as plain text.
+export function textStyle(source,object,scene,{empty=false}={}){
   const {statement,labels}=readProperties(source,object,scene,{lines:true});
-  if(!labels.length)return null;
-  const first=labels[0],{words}=wordsAfter(statement,first.index+first[0].length);
+  if(!labels.length&&!empty)return null;
+  const first=labels[0],{words}=first?wordsAfter(statement,first.index+first[0].length):{words:[]};
   const bigs=words.filter(w=>w==='big').length;
   const {clauses,written}=attributeClauses(statement,'color'),last=clauses.at(-1);
   return {

@@ -506,6 +506,16 @@ body.layout-canvas .cl-textbar .cl-tb.cl-swatch[aria-pressed=true]{border-color:
 body.layout-canvas .cl-textbar .cl-tb.cl-swatch:not([data-colour=default]){background:var(--swatch,var(--cl-ink))}
 body.layout-canvas .cl-textbar .cl-tb.cl-swatch[data-colour=default]{background:linear-gradient(135deg,var(--cl-ink) 50%,var(--cl-canvas) 50%)}
 @media (max-width:700px){body.layout-canvas .cl-textbar{flex-wrap:wrap;max-width:calc(100vw - 16px)}}
+/* Touch: every text-bar control is a 44px target; a swatch keeps its 22px
+   circle, drawn inside the larger button. */
+@media (pointer:coarse){
+  body.layout-canvas .cl-textbar{justify-content:center}
+  body.layout-canvas .cl-textbar .cl-tb{min-width:44px;height:44px}
+  body.layout-canvas .cl-textbar .cl-tb.cl-swatch,body.layout-canvas .cl-textbar .cl-tb.cl-swatch:not([data-colour=default]),body.layout-canvas .cl-textbar .cl-tb.cl-swatch[data-colour=default]{flex:0 0 44px;width:44px;height:44px;min-height:44px;max-height:44px;margin:0;border:0;border-radius:6px;background:transparent;box-shadow:none;position:relative}
+  body.layout-canvas .cl-textbar .cl-tb.cl-swatch::before{content:'';position:absolute;inset:11px;border-radius:50%;border:2px solid var(--cl-line);box-sizing:border-box;background:var(--swatch,var(--cl-ink))}
+  body.layout-canvas .cl-textbar .cl-tb.cl-swatch[data-colour=default]::before{background:linear-gradient(135deg,var(--cl-ink) 50%,var(--cl-canvas) 50%)}
+  body.layout-canvas .cl-textbar .cl-tb.cl-swatch[aria-pressed=true]::before{border-color:var(--cl-accent);box-shadow:0 0 0 2px var(--cl-accent-bg)}
+}
 /* Selected shapes stay highlighted in the live drag preview. */
 body.layout-canvas #diagram .live-drag .cl-live-selected :is(path,polygon,polyline,circle,ellipse,rect,line):not([stroke=transparent]):not([fill=transparent]){stroke:var(--cl-accent)!important}
 /* About section in the document menu */

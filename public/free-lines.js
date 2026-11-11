@@ -3,8 +3,8 @@
 //
 // An end is either {object, anchor} (attach to a named shape's side) or
 // {point} (a literal position in Pikchr inches, y up).
-import {applyPatch,byteOffsetToIndex} from './edits.js?v=20261106i';
-import {connectCandidate} from './connect-drag.js?v=20261106i';
+import {applyPatch,byteOffsetToIndex} from './edits.js?v=20261110a';
+import {connectCandidate} from './connect-drag.js?v=20261110a';
 
 const encoder=new TextEncoder();
 const bytes=text=>encoder.encode(text).length;

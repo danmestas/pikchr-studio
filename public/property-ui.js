@@ -1,6 +1,6 @@
-import {inspectProperties,isColour,documentThickness,lockedMessage} from './properties.js?v=20261106i';
-import {changeAppearance} from './object-actions.js?v=20261106i';
-import {textStyle,textStyleCandidate,textSizes} from './text-style.js?v=20261106i';
+import {inspectProperties,isColour,documentThickness,lockedMessage} from './properties.js?v=20261110a';
+import {changeAppearance} from './object-actions.js?v=20261110a';
+import {textStyle,textStyleCandidate,textSizes} from './text-style.js?v=20261110a';
 let appearanceOpen=false;
 // Pikchr colour names for the swatches. Every ink keeps at least 4.5:1 (WCAG AA)
 // against both canvases (#ffffff, #161b22) and every fill, in light mode and in

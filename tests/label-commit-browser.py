@@ -98,14 +98,18 @@ with sync_playwright() as pw:
     load(page, 'box "A"\nmove\nC: cylinder\nmove\nbox "B"\n')
     before = src(page)
     editor = open_editor(page, 2, "dblclick")
-    page.keyboard.type('say "hi"')
+    six = "1\n2\n3\n4\n5\n6"
+    page.keyboard.type("1")
+    for line in "23456":
+        page.keyboard.press("Shift+Enter")
+        page.keyboard.type(line)
     page.keyboard.press("Enter")
     error = page.locator(".cl-inline-error")
     expect(error).to_be_visible()
     expect(error).to_have_attribute("role", "alert")
-    expect(error).to_contain_text("quotes")
+    expect(error).to_contain_text("five lines")
     expect(editor).to_be_visible()
-    assert editor.input_value() == 'say "hi"'
+    assert editor.input_value() == six
     assert src(page) == before
     page.keyboard.press("Escape")
     expect(editor).to_have_count(0)
@@ -114,16 +118,23 @@ with sync_playwright() as pw:
 
     # A refusal after a blur keeps the editor and its text as well.
     editor = open_editor(page, 2, "dblclick")
-    page.keyboard.type('a "b"')
+    editor.fill(six)
     page.locator(".cl-doc [aria-label='Menu']").focus()
     expect(error).to_be_visible()
     expect(editor).to_be_visible()
-    assert editor.input_value() == 'a "b"'
+    assert editor.input_value() == six
     assert src(page) == before
     editor.focus()
     page.keyboard.press("Escape")
     expect(editor).to_have_count(0)
     assert src(page) == before
+
+    # Quotes and backslashes are written escaped, not refused.
+    editor = open_editor(page, 2, "dblclick")
+    page.keyboard.type('say "hi" C:\\dir')
+    page.keyboard.press("Enter")
+    page.wait_for_function("t=>document.getElementById('source').value.includes(t)", arg='C: cylinder "say \\"hi\\" C:\\\\dir"')
+    assert 'say "hi" C:\\dir' in page.locator("#diagram svg").text_content().replace("\xa0", " ")
 
     set_auto_apply(page, False)
     run(page, queued=True)
