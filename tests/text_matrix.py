@@ -209,8 +209,6 @@ def load(page, text):
     ok = page.evaluate("""async t=>{const s=document.getElementById('source');s.value=t;s.dispatchEvent(new Event('input',{bubbles:true}));
       document.getElementById('render').click();for(let i=0;i<400;i++){const x=pikchrStudio.state();if(x.source===t&&x.valid&&!x.queued)return true;await new Promise(r=>setTimeout(r,10));}return false}""", text)
     assert ok, "source did not render"
-    page.evaluate("()=>{const e=document.querySelector('textarea.cl-inline-text');if(!e)document.getElementById('fit-view').click()}")
-    page.wait_for_timeout(50)
 
 
 def point_of(page, key):
@@ -258,6 +256,12 @@ def real_input(page, config, touch):
             page.mouse.dblclick(p["x"], p["y"])
         page.locator("textarea.cl-inline-text").wait_for(timeout=2000)
 
+    def empty_spot():
+        # An empty spot of canvas, clear of the floating toolbars.
+        return page.evaluate("""()=>{const d=document.getElementById('diagram').getBoundingClientRect();
+          for(let fy=.2;fy<.8;fy+=.05)for(let fx=.2;fx<.8;fx+=.1){const x=d.left+d.width*fx,y=d.top+d.height*fy,h=document.elementFromPoint(x,y);
+            if(h&&h.closest('#diagram')&&!h.closest('[data-pikchr-id]')&&!h.closest('.cl-inline-text'))return [x,y];}return [d.left+d.width/2,d.top+d.height/2]}""")
+
     def typed_enter(failures):
         load(page, source)
         open_on("X")
@@ -298,7 +302,8 @@ def real_input(page, config, touch):
         page.keyboard.press("ControlOrMeta+a")
         page.keyboard.press("ControlOrMeta+v")
         before = page.evaluate("pikchrStudio.state().source")
-        page.mouse.click(30, 450) if not touch else page.touchscreen.tap(200, 700)
+        x, y = empty_spot()
+        page.mouse.click(x, y) if not touch else page.touchscreen.tap(x, y)
         wait_source_change(page, before)
         got = statement_text(page, "X")
         if got != "pasted one\npasted two":
@@ -327,10 +332,7 @@ def real_input(page, config, touch):
         load(page, source)
         before = page.evaluate("pikchrStudio.state().source")
         page.locator(".cl-palette [aria-label='Text']").click()
-        # An empty spot of canvas, clear of the floating toolbars.
-        x, y = page.evaluate("""()=>{const d=document.getElementById('diagram').getBoundingClientRect();
-          for(let fy=.2;fy<.8;fy+=.05)for(let fx=.2;fx<.8;fx+=.1){const x=d.left+d.width*fx,y=d.top+d.height*fy,h=document.elementFromPoint(x,y);
-            if(h&&h.closest('#diagram')&&!h.closest('[data-pikchr-id]'))return [x,y];}return [d.left+d.width/2,d.top+d.height/2]}""")
+        x, y = empty_spot()
         hit = page.evaluate("([x,y])=>{const h=document.elementFromPoint(x,y);return h.tagName+'.'+String(h.className.baseVal??h.className)+' text tool '+document.querySelector(\".cl-palette [aria-label='Text']\").getAttribute('aria-pressed')}", [x, y])
         page.touchscreen.tap(x, y) if touch else page.mouse.click(x, y)
         try:
@@ -373,6 +375,30 @@ def real_input(page, config, touch):
         finally:
             page.set_viewport_size(size)
 
+    def sources_fit(failures):
+        # Each new source, small then large, wide then tall, arrives fitted:
+        # every object shows on the canvas, clear of the floating chrome,
+        # without pressing Fit. A label edit in between must not stop it.
+        shapes = ['box "tiny"', 'X: box "Label" fit at (1,0)\nY: box "two" "lines" fit at (3,0)\n',
+                  'A: box "A"\nB: box "B" at (3,0)\nline from A.e to B.w', 'box "a"\narrow\nbox "b"\narrow\nbox "c"\narrow\nbox "d"\narrow\nbox "e"',
+                  'circle "c"', 'A: box "A"\nB: box "B" at (0,-4)\nC: box "C" at (5,-4)']
+        # From a fitted view: earlier cells pan and zoom on purpose.
+        page.locator("#fit-view").click()
+        for i, text in enumerate(shapes):
+            load(page, text)
+            page.wait_for_timeout(150)
+            bad = page.evaluate("""()=>{const out=[];for(const o of pikchrStudio.state().scene.objects){if(!o.bbox||o.kind==='[]')continue;
+              const a=pikchrStudio.modelToScreen({x:o.bbox.x,y:o.bbox.y}),b=pikchrStudio.modelToScreen({x:o.bbox.x+o.bbox.width,y:o.bbox.y+o.bbox.height});
+              const r={left:Math.min(a.x,b.x),right:Math.max(a.x,b.x),top:Math.min(a.y,b.y),bottom:Math.max(a.y,b.y)};for(const [x,y] of [[r.left+1,r.top+1],[r.right-1,r.bottom-1],[(r.left+r.right)/2,(r.top+r.bottom)/2]]){
+                const h=document.elementFromPoint(x,y);if(x<0||y<0||x>innerWidth||y>innerHeight||!h||!h.closest('#diagram')){out.push(`${o.name||o.kind} at ${Math.round(x)},${Math.round(y)} is ${h&&!h.closest('#diagram')?'under '+String(h.closest('[class]')?.className).split(' ')[0]:'off screen'}`);break;}}}return out}""")
+            for m in bad[:2]:
+                failures.append({"category": "geometry", "message": f"source {i + 1} not fitted: {m}"})
+            if i == 1:
+                open_on("X")
+                page.keyboard.type(" edited")
+                page.keyboard.press("Enter")
+                page.wait_for_function("()=>!document.querySelector('textarea.cl-inline-text')&&pikchrStudio.state().valid")
+
     check("real: keyboard typing, Shift+Enter, Enter", typed_enter)
     check("real: IME composition (CDP)", ime)
     check("real: clipboard paste, blur commit", paste)
@@ -380,6 +406,7 @@ def real_input(page, config, touch):
     check("real: Text tool click-to-place", text_tool)
     if touch:
         check("real: on-screen keyboard shrinks the viewport", keyboard_shrink)
+    check("real: new sources arrive fitted, without Fit", sources_fit)
     return out
 
 

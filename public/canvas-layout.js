@@ -756,7 +756,11 @@ function install(studio){
     body.style.setProperty('--cl-zoom-lift',lift+'px');
     const above=chipsBottom+lift+row+8;
     body.style.setProperty('--cl-above-chips',above+'px');
-    const insets={top:Math.round(docBottom+8),right:16,bottom:Math.round(above),left:16},key=JSON.stringify(insets);chrome=insets;
+    // On a phone the status chip sits below the document chip's row; a
+    // drawing fitted under the document chip alone would sit beneath it. Its
+    // one-line height is used so a wrapping message does not refit.
+    const statusBottom=statusChip.hidden?0:statusChip.offsetTop+chip.offsetHeight;
+    const insets={top:Math.round(Math.max(docBottom,statusBottom)+8),right:16,bottom:Math.round(above),left:16},key=JSON.stringify(insets);chrome=insets;
     if(key!==insetsKey){insetsKey=key;studio.setFitInsets?.(insets);studio.refit?.();}
   }
   arrangeChrome();

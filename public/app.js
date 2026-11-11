@@ -37,6 +37,22 @@ const undo=[],redo=[];
 const draft=[];
 const draftRedo=[];
 let cancelCanvasEdit=()=>{},manualEditBase=null;
+// Whether the author moved the view (pan or zoom) since it was last fitted,
+// and whether the source text was typed or pasted since the last render
+// (Studio's own edits, undo and redo keep the view as it is).
+let viewMoved=false,typedSource=false;
+// A view is never refitted under a gesture: while a pointer is down on the
+// page, a drag preview is open, or the label dialog is previewing. A refit
+// asked for then (a window resize, the chrome rearranging) waits for it.
+// A press that moved is a drag: its edit (and any preview) is still being
+// worked out after the release, so the refit waits for the preview to close.
+let pointerHeld=false,pointerDragged=false,refitPending=false;
+// Counts fits of the view: a reveal's pan is only undone on the view it moved.
+let fits=0;
+const viewBusy=()=>pointerHeld||!!preview||!!directTools?.busy?.();
+addEventListener('pointerdown',()=>{pointerHeld=true;pointerDragged=false;},true);
+addEventListener('pointermove',()=>{if(pointerHeld)pointerDragged=true;},true);
+for(const type of ['pointerup','pointercancel'])addEventListener(type,()=>{pointerHeld=false;if(!pointerDragged)setTimeout(()=>{if(refitPending&&!viewBusy())window.pikchrStudio?.refit();});},true);
 let draftBase=null,discarded=null;
 let rendering=false,renderVersion=0;
 const selectionHistory=new Map();
@@ -184,7 +200,7 @@ source.addEventListener('input',()=>{
   directTools?.cancel(false);
   if(draft.length){source.value=draft.at(-1).after;status('Apply or discard the queued changes before editing source text.');return;}
   if(manualEditBase===null)manualEditBase=renderedSource;
-  draftRedo.length=0;dirty();
+  typedSource=true;draftRedo.length=0;dirty();
   clearTimeout(autoRender);autoRender=setTimeout(()=>{if(!draft.length&&!rendering&&(source.value!==renderedSource||$('diagram').classList.contains('stale')))renderSource();},300);
 });
 let autoRender=null;
@@ -255,7 +271,16 @@ async function renderSource(preRendered=null){
   const [vx,vy,vw,vh]=svg.getAttribute('viewBox').split(/[ ,]+/).map(Number);
   svg.dataset.fitViewBox=fitBox(vx,vy,vw,vh);
   if(oldViewport){const ratio=Math.abs(scene.transform.a)/oldViewport.scale,w=oldViewport.baseWidth*ratio,h=oldViewport.baseHeight*ratio,center=svgPoint(oldViewport.center);svg.dataset.baseViewBox=[vx+vw/2-w/2,vy+vh/2-h/2,w,h].join(' ');pan={x:center.x-(vx+vw/2),y:center.y-(vy+vh/2)};zoom=oldViewport.zoom;}else svg.dataset.baseViewBox=svg.dataset.fitViewBox;
-  viewportDocumentId=activeDocumentId;applyViewport();bindDiagram(svg);
+  viewportDocumentId=activeDocumentId;applyViewport();
+  // A view the author never panned or zoomed is the fitted view: after the
+  // source text is typed or pasted it is kept while the new diagram still
+  // fits in it, and fitted again when it would spill outside it or under the
+  // floating chrome. Studio's own edits, undo and redo keep the view.
+  const typed=typedSource;typedSource=false;
+  if(!oldViewport)viewMoved=false;
+  // Never under a gesture: a drag, preview or label dialog keeps its view.
+  else if(typed&&!viewMoved&&!viewBusy()&&!contentVisible(svg,vx,vy,vw,vh)){svg.dataset.baseViewBox=svg.dataset.fitViewBox;zoom=1;pan={x:0,y:0};fits++;applyViewport();}
+  bindDiagram(svg);
   directTools?.sync();
   if(focusResize)svg.querySelector(`[data-resize="${focusResize}"]`)?.focus({preventScroll:true});
   status('Rendered '+scene.objects.length+' objects. Select one to inspect.');
@@ -265,12 +290,22 @@ async function renderSource(preRendered=null){
 // layout may reserve screen insets (floating chrome); the drawing is fitted
 // and centred inside them, while the view still fills the stage.
 let fitInsets={top:0,right:0,bottom:0,left:0};
+// The fit insets, widened by an open inspector panel (beside the canvas on a
+// desktop, a bottom sheet on a phone): a fitted drawing is never under it.
+function coveredInsets(){
+  const insets={...fitInsets},panel=document.querySelector('.cl-more'),d=$('diagram');
+  if(!panel||panel.hidden||!panel.getClientRects().length||getComputedStyle(panel).visibility==='hidden')return insets;
+  const r=panel.getBoundingClientRect(),c=d.getBoundingClientRect(),k=c.width/(d.offsetWidth||c.width)||1;
+  if(r.left>c.left+c.width/2)insets.right=Math.max(insets.right,(c.right-r.left)/k+8);
+  else if(r.top>c.top+c.height/2)insets.bottom=Math.max(insets.bottom,(c.bottom-r.top)/k+8);
+  return insets;
+}
 function fitBox(vx,vy,vw,vh){
   let bw=Math.max(640,vw),bh=Math.max(360,vh);
   const d=$('diagram'),cs=getComputedStyle(d);
   const w=d.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight),h=d.clientHeight-parseFloat(cs.paddingTop)-parseFloat(cs.paddingBottom);
   if(w>0&&h>0){
-    const {top,right,bottom,left}=fitInsets,iw=Math.max(w/4,w-left-right),ih=Math.max(h/4,h-top-bottom);
+    const {top,right,bottom,left}=coveredInsets(),iw=Math.max(w/4,w-left-right),ih=Math.max(h/4,h-top-bottom);
     const scale=Math.min(1,iw/vw,ih/vh);bw=w/scale;bh=h/scale;
     const cx=vx+vw/2-(left+iw/2-w/2)/scale,cy=vy+vh/2-(top+ih/2-h/2)/scale;
     return [cx-bw/2,cy-bh/2,bw,bh].join(' ');
@@ -625,13 +660,25 @@ function drawOverlay(){
   svg.append(layer);
 }
 $('anchors').onchange=()=>{drawOverlay();installArrowEditor();};
+// Whether the whole drawing (its viewBox in SVG units) shows inside the
+// canvas, clear of the fit insets (the floating chrome).
+function contentVisible(svg,vx,vy,vw,vh){
+  const host=$('diagram'),ctm=svg.getScreenCTM(),d=host.getBoundingClientRect();if(!ctm||!host.offsetWidth)return true;
+  // Insets are CSS px of the body; under a CSS zoom on the body the screen
+  // rectangles are scaled by it.
+  const k=d.width/host.offsetWidth,{top,right,bottom,left}=coveredInsets();
+  const a=new DOMPoint(vx,vy).matrixTransform(ctm),b=new DOMPoint(vx+vw,vy+vh).matrixTransform(ctm),slack=2;
+  return Math.min(a.x,b.x)>=d.left+left*k-slack&&Math.max(a.x,b.x)<=d.right-right*k+slack
+    &&Math.min(a.y,b.y)>=d.top+top*k-slack&&Math.max(a.y,b.y)<=d.bottom-bottom*k+slack;
+}
 function applyViewport(){
   const svg=$('diagram').querySelector('svg');if(!svg?.dataset.baseViewBox)return;
   const [x,y,w,h]=svg.dataset.baseViewBox.split(/[ ,]+/).map(Number);
   svg.setAttribute('viewBox',[x+w/2-w/zoom/2+pan.x,y+h/2-h/zoom/2+pan.y,w/zoom,h/zoom].map(v=>Math.round(v*1e6)/1e6).join(' '));
   $('zoom-level').textContent=Math.round(zoom*100)+'%';
 }
-function panBy(dx,dy){
+function panBy(dx,dy,{author=true}={}){
+  if(author&&(dx||dy))viewMoved=true;
   const svg=$('diagram').querySelector('svg'),ctm=svg?.getScreenCTM();if(!ctm)return;
   const inv=ctm.inverse(),a=new DOMPoint(0,0).matrixTransform(inv),b=new DOMPoint(dx,dy).matrixTransform(inv);
   pan.x-=b.x-a.x;pan.y-=b.y-a.y;applyViewport();
@@ -640,12 +687,12 @@ function zoomAt(factor,x,y){
   const svg=$('diagram').querySelector('svg');if(!svg?.getScreenCTM()||!Number.isFinite(factor)||factor<=0)return;
   const bounds=svg.getBoundingClientRect();x??=bounds.x+bounds.width/2;y??=bounds.y+bounds.height/2;
   const point=()=>new DOMPoint(x,y).matrixTransform(svg.getScreenCTM().inverse());
-  const before=point();zoom=clampZoom(zoom*factor);applyViewport();const after=point();pan.x+=before.x-after.x;pan.y+=before.y-after.y;applyViewport();
+  if(factor!==1)viewMoved=true;const before=point();zoom=clampZoom(zoom*factor);applyViewport();const after=point();pan.x+=before.x-after.x;pan.y+=before.y-after.y;applyViewport();
 }
 const refreshHandles=()=>{drawOverlay();installArrowEditor();directTools?.sync();};
 $('zoom-in').onclick=()=>{zoomAt(1.25);refreshHandles();};
 $('zoom-out').onclick=()=>{zoomAt(1/1.25);refreshHandles();};
-$('fit-view').onclick=()=>{const svg=$('diagram').querySelector('svg');if(svg?.dataset.fitViewBox)svg.dataset.baseViewBox=svg.dataset.fitViewBox;zoom=1;pan={x:0,y:0};applyViewport();refreshHandles();};
+$('fit-view').onclick=()=>{const svg=$('diagram').querySelector('svg');if(svg?.dataset.fitViewBox)svg.dataset.baseViewBox=svg.dataset.fitViewBox;zoom=1;pan={x:0,y:0};viewMoved=false;fits++;applyViewport();refreshHandles();};
 $('pan-mode').onclick=()=>{panMode=!panMode;$('pan-mode').setAttribute('aria-pressed',String(panMode));$('diagram').style.cursor=panMode?'grab':'';};
 function selectNearby(e){
   const svg=$('diagram').querySelector('svg');if(!svg)return;
@@ -1161,11 +1208,13 @@ async function acceptPreview(){
   if(!preview)return;const option=preview.options[preview.index];
   restoreViewBox();preview=null;$('preview-actions').hidden=true;$('diagram').classList.remove('previewing');
   await choose(option);
+  if(refitPending&&!viewBusy())window.pikchrStudio.refit();
 }
 function discardPreview(){
   if(!preview)return;restoreViewBox();preview=null;$('preview-actions').hidden=true;$('diagram').classList.remove('previewing');
   $('suggestions').textContent='Preview discarded. The source is unchanged.';
   renderSource(scene);status('Preview discarded. The source is unchanged.');
+  if(refitPending&&!viewBusy())setTimeout(()=>window.pikchrStudio.refit());
 }
 $('preview-accept').onclick=acceptPreview;
 $('preview-prev').onclick=()=>cyclePreview(-1);$('preview-next').onclick=()=>cyclePreview(1);
@@ -1326,7 +1375,7 @@ window.pikchrStudio={
   textFit:object=>textFitFor(object),
   modelToScreen:p=>{const svg=$('diagram').querySelector('svg');if(!scene||!svg?.getScreenCTM())return null;return new DOMPoint(p.x,p.y).matrixTransform(matrix()).matrixTransform(svg.getScreenCTM());},
   setDark:on=>{setSwatchTheme(on,render);const flags=on?3:1;if(flags===renderFlags)return;renderFlags=flags;for(const id of lastValid.keys())if(id!==activeDocumentId)lastValid.delete(id);if(source.value.trim()||scene)renderSource();},
-  refit:()=>{const svg=$('diagram').querySelector('svg');const box=svg?.dataset.exportViewBox;if(!box)return;const [x,y,w,h]=box.split(/[ ,]+/).map(Number);svg.dataset.fitViewBox=fitBox(x,y,w,h);if(zoom===1&&pan.x===0&&pan.y===0){svg.dataset.baseViewBox=svg.dataset.fitViewBox;applyViewport();refreshHandles();}},
+  refit:()=>{if(viewBusy()){refitPending=true;return;}refitPending=false;const svg=$('diagram').querySelector('svg');const box=svg?.dataset.exportViewBox;if(!box)return;const [x,y,w,h]=box.split(/[ ,]+/).map(Number);svg.dataset.fitViewBox=fitBox(x,y,w,h);if(!viewMoved){svg.dataset.baseViewBox=svg.dataset.fitViewBox;zoom=1;pan={x:0,y:0};fits++;applyViewport();refreshHandles();}},
   title:()=>activeDocumentTitle,
   setFitInsets:insets=>{fitInsets={top:0,right:0,bottom:0,left:0,...insets};},
   // An explicit name is stored with the document and stops the automatic one (first label).
@@ -1351,13 +1400,13 @@ window.pikchrStudio={
     const shift=(lo,hi,a,z,size)=>{const room=size-z-a;return hi-lo>room?a-lo:lo<a||hi>size-z?a+room/2-(lo+hi)/2:0;};
     const dy=top||bottom?shift(Math.min(...boxes.map(b=>b.top)),Math.max(...boxes.map(b=>b.bottom)),top,bottom,innerHeight):0;
     const dx=left||right?shift(Math.min(...boxes.map(b=>b.left)),Math.max(...boxes.map(b=>b.right)),left,right,innerWidth):0;
-    if(dx||dy){panBy(dx,dy);refreshHandles();}
-    return {dx,dy,zoom};
+    if(dx||dy){panBy(dx,dy,{author:false});refreshHandles();}
+    return {dx,dy,zoom,fits};
   },
   // Undo a reveal's pan, unless the view was zoomed since.
   unreveal:shift=>{
-    const svg=$('diagram').querySelector('svg');if(!svg||!shift||shift.zoom!==zoom)return;
-    if(shift.dx||shift.dy){panBy(-shift.dx,-shift.dy);refreshHandles();}
+    const svg=$('diagram').querySelector('svg');if(!svg||!shift||shift.zoom!==zoom||shift.fits!==fits)return;
+    if(shift.dx||shift.dy){panBy(-shift.dx,-shift.dy,{author:false});refreshHandles();}
   },
   editLabelDialog:()=>directTools?.editText(),
   reconnect:which=>reconnectSelected(which),

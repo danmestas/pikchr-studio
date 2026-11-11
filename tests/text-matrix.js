@@ -269,7 +269,9 @@
     const before = st(), object = objectFor(before, cell);
     if (!object) { fail('setup', 'object not found'); return failures; }
     // Every cell starts from the fitted view (the pan and zoom checks move it).
-    $('fit-view')?.click(); moved = false; await frame();
+    // Only a view this harness panned or zoomed is fitted again; a new
+    // source must arrive fitted on its own (fit-browser.py checks that too).
+    if (moved) { $('fit-view')?.click(); moved = false; await frame(); }
     await until(() => st().valid && !$('diagram').classList.contains('stale'), 1500);
     await frame();
     const beforeStatement = object.span?.start >= 0 ? statementOf(before, object) : null;
@@ -463,6 +465,7 @@
         await closePanels();
         out.push({name: cell.name, failures});
       }
+      if (moved) { $('fit-view')?.click(); moved = false; await frame(); }
       return out;
     },
     strings, skeleton,
