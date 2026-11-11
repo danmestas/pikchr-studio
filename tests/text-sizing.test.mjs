@@ -48,7 +48,7 @@ test('Wrap preserves explicit blank lines and whole Unicode graphemes', async ()
 });
 test('Wrap fails safely for unsupported inputs, narrow boxes and excessive measurement work', async () => {
   const { source, scene, object } = fixture();
-  for (const options of [{ text: 'x', width: 0 }, { text: 'x', width: 0.001 }, { text: 'a"b' }, { text: 'a\\b' }, { text: 'x'.repeat(4097) }]) {
+  for (const options of [{ text: 'x', width: 0 }, { text: 'x', width: 0.001 }, { text: 'a\tb' }, { text: 'a\u0007b' }, { text: 'x'.repeat(4097) }]) {
     await assert.rejects(buildTextEdit(source, scene, object, { mode: 'wrap', ...options }, render));
   }
   let calls = 0;
@@ -81,4 +81,32 @@ test('bundled native renderer has a five-term limit and wrapping reports actiona
   const {source,scene,object}=fixture();
   await assert.rejects(buildTextEdit(source,scene,object,{text:'word word word word word word',mode:'wrap',width:0.35},render),/more than five lines.*Increase the wrap width or choose Grow/);
   await assert.rejects(buildTextEdit(source,scene,object,{text:'1\n2\n3\n4\n5\n6',mode:'wrap'},render),/at most five text lines/);
+});
+test('Grow and Wrap rewrite only the edited statement: an explicit placement keeps its centre, a chain flows', async () => {
+  const near = (a, b) => Math.abs(a.x - b.x) < 1e-3 && Math.abs(a.y - b.y) < 1e-3;
+  const forms = {
+    chain: 'box "start"\narrow\n{X}\narrow\nbox "next"\n',
+    relative: 'A: box "start"\nX: {X} at A + (2,0)\narrow\nbox "next"\n',
+    expression: 'A: box "start"\nX: {X} at (A.x + 2, A.y)\narrow\nbox "next"\n',
+    'with anchor': 'A: box "start"\nX: {X} with .n at A.s + (0,-0.5)\narrow\nbox "next"\n',
+  };
+  for (const [form, template] of Object.entries(forms)) for (const [kind, mode] of [['box', 'wrap'], ['box', 'grow'], ['oval', 'grow']]) {
+    const source = template.replace('{X}', `${kind} "x"`), scene = render(source);
+    const index = form === 'chain' ? 2 : 1, object = scene.objects[index];
+    const edit = await buildTextEdit(source, scene, object, { text: 'a label much too long for this shape', mode }, render);
+    const result = render(edit.source), now = result.objects[index], label = `${form} ${kind} ${mode}: ${edit.source}`;
+    assert.equal(result.error, null, label);
+    assert.ok(mode === 'wrap' ? now.bbox.height > object.bbox.height : now.bbox.width > object.bbox.width, 'did not resize: ' + label);
+    // Only the edited statement changes.
+    const lines = source.split('\n'), after = edit.source.split('\n');
+    assert.equal(after.length, lines.length, label);
+    for (const [i, line] of lines.entries()) if (i !== index) assert.equal(after[i], line, label);
+    if (form === 'chain') {
+      // A chain shape flows from the connector before it: its entry stays put.
+      assert.ok(near(now.anchors.w, object.anchors.w), 'entry moved: ' + label);
+    } else assert.ok(near(now.center, object.center), 'centre moved: ' + label);
+    // Its follower still starts at its exit.
+    const follower = result.objects.find((o, i) => i > index && o.kind === 'arrow');
+    assert.ok(near(follower.path[0], now.anchors.e) || near(follower.path[0], now.anchors.s), 'follower detached: ' + label);
+  }
 });

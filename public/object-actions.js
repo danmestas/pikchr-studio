@@ -1,7 +1,7 @@
-import {applyPatch,byteOffsetToIndex,candidates,editability,maskCode} from './edits.js?v=20261106i';
-import {readProperties,propertyCandidate,isColour,attributeClauses,lockedMessage} from './properties.js?v=20261106i';
-import {literalRoute,translateLineCandidate} from './free-lines.js?v=20261106i';
-import {connectorStyleCandidate} from './route-styles.js?v=20261106i';
+import {applyPatch,byteOffsetToIndex,candidates,editability,maskCode} from './edits.js?v=20261110a';
+import {readProperties,propertyCandidate,isColour,attributeClauses,lockedMessage} from './properties.js?v=20261110a';
+import {literalRoute,translateLineCandidate} from './free-lines.js?v=20261110a';
+import {connectorStyleCandidate} from './route-styles.js?v=20261110a';
 
 const bytes=s=>new TextEncoder().encode(s).length;
 const masked=s=>s.replace(/"(?:\\.|[^"\\])*"/g,m=>' '.repeat(m.length));

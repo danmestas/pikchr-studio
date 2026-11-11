@@ -2,15 +2,15 @@
 // the controls declared in index.html into chips, menus and popovers; every
 // control keeps its own handler. It also adds drag-to-connect, which submits
 // ordinary candidate edits.
-import {attachPoints,nearestAnchor,targetAnchor,hitShape,connectCandidate,connectionLabel,elbowRoute} from './connect-drag.js?v=20261106i';
-import {connectableShapes} from './creation.js?v=20261106i';
-import {connectorCapabilities,connectorTitle} from './arrow-ui.js?v=20261106i';
-import {freeLineCandidate,pointText,snapToGrid,literalRoute,lineEnds,translateLineCandidate,moveEndpointCandidate} from './free-lines.js?v=20261106i';
-import {lockDirection} from './constrain.js?v=20261106i';
-import {inspectProperties} from './properties.js?v=20261106i';
-import {paintSwatch} from './property-ui.js?v=20261106i';
-import {buildTextEdit} from './text-sizing.js?v=20261106i';
-import {textStyle,textStyleCandidate,textSizes,textColours} from './text-style.js?v=20261106i';
+import {attachPoints,nearestAnchor,targetAnchor,hitShape,connectCandidate,connectionLabel,elbowRoute} from './connect-drag.js?v=20261110a';
+import {connectableShapes} from './creation.js?v=20261110a';
+import {connectorCapabilities,connectorTitle} from './arrow-ui.js?v=20261110a';
+import {freeLineCandidate,pointText,snapToGrid,literalRoute,lineEnds,translateLineCandidate,moveEndpointCandidate} from './free-lines.js?v=20261110a';
+import {lockDirection} from './constrain.js?v=20261110a';
+import {inspectProperties} from './properties.js?v=20261110a';
+import {paintSwatch} from './property-ui.js?v=20261110a';
+import {buildTextEdit,keepInPlace} from './text-sizing.js?v=20261110a';
+import {textStyle,textStyleCandidate,textSizes,textColours} from './text-style.js?v=20261110a';
 
 
 const $=id=>document.getElementById(id);
@@ -544,7 +544,8 @@ function install(studio){
       // Filtering belongs to app.js, which owns the outline rows; one input
       // event refreshes the count and empty state from the same code path.
       objectSearch.dispatchEvent(new Event('input',{bubbles:true}));
-      requestAnimationFrame(()=>objectSearch.focus({preventScroll:true}));
+      // Never from under the label editor: its blur commits the label.
+      requestAnimationFrame(()=>{if(!inline)objectSearch.focus({preventScroll:true});});
     }
   }
   backButton.onclick=()=>{showMoreView('properties');syncMoreHead();closeMore.focus();};
@@ -646,18 +647,26 @@ function install(studio){
     const a=studio.modelToScreen({x:b.x,y:b.y+b.height}),z=studio.modelToScreen({x:b.x+b.width,y:b.y});
     if(!a||!z)return null;return {left:Math.min(a.x,z.x),top:Math.min(a.y,z.y),right:Math.max(a.x,z.x),bottom:Math.max(a.y,z.y)};
   }
+  // Floating chrome is placed in viewport pixels: the rects it is placed
+  // against and innerWidth/innerHeight are viewport pixels, but under a CSS
+  // zoom on the body a fixed element's left, top and offset sizes are its own
+  // zoomed pixels. zoomOf is that ratio, measured on the node itself, and
+  // putAt and sizeOf convert, so the chrome stays on screen at any zoom.
+  const zoomOf=node=>{const w=node.offsetWidth,r=node.getBoundingClientRect().width;return w&&r?r/w:1;};
+  const sizeOf=node=>{const r=node.getBoundingClientRect();return {w:r.width,h:r.height};};
+  function putAt(node,left,top){const k=zoomOf(node);if(left!==null)node.style.left=left/k+'px';if(top!==null)node.style.top=top/k+'px';}
   function place(node,box,gap=12){
-    const w=node.offsetWidth,h=node.offsetHeight,vw=innerWidth,vh=innerHeight;
+    const {w,h}=sizeOf(node),vw=innerWidth,vh=innerHeight;
     let left=(box.left+box.right)/2-w/2;left=Math.max(8,Math.min(vw-w-8,left));
     let top=box.top-h-gap;if(top<64)top=box.bottom+gap;top=Math.max(64,Math.min(vh-h-64,top));
-    node.style.left=left+'px';node.style.top=top+'px';
+    putAt(node,left,top);
   }
   // Move node beside panel (left of it, else below it) when they collide.
   function stepAside(node,panel){
     const r=node.getBoundingClientRect();
     if(!(r.left<panel.right&&r.right>panel.left&&r.top<panel.bottom&&r.bottom>panel.top))return;
-    if(panel.left-r.width-8>=8)node.style.left=(panel.left-r.width-8)+'px';
-    else if(panel.bottom+8+r.height<=innerHeight-8)node.style.top=(panel.bottom+8)+'px';
+    if(panel.left-r.width-8>=8)putAt(node,panel.left-r.width-8,null);
+    else if(panel.bottom+8+r.height<=innerHeight-8)putAt(node,null,panel.bottom+8);
   }
   function markSelection(){
     const svg=svgNow(),ids=new Set(studio.state().selectedIds||[]);
@@ -684,13 +693,14 @@ function install(studio){
     context.hidden=!visible;
     if(visible)place(context,box,30);
     if(visible&&!more.hidden&&!phoneQuery.matches)stepAside(context,more.getBoundingClientRect());
+    if(inline)placeInline(inline);
     syncTextBar(visible||!!inline);
     if(pendingText&&!inline)maybeEditNewText();
     if(previewActions&&!previewActions.hidden){
       const overlay=diagram.querySelector('.preview-overlay rect')?.getBoundingClientRect();
       const target=overlay?{left:overlay.left,top:overlay.top,right:overlay.right,bottom:overlay.bottom}:box;
       if(target){
-        const w=previewActions.offsetWidth,h=previewActions.offsetHeight;
+        const {w,h}=sizeOf(previewActions);
         let left=Math.max(8,Math.min(innerWidth-w-8,(target.left+target.right)/2-w/2));
         let top=target.bottom+14;if(top+h>innerHeight-64)top=Math.max(64,target.top-h-14);
         if(!more.hidden){
@@ -702,7 +712,7 @@ function install(studio){
             else if(panel.bottom+h+8<=innerHeight-8)top=panel.bottom+8;
           }
         }
-        previewActions.style.left=left+'px';previewActions.style.top=top+'px';
+        putAt(previewActions,left,top);
       }
       if(!context.hidden&&previewActions.getBoundingClientRect().top<context.getBoundingClientRect().bottom+4&&previewActions.getBoundingClientRect().bottom>context.getBoundingClientRect().top)context.hidden=true;
     }
@@ -721,7 +731,7 @@ function install(studio){
   // and the first fit keeps the diagram clear of all of it.
   // Everything is measured in CSS px of the body (offsets, clientWidth), so a
   // page zoom on the body cannot mix scaled and unscaled lengths.
-  let insetsKey='',arrangedFor='';
+  let insetsKey='',arrangedFor='',chrome={top:64,bottom:64};
   function arrangeChrome(){
     const body=document.body,vw=body.clientWidth;arrangedFor=vw+'x'+body.clientHeight;
     body.classList.remove('cl-palette-bottom','cl-palette-wrap');
@@ -754,7 +764,11 @@ function install(studio){
     body.style.setProperty('--cl-zoom-lift',lift+'px');
     const above=chipsBottom+lift+row+8;
     body.style.setProperty('--cl-above-chips',above+'px');
-    const insets={top:Math.round(docBottom+8),right:16,bottom:Math.round(above),left:16},key=JSON.stringify(insets);
+    // On a phone the status chip sits below the document chip's row; a
+    // drawing fitted under the document chip alone would sit beneath it. Its
+    // one-line height is used so a wrapping message does not refit.
+    const statusBottom=statusChip.hidden?0:statusChip.offsetTop+chip.offsetHeight;
+    const insets={top:Math.round(Math.max(docBottom,statusBottom)+8),right:16,bottom:Math.round(above),left:16},key=JSON.stringify(insets);chrome=insets;
     if(key!==insetsKey){insetsKey=key;studio.setFitInsets?.(insets);studio.refit?.();}
   }
   arrangeChrome();
@@ -917,10 +931,10 @@ function install(studio){
     let best=null;for(let i=1;i<c.screen.length;i++){const a=c.screen[i-1],b=c.screen[i],len=Math.hypot(b.x-a.x,b.y-a.y);if(!best||len>best.len)best={a,b,len};}
     if(!best)return;
     const mx=(best.a.x+best.b.x)/2,my=(best.a.y+best.b.y)/2,horizontal=Math.abs(best.b.x-best.a.x)>=Math.abs(best.b.y-best.a.y);
-    const w=badge.offsetWidth,h=badge.offsetHeight;
+    const {w,h}=sizeOf(badge);
     let left=horizontal?mx-w/2:mx+12,top=horizontal?my-h-10:my-h/2;
     left=Math.max(8,Math.min(innerWidth-w-8,left));top=Math.max(8,Math.min(innerHeight-h-8,top));
-    badge.style.left=left+'px';badge.style.top=top+'px';
+    putAt(badge,left,top);
   };
   diagram.addEventListener('pointermove',e=>{
     if(!connect||connect.pointerId!==e.pointerId)return;
@@ -1000,33 +1014,59 @@ function install(studio){
   // Text is edited where it sits: T places a text object and opens an editor
   // over it; double-click or Enter edits any label. Enter commits, Shift+Enter
   // adds a line, Escape cancels. Commits go through the normal validated path.
-  const textKinds=['box','cylinder','circle','ellipse','oval','diamond','file','text'];
+  const textKinds=['box','cylinder','circle','ellipse','oval','diamond','file','text','arrow','line','spline'];
   let inline=null,pendingText=0;
-  function labelText(o){const s=studio.state();if(!o||!textKinds.includes(o.kind))return null;try{return inspectProperties(s.source,o,s.scene).text;}catch{return null;}}
+  // The label as written, or {refused} with the reason it cannot be edited here.
+  function labelText(o){const s=studio.state();if(!o||!textKinds.includes(o.kind))return null;try{return inspectProperties(s.source,o,s.scene).text;}catch(error){return {refused:error.message};}}
   function maybeEditNewText(){
     if(Date.now()-pendingText>4000){pendingText=0;return;}
     const s=studio.state(),o=s.object;
     if(s.valid&&o?.kind==='text'&&labelText(o)===''){pendingText=0;openInline(o,{created:true});}
   }
+  // The editor sits over the label (its drawn strings, else the object) at
+  // the canvas's current scale, and is placed again whenever the view pans,
+  // zooms or resizes, so it never drifts off the text it edits.
+  function placeInline(d){
+    const box=labelBox(d.object);if(!box)return;
+    const svg=svgNow(),ctm=svg?.getScreenCTM(),scale=ctm?Math.hypot(ctm.a,ctm.b)||1:1;
+    const ta=d.ta,width=Math.min(innerWidth-8,Math.max(140,box.right-box.left));
+    const k=zoomOf(ta);
+    ta.style.fontSize=Math.max(12,d.fontSize*scale)/k+'px';ta.style.width=width/k+'px';
+    ta.style.height='auto';ta.style.height=ta.scrollHeight+'px';
+    // Inside the visible area: the label may be partly off screen.
+    const vw=innerWidth,vh=innerHeight,h=sizeOf(ta).h;
+    putAt(ta,Math.max(4,Math.min(vw-width-4,(box.left+box.right)/2-width/2)),Math.max(4,Math.min(vh-h-4,(box.top+box.bottom)/2-h/2)));
+    if(d.error)inlineError(d.error.textContent);
+  }
+  function labelBox(object){
+    const group=svgNow()?.querySelector(`[data-pikchr-id="${object.id}"]`);
+    const rects=[...(group?.querySelectorAll('text')||[])].map(t=>t.getBoundingClientRect()).filter(r=>r.width||r.height);
+    if(!rects.length||!['arrow','line','spline'].includes(object.kind))return boxOnScreen(object);
+    return {left:Math.min(...rects.map(r=>r.left)),top:Math.min(...rects.map(r=>r.top)),right:Math.max(...rects.map(r=>r.right)),bottom:Math.max(...rects.map(r=>r.bottom))};
+  }
   function openInline(object,{created=false}={}){
+    // Editing a label leaves an open preview, as a press on the canvas does:
+    // the preview is discarded (the source is unchanged) and the label is
+    // edited on the committed diagram.
+    if(object&&!inline&&previewActions&&!previewActions.hidden&&studio.preview?.()){
+      const id=object.id;$('preview-discard')?.click();object=studio.state().scene?.objects.find(o=>o.id===id)||object;
+    }
     const s=studio.state();if(!s.valid||inline||!object)return false;
     const text=labelText(object);if(text===null)return false;
-    const box=boxOnScreen(object);if(!box)return false;
+    if(typeof text!=='string'){$('state').textContent='Label not editable here: '+text.refused;return false;}
+    if(!boxOnScreen(object))return false;
     const svg=svgNow(),group=svg?.querySelector(`[data-pikchr-id="${object.id}"]`);
     const sample=group?.querySelector('text')||svg?.querySelector('text');
-    const ctm=svg?.getScreenCTM(),scale=ctm?Math.hypot(ctm.a,ctm.b)||1:1;
     const cs=sample?getComputedStyle(sample):null;
-    const fontPx=Math.max(12,(cs?parseFloat(cs.fontSize)||16:16)*scale);
     const ta=el('textarea',{class:'cl-inline-text','aria-label':created?'New text':'Edit text',spellcheck:'false',rows:'1'});
     ta.value=text;
-    Object.assign(ta.style,{fontFamily:cs?.fontFamily||'sans-serif',fontWeight:cs?.fontWeight||'normal',fontStyle:cs?.fontStyle||'normal',fontSize:fontPx+'px',lineHeight:'1.25'});
-    const cx=(box.left+box.right)/2,cy=(box.top+box.bottom)/2,width=Math.max(140,box.right-box.left);
-    const fit=()=>{ta.style.height='auto';ta.style.height=ta.scrollHeight+'px';ta.style.left=(cx-width/2)+'px';ta.style.top=(cy-ta.offsetHeight/2)+'px';};
-    ta.style.width=width+'px';
-    const hidden=[...(group?.querySelectorAll('text')||[])];for(const t of hidden)t.style.visibility='hidden';
-    document.body.append(ta);fit();ta.focus();if(created)ta.select();else ta.setSelectionRange(ta.value.length,ta.value.length);
-    inline={object,ta,created,original:text,source:s.source,hidden};context.hidden=true;textBarKey='';syncTextBar(true);
-    ta.addEventListener('input',()=>{fit();inlineError(null);});
+    Object.assign(ta.style,{fontFamily:cs?.fontFamily||'sans-serif',fontWeight:cs?.fontWeight||'normal',fontStyle:cs?.fontStyle||'normal',lineHeight:'1.25'});
+    const hidden=[...(group?.querySelectorAll('text')||[])];
+    const d={object,ta,created,original:text,source:s.source,hidden,fontSize:cs?parseFloat(cs.fontSize)||16:16};
+    document.body.append(ta);placeInline(d);for(const t of hidden)t.style.visibility='hidden';
+    ta.focus({preventScroll:true});if(created)ta.select();else ta.setSelectionRange(ta.value.length,ta.value.length);
+    inline=d;context.hidden=true;textBarKey='';syncTextBar(true);
+    ta.addEventListener('input',()=>{placeInline(d);inlineError(null);syncTextBar(true);});
     ta.addEventListener('keydown',e=>{
       e.stopPropagation();
       if(e.key==='Escape'){e.preventDefault();closeInline(false);}
@@ -1044,17 +1084,19 @@ function install(studio){
     if(!d.error){d.error=el('p',{class:'cl-inline-error',role:'alert'});document.body.append(d.error);}
     d.error.textContent=message;
     const r=d.ta.getBoundingClientRect();
-    Object.assign(d.error.style,{left:r.left+'px',top:(r.bottom+4)+'px',width:Math.max(r.width,220)+'px'});
+    d.error.style.width=Math.max(r.width,220)/zoomOf(d.ta)+'px';putAt(d.error,r.left,r.bottom+4);
   }
   function removeInline(d){
     if(inline===d)inline=null;
     d.ta.remove();d.error?.remove();for(const t of d.hidden)t.style.visibility='';
     diagram.focus({preventScroll:true});schedule();
   }
-  // A shape that cannot wrap or grow (no explicit position, size expressions)
-  // keeps its size; the reason travels with the edit for the status line.
+  // Sizing follows the shape's Text fit as the inspector shows it. A shape that cannot wrap or grow as asked (no explicit
+  // position, size expressions) keeps its size; the reason travels with the
+  // edit for the status line.
   async function labelEdit(s,object,text){
-    const kind=object.kind,modes=kind==='text'?['fixed']:kind==='box'?['wrap','grow','fixed']:['grow','fixed'];
+    const mode=studio.textFit?.(object)||'fixed';
+    const modes=mode==='fixed'?['fixed']:[mode,'fixed'];
     let failure;
     for(const mode of modes){
       try{return {option:await buildTextEdit(s.source,s.scene,object,{text,mode,width:object.bbox?.width},studio.render),mode,reason:failure?.message};}
@@ -1085,9 +1127,9 @@ function install(studio){
     d.busy=false;
     if(inline!==d||studio.state().source!==d.source){removeInline(d);$('state').textContent='Label not changed: the diagram changed while you typed. Edit the text again.';return;}
     removeInline(d);
-    const kept=edit.mode==='fixed'&&d.object.kind!=='text';
+    const kept=!!edit.reason;
     const applied=await studio.propose([{...edit.option,...(kept?{label:'Change text (keep shape size)'}:{}),...(d.object.name?{selectName:d.object.name}:{selectId:d.object.id,targetKind:d.object.kind})}]);
-    if(applied&&kept)$('state').textContent='Label changed; the shape kept its size. It could not grow to fit: '+edit.reason;
+    if(applied&&kept)$('state').textContent='Label changed; the shape kept its size. Its Text fit could not apply: '+edit.reason;
   }
   diagram.addEventListener('dblclick',e=>{
     // Pointer capture on the canvas retargets the event to the SVG root, so
@@ -1123,7 +1165,8 @@ function install(studio){
   const colourButtons=Object.fromEntries(textColours.map(colour=>[colour,tb('',colour==='default'?'Default colour':`Colour ${colour}`,()=>({colour}),{class:'cl-tb cl-swatch','data-colour':colour})]));
   for(const [colour,b] of Object.entries(colourButtons))if(colour!=='default')paintSwatch(b,'color',colour);
   const tsep=()=>el('span',{class:'cl-sep','aria-hidden':'true'});
-  textBar.append(...Object.values(sizeButtons),tsep(),boldButton,italicButton,monoButton,tsep(),...Object.values(alignButtons),tsep(),...Object.values(colourButtons));
+  const alignSep=tsep();
+  textBar.append(...Object.values(sizeButtons),tsep(),boldButton,italicButton,monoButton,alignSep,...Object.values(alignButtons),tsep(),...Object.values(colourButtons));
   // A press on the bar must not take focus from the label editor.
   textBar.addEventListener('mousedown',e=>{if(inline&&e.target.closest('button'))e.preventDefault();});
   document.body.append(textBar);
@@ -1131,7 +1174,9 @@ function install(studio){
   function syncTextBar(visible){
     const s=studio.state(),o=inline?inline.object:s.object;
     let style=null;
-    if(visible&&s.valid&&o&&(inline||(s.selectedIds||[]).length<=1)&&textKinds.includes(o.kind)){try{style=textStyle(s.source,o,s.scene);}catch{style=null;}}
+    // A selected connector keeps its own toolbar; its label is styled in the
+    // inspector, or here while the label editor is open.
+    if(visible&&s.valid&&o&&(inline||(s.selectedIds||[]).length<=1&&!['arrow','line','spline'].includes(o.kind))&&textKinds.includes(o.kind)){try{style=textStyle(s.source,o,s.scene,{empty:!!inline});}catch{style=null;}}
     if(!style){textBar.hidden=true;textBarKey='';return;}
     const key=o.id+'|'+s.source;
     if(key!==textBarKey){
@@ -1141,7 +1186,11 @@ function install(studio){
         b.setAttribute('aria-pressed',String(style[word]));
         if(style[word])textBar.dataset[word]='1';else delete textBar.dataset[word];
       }
-      for(const [align,b] of Object.entries(alignButtons))b.setAttribute('aria-pressed',String(style.align===align));
+      // A connector label is placed above, on or below its line (the inspector's
+      // Label placement), not aligned.
+      const line=['arrow','line','spline'].includes(o.kind);
+      for(const [align,b] of Object.entries(alignButtons)){b.setAttribute('aria-pressed',String(style.align===align));b.hidden=line;}
+      alignSep.hidden=line;
       const role=o.kind==='text'?'Text':'Line & text';
       for(const [colour,b] of Object.entries(colourButtons)){
         b.setAttribute('aria-pressed',String(style.colour===colour||colour==='gray'&&style.colour==='grey'));
@@ -1152,13 +1201,13 @@ function install(studio){
       }
     }
     textBar.hidden=false;
-    const w=textBar.offsetWidth,h=textBar.offsetHeight;
+    const {w,h}=sizeOf(textBar),k=zoomOf(textBar);
     if(inline){
       // Above the shape and its editor, or below them when there is no room;
       // never over the text being typed.
       const r=inline.ta.getBoundingClientRect(),shape=boxOnScreen(o)||r;
-      let top=Math.min(r.top,shape.top)-h-10;if(top<64)top=Math.max(r.bottom+(inline.error?inline.error.offsetHeight+8:0),shape.bottom)+10;
-      textBar.style.left=Math.max(8,Math.min(innerWidth-w-8,(r.left+r.right)/2-w/2))+'px';textBar.style.top=Math.max(8,Math.min(innerHeight-h-8,top))+'px';
+      let top=Math.min(r.top,shape.top)-h-10;if(top<64)top=Math.max(r.bottom+(inline.error?sizeOf(inline.error).h+8:0),shape.bottom)+10;
+      putAt(textBar,Math.max(8,Math.min(innerWidth-w-8,(r.left+r.right)/2-w/2)),Math.max(8,Math.min(innerHeight-h-8,top)));
       return;
     }
     const c=context.getBoundingClientRect();
@@ -1168,12 +1217,14 @@ function install(studio){
     const toolbarAbove=c.bottom<=box.top+1;
     let top=toolbarAbove?box.bottom+12:box.top-h-12;
     if(top<64||top+h>innerHeight-64)top=toolbarAbove?c.top-h-6:c.bottom+6;
-    textBar.style.left=Math.max(8,Math.min(innerWidth-w-8,(box.left+box.right)/2-w/2))+'px';textBar.style.top=Math.max(64,Math.min(innerHeight-h-64,top))+'px';
+    // Clear of the top and bottom chrome rows, which it must never cover.
+    const low=Math.max(64,chrome.top*k),high=innerHeight-h-Math.max(64,chrome.bottom*k);
+    putAt(textBar,Math.max(8,Math.min(innerWidth-w-8,(box.left+box.right)/2-w/2)),Math.max(low,Math.min(high,top)));
   }
   async function applyTextStyle(change){
     if(inline)return styleWhileEditing(change);
     const s=studio.state(),o=s.object;if(!s.valid||!o)return;
-    let option;try{option=textStyleCandidate(s.source,o,s.scene,change);}catch(error){$('state').textContent=error.message;return;}
+    let option;try{option=textStyleCandidate(s.source,o,s.scene,change);option={...option,...await keepInPlace(s.source,s.scene,o,option,studio.render)};}catch(error){$('state').textContent=error.message;return;}
     await studio.propose([option]);
   }
   // Styling a label mid-edit keeps what was typed: the new text and the style
@@ -1185,10 +1236,10 @@ function install(studio){
     const text=d.ta.value.replace(/\r/g,'').replace(/\s+$/,'');
     if(text.split('\n').length>5){inlineError('Pikchr shows at most five lines of text per shape. Remove some line breaks.');return;}
     d.busy=true;
-    let option;
+    let option,reason;
     try{
       if(text!==d.original&&text.trim()){
-        const edit=await labelEdit(s,d.object,text),next=edit.option.source;
+        const edit=await labelEdit(s,d.object,text),next=edit.option.source;reason=edit.reason;
         const result=await studio.render(next);
         if(result.error||!result.objects)throw new Error('Pikchr cannot render this label: '+(result.error||'no diagram'));
         const object=result.objects.find(n=>d.object.name?n.name===d.object.name:n.id===d.object.id);
@@ -1197,6 +1248,9 @@ function install(studio){
         option={...styled,label:'Change text; '+styled.label.toLowerCase(),source:styled.source,
           patch:{base:s.source,start:0,end:new TextEncoder().encode(s.source).length,expected:s.source,text:styled.source}};
       }else option=textStyleCandidate(s.source,d.object,s.scene,change);
+      // A style that resizes the shape (bold, big) keeps it and its
+      // neighbours in place, as a label edit does.
+      option={...option,...await keepInPlace(s.source,s.scene,d.object,{...option,patch:{base:s.source,start:0,end:new TextEncoder().encode(s.source).length,expected:s.source,text:option.source}},studio.render)};
     }catch(error){d.busy=false;inlineError(error.message);d.ta.focus();return;}
     d.busy=false;
     if(inline!==d||studio.state().source!==d.source){inlineError('The diagram changed while you typed. Press Escape and edit the text again.');return;}
@@ -1204,6 +1258,7 @@ function install(studio){
     removeInline(d);
     const applied=await studio.propose([{...option,...(object.name?{selectName:object.name}:{selectId:object.id,targetKind:object.kind})}]);
     if(!applied)return;
+    if(reason)$('state').textContent='Label changed; the shape kept its size. Its Text fit could not apply: '+reason;
     const again=studio.state().object;
     if(again&&openInline(again)){const at=Math.min(caret,inline.ta.value.length);inline.ta.setSelectionRange(at,at);}
   }
@@ -1277,7 +1332,7 @@ function install(studio){
       const end=target?target.anchors[d.targetAnchor]:{x:snapToGrid(p.x),y:snapToGrid(p.y)};
       drawLineGhost(d.which==='from'?[end,other]:[other,end],target);
       badge.hidden=false;badge.textContent=(d.which==='from'?'Start → ':'End → ')+(target?`${target.name}.${d.targetAnchor}`:pointText(end));
-      badge.style.left=(e.clientX+14)+'px';badge.style.top=(e.clientY+14)+'px';
+      putAt(badge,e.clientX+14,e.clientY+14);
     }else{
       let dx=p.x-d.start.x,dy=p.y-d.start.y;
       if(shift){const q=lockDirection({x:0,y:0},{x:dx,y:dy}).point;dx=q.x;dy=q.y;}

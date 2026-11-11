@@ -6,6 +6,7 @@ placed implicitly (the common case) cannot grow to fit without moving their
 neighbours, so they keep their size; nothing is dropped silently. A refused
 label keeps the editor open with the reason next to it."""
 import os
+import re
 from browser_helpers import set_auto_apply
 from playwright.sync_api import sync_playwright, expect
 
@@ -62,7 +63,9 @@ def run(page, queued):
                 page.keyboard.press("Enter")
                 case = f"{stmt!r} ({'queue' if queued else 'auto'})"
                 try:
-                    page.wait_for_function("l=>document.getElementById('source').value.includes(l)", arg='"' + LABEL + '"', timeout=5000)
+                    # A box wraps the label inside its width (Text fit's default);
+                    # every other shape grows to fit it on one line.
+                    page.wait_for_function("t=>{const v=document.getElementById('source').value;return v!==t&&!document.querySelector('textarea.cl-inline-text')&&(v.split('\\n')[2].match(/\"[^\"]*\"/g)||[]).map(s=>s.slice(1,-1)).join(' ')===%r}" % LABEL, arg=source, timeout=5000)
                 except Exception:
                     raise AssertionError(f"{case}: label not committed; source={src(page)!r}; state={page.evaluate('document.getElementById(`state`).textContent')!r}")
                 if queued:
@@ -73,9 +76,15 @@ def run(page, queued):
                 assert editor.count() == 0, case
                 assert '"old"' not in after, case + " kept the old label: " + after
                 line = after.split("\n")[2]
-                assert line.startswith(("C: " if named else "") + kind + ' "' + LABEL + '"'), case + ": " + line
+                assert line.startswith(("C: " if named else "") + kind + ' "'), case + ": " + line
+                words = [w for part in re.findall(r'"((?:\\.|[^"\\])*)"', line) for w in part.split()]
+                assert words == LABEL.split(), case + ": words out of order: " + line
+                if kind == "box":
+                    assert " width " in line and line.count('"') > 2, case + ": a box wraps: " + line
+                else:
+                    assert re.findall(r'"((?:\\.|[^"\\])*)"', line) == [LABEL] and line.endswith(" fit"), case + ": exact text: " + line
                 assert after.split("\n")[0] == 'box "A"' and after.split("\n")[4] == 'box "B"', case + ": neighbours changed"
-                assert LABEL in page.locator("#diagram svg").text_content().replace("\xa0", " "), case + ": label not rendered"
+                assert all(w in page.locator("#diagram svg").text_content().replace("\xa0", " ") for w in LABEL.split()), case + ": label not rendered"
                 if queued:
                     assert page.locator("#queue-list li").count() == 1, case
                     page.locator(".cl-status").get_by_role("button", name="Discard", exact=True).click()
@@ -98,14 +107,18 @@ with sync_playwright() as pw:
     load(page, 'box "A"\nmove\nC: cylinder\nmove\nbox "B"\n')
     before = src(page)
     editor = open_editor(page, 2, "dblclick")
-    page.keyboard.type('say "hi"')
+    six = "1\n2\n3\n4\n5\n6"
+    page.keyboard.type("1")
+    for line in "23456":
+        page.keyboard.press("Shift+Enter")
+        page.keyboard.type(line)
     page.keyboard.press("Enter")
     error = page.locator(".cl-inline-error")
     expect(error).to_be_visible()
     expect(error).to_have_attribute("role", "alert")
-    expect(error).to_contain_text("quotes")
+    expect(error).to_contain_text("five lines")
     expect(editor).to_be_visible()
-    assert editor.input_value() == 'say "hi"'
+    assert editor.input_value() == six
     assert src(page) == before
     page.keyboard.press("Escape")
     expect(editor).to_have_count(0)
@@ -114,16 +127,23 @@ with sync_playwright() as pw:
 
     # A refusal after a blur keeps the editor and its text as well.
     editor = open_editor(page, 2, "dblclick")
-    page.keyboard.type('a "b"')
+    editor.fill(six)
     page.locator(".cl-doc [aria-label='Menu']").focus()
     expect(error).to_be_visible()
     expect(editor).to_be_visible()
-    assert editor.input_value() == 'a "b"'
+    assert editor.input_value() == six
     assert src(page) == before
     editor.focus()
     page.keyboard.press("Escape")
     expect(editor).to_have_count(0)
     assert src(page) == before
+
+    # Quotes and backslashes are written escaped, not refused.
+    editor = open_editor(page, 2, "dblclick")
+    page.keyboard.type('say "hi" C:\\dir')
+    page.keyboard.press("Enter")
+    page.wait_for_function("t=>document.getElementById('source').value.includes(t)", arg='C: cylinder "say \\"hi\\" C:\\\\dir"')
+    assert 'say "hi" C:\\dir' in page.locator("#diagram svg").text_content().replace("\xa0", " ")
 
     set_auto_apply(page, False)
     run(page, queued=True)

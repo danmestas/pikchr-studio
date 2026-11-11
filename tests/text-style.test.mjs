@@ -61,3 +61,11 @@ test('unnamed objects are selected by id; no-op and empty labels are refused', (
   assert.equal(edit.selectId, scene.objects[0].id); assert.equal(edit.targetKind, 'text');
   assert.throws(() => textStyleCandidate(source, scene.objects[0], scene, { bold: false }), /already/);
 });
+
+test('a label-less shape has no style, except for the label editor, where it reads plain', () => {
+  const source = 'B: box at (0,0) color blue\n';
+  const scene = render(source);
+  assert.equal(textStyle(source, scene.objects[0], scene), null);
+  assert.deepEqual(textStyle(source, scene.objects[0], scene, { empty: true }), { size: 'normal', bold: false, italic: false, mono: false, align: 'center', placement: 'center', aligned: false, colour: 'blue', colourLocked: null });
+  assert.throws(() => textStyleCandidate(source, scene.objects[0], scene, { bold: true }), /Add text/);
+});

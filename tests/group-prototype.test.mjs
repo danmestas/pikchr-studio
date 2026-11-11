@@ -45,6 +45,6 @@ test('ordinary groups, modified children and metadata cannot impersonate editabl
 test('creation reserves names, validates finite coordinates and never appends to continued source',()=>{
   const source='# Composite1 reserved\n',option=createComposite(source,{objects:[{name:'Composite2'}]},{kind:'trapezoid',x:0,y:0});
   assert.equal(option.selectName,'Composite3');render(option.source);
-  for(const options of [{kind:'diamond',x:0,y:0},{kind:'triangle',x:Infinity,y:0},{kind:'triangle',x:0,y:0,width:0},{kind:'triangle',x:0,y:0,label:'bad"label'}])assert.throws(()=>createComposite('',{objects:[]},options));
+  for(const options of [{kind:'diamond',x:0,y:0},{kind:'triangle',x:Infinity,y:0},{kind:'triangle',x:0,y:0,width:0},{kind:'triangle',x:0,y:0,label:'bad\tlabel'}])assert.throws(()=>createComposite('',{objects:[]},options));
   assert.throws(()=>createComposite('box \\',{}, {kind:'triangle',x:0,y:0}),/continued/);
 });

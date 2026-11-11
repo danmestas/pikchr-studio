@@ -1,5 +1,5 @@
-import {applyPatch,routeCandidates} from './edits.js?v=20261106i';
-import {readProperties} from './properties.js?v=20261106i';
+import {applyPatch,routeCandidates} from './edits.js?v=20261110a';
+import {readProperties} from './properties.js?v=20261110a';
 
 export function reverseConnector(source,scene,object){
   readProperties(source,object,scene);

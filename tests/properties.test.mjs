@@ -29,7 +29,12 @@ test('insert and clear one label; reject ambiguous or unsafe text',()=>{
   const {source,object,scene}=fixture('C: box at (4,0)');
   const edit=changeText(source,object,scene,'Hello');assert.equal(render(edit.source).error,null);
   assert.match(edit.source,/box "Hello" at/);
-  for(const text of ['a"b','a\\b','a\tb'])assert.throws(()=>changeText(source,object,scene,text));
+  for(const text of ['a\tb','a\u0000b'])assert.throws(()=>changeText(source,object,scene,text),/control characters/);
+  // Quotes and backslashes are written escaped and read back exactly.
+  const quoted=changeText(source,object,scene,'say "hi" C:\\dir\\');
+  assert.match(quoted.source,/box "say \\"hi\\" C:\\\\dir\\\\" at/);
+  const back=render(quoted.source);assert.equal(back.error,null);
+  assert.equal(inspectProperties(quoted.source,back.objects.at(-1),back).text,'say "hi" C:\\dir\\');
   const two=fixture('C: box "one" "two"');assert.equal(inspectProperties(two.source,two.object,two.scene).text,'one\ntwo');
   const clear=fixture('C: box "old"');assert.match(changeText(clear.source,clear.object,clear.scene,'').source,/box ""/);
 });
@@ -115,4 +120,38 @@ test('fit removes complete literal dimensions including percentages, units and t
     assert.doesNotMatch(edit.source,/\bwidth\b/);
     assert.equal(fitText(edit.source,result.objects.at(-1),result).source,edit.source);
   }
+});
+test('each line keeps the style of the string it replaces; added lines take the last one',()=>{
+  const {source,object,scene}=fixture('C: box "one" bold "two" italic below at (4,0)');
+  assert.match(changeText(source,object,scene,'ONE\ntwo').source,/C: box "ONE" bold "two" italic below at/);
+  assert.match(changeText(source,object,scene,'a\nb\nc').source,/C: box "a" bold "b" italic below "c" italic below at/);
+  assert.match(changeText(source,object,scene,'only').source,/C: box "only" bold at/);
+  const spline=fixture('spline from A.e to B.w "x" above');
+  const edit=changeText(spline.source,spline.object,spline.scene,'y');
+  assert.match(edit.source,/spline from A.e to B.w "y" above/);assert.equal(render(edit.source).error,null);
+});
+test('a fitted shape keeps its fit when its placement is an expression',()=>{
+  const {source,object,scene}=fixture('C: box "old" fit at (A.x + 2, A.y)');
+  const edit=changeText(source,object,scene,'A much longer label',{fit:true});
+  assert.match(edit.source,/C: box "A much longer label" fit at \(A.x \+ 2, A.y\)/);
+  const result=render(edit.source);assert.equal(result.error,null);
+  assert.deepEqual(result.objects.at(-1).center,object.center);
+  assert.ok(result.objects.at(-1).bbox.width>object.bbox.width);
+});
+test('a fitted text object keeps its fit when its text changes',()=>{
+  const {source,object,scene}=fixture('T: text "old" fit at (4,0)');
+  const edit=changeText(source,object,scene,'',{fit:false});
+  assert.match(edit.source,/T: text "" fit at \(4,0\)/);assert.equal(render(edit.source).error,null);
+});
+test('a monospace label can grow to fit',()=>{
+  const {source,object,scene}=fixture('C: box "code" mono big at (4,0)');
+  const edit=changeText(source,object,scene,'longer code',{fit:true});
+  assert.match(edit.source,/C: box "longer code" mono big at \(4,0\) fit/);assert.equal(render(edit.source).error,null);
+});
+test('lines the author did not edit keep their source text, unknown escapes included',()=>{
+  const {source,object,scene}=fixture('C: box "a\\tb" bold "two" at (4,0)');
+  assert.equal(inspectProperties(source,object,scene).text,'atb\ntwo');
+  const edit=changeText(source,object,scene,'atb\nTWO');
+  assert.match(edit.source,/C: box "a\\tb" bold "TWO" at/);
+  assert.equal(changeText(source,object,scene,'atb\ntwo').source,source);
 });

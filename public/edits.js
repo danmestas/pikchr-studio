@@ -165,7 +165,7 @@ export function movementBlocked(source, object, scene) {
 
 // The one attribute vocabulary every rewrite module shares. Text-position words
 // (above/below) are attributes only when they do not start a placement.
-export const permittedAttributes = new Set(['fit','width','wid','height','ht','radius','rad','diameter','fill','color','thickness','dashed','dotted','invis','invisible','bold','italic','small','big','thin','thick','solid','behind','black','white','red','blue','green','yellow','gray','grey','none','ljust','rjust','above','below','chop','aligned','center']);
+export const permittedAttributes = new Set(['fit','width','wid','height','ht','radius','rad','diameter','fill','color','thickness','dashed','dotted','invis','invisible','bold','italic','small','big','thin','thick','solid','behind','black','white','red','blue','green','yellow','gray','grey','none','ljust','rjust','above','below','chop','aligned','center','mono','monospace']);
 export const numericToken = new RegExp(`^${number}${unit}$`);
 // Pikchr's colour names (the CSS names plus none and off), case-insensitive.
 export const colourNames=new Set('aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown burlywood cadetblue chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey darkkhaki darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen darkslateblue darkslategray darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite forestgreen fuchsia gainsboro ghostwhite gold goldenrod gray grey green greenyellow honeydew hotpink indianred indigo ivory khaki lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen lightgrey lightpink lightsalmon lightseagreen lightskyblue lightslategray lightslategrey lightsteelblue lightyellow lime limegreen linen magenta maroon mediumaquamarine mediumblue mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid palegoldenrod palegreen paleturquoise palevioletred papayawhip peachpuff peru pink plum powderblue purple rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown seagreen seashell sienna silver skyblue slateblue slategray slategrey snow springgreen steelblue tan teal thistle tomato turquoise violet wheat white whitesmoke yellow yellowgreen none off'.split(' '));
@@ -667,7 +667,12 @@ function connectorExtension(source, object, scene, delta, absorb = 'end') {
     gapStart = byteOffsetToIndex(source, object.span.start);
   } catch { return null; }
   if (!/^(?:\s|;|\b(?:up|down|left|right)\b)*$/.test(maskCode(source.slice(b, gapStart)))) return null;
-  const statement = source.slice(a, b), masked = maskCode(statement);
+  const original = source.slice(a, b);
+  // An end set by an earlier extension (`to (x, y)`, nothing else routing
+  // it) is replaced, so the connector can follow the shape again.
+  const ended = maskCode(original).match(new RegExp(`\\s+to\\s*\\(\\s*${number}\\s*,\\s*${number}\\s*\\)`));
+  const statement = ended && before.path.length === 2 ? original.slice(0, ended.index) + original.slice(ended.index + ended[0].length) : original;
+  const masked = maskCode(statement);
   const header = masked.match(new RegExp(`^\\s*(?:(${namePattern})\\s*:\\s*)?(arrow|line|move)\\b`));
   if (!header || (header[1] || '') !== (before.name || '')
       || /\b(?:from|to|at|heading|same|close|with|chop)\b|[\[\]{}]/.test(masked)) return null;
@@ -681,13 +686,13 @@ function connectorExtension(source, object, scene, delta, absorb = 'end') {
   const end = object.anchors[entry.name];
   if (before.path.length > 2) {
     const text = legsMoved(statement, masked, header[0].length, [...before.path.slice(0, -1), end], delta, absorb);
-    return text && {start:before.span.start, end:before.span.end, expected:statement, text, kind:before.kind};
+    return text && {start:before.span.start, end:before.span.end, expected:original, text, kind:before.kind};
   }
   // A bare length (arrow 1) would still apply after `to`; the end replaces it.
   const length = masked.slice(header[0].length).match(new RegExp(`^\\s+${number}${unit}(?=\\s|$)`));
   const kept = length ? statement.slice(0, header[0].length) + statement.slice(header[0].length + length[0].length) : statement;
   const text = kept.trimEnd() + ` to ${offsetText(end.x + delta.x, end.y + delta.y)}` + kept.slice(kept.trimEnd().length);
-  return {start:before.span.start, end:before.span.end, expected:statement, text, kind:before.kind};
+  return {start:before.span.start, end:before.span.end, expected:original, text, kind:before.kind};
 }
 
 // A routed connector (right then down then right) keeps its legs: the end

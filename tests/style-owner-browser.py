@@ -140,19 +140,20 @@ with sync_playwright() as pw:
     expect(bar.get_by_role("button", name="Italic", exact=True)).to_have_attribute("aria-pressed", "true")
     bar.get_by_role("button", name="Bold", exact=True).click()
     # The typed text is kept and styled together, as one change.
-    wait_time(page, 'Time: oval "Zeit Zone" bold italic fill 0xe8f0d2 at NBT.n + (0, NBT.ht)')
+    # An oval's Text fit defaults to Grow, so the longer label refits it.
+    wait_time(page, 'Time: oval "Zeit Zone" bold italic fill 0xe8f0d2 at NBT.n + (0, NBT.ht) fit')
     editor.wait_for(state="visible")
     assert editor.input_value() == "Zeit Zone", editor.input_value()
     expect(bar.get_by_role("button", name="Bold", exact=True)).to_have_attribute("aria-pressed", "true")
     page.keyboard.type("!")
     page.keyboard.press("Enter")
-    wait_time(page, 'Time: oval "Zeit Zone!" bold italic fill 0xe8f0d2 at NBT.n + (0, NBT.ht)')
+    wait_time(page, 'Time: oval "Zeit Zone!" bold italic fill 0xe8f0d2 at NBT.n + (0, NBT.ht) fit')
     # Text colour is Pikchr's color: the bar names it Line & text like Style.
     select(page, "Time")
     close_popovers(page)
     page.wait_for_function("!document.querySelector('.cl-textbar').hidden")
     bar.get_by_role("button", name="Line & text firebrick", exact=True).click()
-    wait_time(page, 'Time: oval "Zeit Zone!" bold italic fill 0xe8f0d2 at NBT.n + (0, NBT.ht) color firebrick')
+    wait_time(page, 'Time: oval "Zeit Zone!" bold italic fill 0xe8f0d2 at NBT.n + (0, NBT.ht) fit color firebrick')
 
     # Bug 1: a colour written as a variable locks just its row, calmly.
     set_source(page, LOCKED)

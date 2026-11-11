@@ -1,4 +1,7 @@
-import {validateSizingPreferences} from './sizing-preferences.js?v=20261106i';
+import {validateSizingPreferences} from './sizing-preferences.js?v=20261110a';
+import {decodeLabel} from './properties.js?v=20261110a';
+// The first string literal in the source, decoded (a comment is not a label).
+const firstLabel=source=>{const m=source.match(/"(?:\\.|[^"\\\n])*"|#[^\n]*/g)?.find(t=>t[0]==='"');return m?decodeLabel(m):'';};
 // Documents are independent records: a damaged record never prevents opening another.
 const PREFIX='pikchr-studio.document.v1.';
 const CURRENT='pikchr-studio.current-document.v1';
@@ -112,7 +115,7 @@ export function createDocumentStore({local=globalThis.localStorage,session=globa
         const id=key.slice(PREFIX.length);
         try{
           const {record}=read(id);
-          if(record)items.push({id,title:(record.state.title?.trim()||record.state.source.match(/"([^"\n]*)"/)?.[1]||'Untitled').slice(0,100),updated:record.updated});
+          if(record)items.push({id,title:(record.state.title?.trim()||firstLabel(record.state.source)||'Untitled').slice(0,100),updated:record.updated});
         }catch{/* Preserve unreadable records, without hiding healthy documents. */}
       }
       return items.sort((a,b)=>b.updated-a.updated);

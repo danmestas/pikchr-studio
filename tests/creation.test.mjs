@@ -78,7 +78,9 @@ test('new statement safely follows an unterminated comment or empty document', (
 });
 
 test('invalid shape, labels, and coordinates are rejected before producing a patch', () => {
-  for (const label of ['quote"','slash\\','tab\t','\x00']) assert.throws(()=>createShape('',{}, {kind:'box',label,x:0,y:0}),/plain text/);
+  for (const label of ['tab\t','\x00']) assert.throws(()=>createShape('',{}, {kind:'box',label,x:0,y:0}),/plain text/);
+  // Quotes and backslashes are escaped the way Pikchr reads them.
+  assert.match(createShape('',{}, {kind:'box',label:'say "hi" C:\\',x:0,y:0}).source,/box "say \\"hi\\" C:\\\\"/);
   for (const x of [NaN,Infinity,1e21,undefined]) assert.throws(()=>createShape('',{}, {kind:'box',x,y:0}),/Position/);
   assert.throws(()=>createShape('',{}, {kind:'triangle',x:0,y:0}),/supported/);
 });
